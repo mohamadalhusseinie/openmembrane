@@ -14,6 +14,7 @@
     "baseUrl": ".",
     "paths": {
       "@openmembrain/core": ["packages/core/src/index.ts"],
+      "@openmembrain/exporters": ["packages/exporters/src/index.ts"],
       "@openmembrain/shared": ["packages/shared/src/index.ts"],
       "@openmembrain/storage": ["packages/storage/src/index.ts"]
     }

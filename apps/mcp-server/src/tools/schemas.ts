@@ -1,5 +1,14 @@
 import { z } from "zod";
 import { memoryScopes, memoryTypes } from "@openmembrain/core";
+import type { ExportTarget } from "@openmembrain/exporters";
+
+export const exportTargets: readonly [ExportTarget, ...ExportTarget[]] = [
+  "agents",
+  "claude",
+  "copilot",
+  "cursor",
+  "project_memory"
+];
 
 export const projectIdSchema = {
   projectId: z.string().min(1).optional().describe("Project identifier. Defaults to OPENMEMBRAIN_PROJECT_ID or the current folder name.")
@@ -50,4 +59,11 @@ export const rejectMemoryCandidateSchema = {
   ...projectIdSchema,
   candidateId: z.string().min(1),
   reason: z.string().min(1).optional()
+};
+
+export const exportStaticMemoryFilesSchema = {
+  ...projectIdSchema,
+  targets: z.array(z.enum(exportTargets)).optional(),
+  outputDir: z.string().min(1).optional().describe("Directory to write generated files into. Defaults to the MCP server working directory."),
+  includeConfidential: z.boolean().optional().describe("Include confidential memory in static files. Defaults to false.")
 };

@@ -9,6 +9,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openmembrain/core": "0.1.0",
+    "@openmembrain/exporters": "0.1.0",
     "@openmembrain/storage": "0.1.0",
     "zod": "^4.4.3"
   }

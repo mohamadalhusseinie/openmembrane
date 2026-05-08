@@ -24,6 +24,7 @@ Package responsibilities:
 
 - `packages/core`: domain types, extraction interface, policy checks, classification, deduplication, conflict detection, and pipeline orchestration.
 - `packages/storage`: local JSON persistence for saved memory, pending approvals, and audit events.
+- `packages/exporters`: static fallback file generation for AI tools that read project instruction files.
 - `packages/shared`: small runtime helpers for IDs, time, and result types.
 - `apps/mcp-server`: local MCP server exposing saved memory and approval workflows to AI tools.
 
@@ -59,3 +60,16 @@ Initial MCP tools:
 - `list_memory_candidates`
 - `approve_memory_candidate`
 - `reject_memory_candidate`
+- `export_static_memory_files`
+
+## Static Fallback Files
+
+Static exporters can generate:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `.github/copilot-instructions.md`
+- `.cursor/rules/openmembrain.mdc`
+- `docs/ai/project-memory.md`
+
+These files are compatibility fallbacks for tools that cannot retrieve memory through MCP. By default, exporters omit `confidential` memories because these files may be committed to source control. Callers must explicitly opt in to include confidential memory.

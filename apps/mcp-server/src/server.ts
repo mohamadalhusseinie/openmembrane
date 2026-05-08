@@ -4,6 +4,7 @@ import type { OpenMembrainMcpContext } from "./context";
 import { createToolHandlers } from "./tools/handlers";
 import {
   approveMemoryCandidateSchema,
+  exportStaticMemoryFilesSchema,
   getProjectRulesSchema,
   getRelevantContextSchema,
   listMemoryCandidatesSchema,
@@ -88,6 +89,17 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: rejectMemoryCandidateSchema
     },
     async (input) => jsonResult(await handlers.rejectMemoryCandidate(input))
+  );
+
+  server.registerTool(
+    "export_static_memory_files",
+    {
+      title: "Export Static Memory Files",
+      description:
+        "Generate fallback instruction files such as AGENTS.md, CLAUDE.md, Copilot instructions, Cursor rules, and docs/ai/project-memory.md.",
+      inputSchema: exportStaticMemoryFilesSchema
+    },
+    async (input) => jsonResult(await handlers.exportStaticMemoryFiles(input))
   );
 
   return server;

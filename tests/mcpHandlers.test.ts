@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,16 +13,19 @@ afterEach(async () => {
 
 async function createHandlers() {
   const storageDir = await mkdtemp(join(tmpdir(), "openmembrain-mcp-test-"));
-  tempDirs.push(storageDir);
+  const projectRoot = await mkdtemp(join(tmpdir(), "openmembrain-project-test-"));
+  tempDirs.push(storageDir, projectRoot);
 
   const context = createOpenMembrainContext({
     defaultProjectId: "project-a",
+    projectRoot,
     storageDir
   });
 
   return {
     context,
-    handlers: createToolHandlers(context)
+    handlers: createToolHandlers(context),
+    projectRoot
   };
 }
 
@@ -89,5 +92,24 @@ describe("MCP tool handlers", () => {
     expect(rejection.rejected).toBe(true);
     await expect(handlers.listMemoryCandidates({})).resolves.toHaveLength(0);
     await expect(handlers.searchMemory({ query: "Flyway" })).resolves.toHaveLength(0);
+  });
+
+  it("exports static fallback memory files", async () => {
+    const { handlers, projectRoot } = await createHandlers();
+
+    await handlers.proposeMemoryFromSession({
+      transcript: "rule: This project uses Angular standalone components. Do not introduce NgModules."
+    });
+
+    const exported = await handlers.exportStaticMemoryFiles({
+      targets: ["agents", "project_memory"]
+    });
+
+    expect(exported.files.map((file) => file.path)).toEqual(["AGENTS.md", "docs/ai/project-memory.md"]);
+
+    const agents = await readFile(join(projectRoot, "AGENTS.md"), "utf8");
+    const projectMemory = await readFile(join(projectRoot, "docs", "ai", "project-memory.md"), "utf8");
+    expect(agents).toContain("Angular standalone components");
+    expect(projectMemory).toContain("Angular standalone components");
   });
 });

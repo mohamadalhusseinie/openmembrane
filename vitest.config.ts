@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@openmembrain/core": fromRoot("./packages/core/src/index.ts"),
+      "@openmembrain/exporters": fromRoot("./packages/exporters/src/index.ts"),
       "@openmembrain/shared": fromRoot("./packages/shared/src/index.ts"),
       "@openmembrain/storage": fromRoot("./packages/storage/src/index.ts")
     }

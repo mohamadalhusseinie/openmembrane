@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import type { MemoryScope, MemorySearchOptions, MemoryType, SessionInput } from "@openmembrain/core";
+import type { ExportTarget } from "@openmembrain/exporters";
 import type { OpenMembrainMcpContext } from "../context";
 import { resolveProjectId } from "../context";
 
@@ -54,6 +56,12 @@ export interface ApproveMemoryCandidateInput extends ProjectScopedInput {
 export interface RejectMemoryCandidateInput extends ProjectScopedInput {
   candidateId: string;
   reason?: string;
+}
+
+export interface ExportStaticMemoryFilesInput extends ProjectScopedInput {
+  targets?: ExportTarget[];
+  outputDir?: string;
+  includeConfidential?: boolean;
 }
 
 export function createToolHandlers(context: OpenMembrainMcpContext) {
@@ -146,6 +154,26 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
         candidateId: input.candidateId,
         rejected: true
       };
+    },
+
+    exportStaticMemoryFiles: async (input: ExportStaticMemoryFilesInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      const memories = await context.memoryStore.list(projectId);
+      const outputDir = resolve(context.projectRoot, input.outputDir ?? ".");
+
+      const request = {
+        projectId,
+        memories,
+        outputDir
+      };
+      if (input.targets) {
+        Object.assign(request, { targets: input.targets });
+      }
+      if (input.includeConfidential !== undefined) {
+        Object.assign(request, { includeConfidential: input.includeConfidential });
+      }
+
+      return context.exportService.write(request);
     }
   };
 }
