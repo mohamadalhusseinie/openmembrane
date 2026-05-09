@@ -4,6 +4,8 @@ export type OpenMembrainErrorCode =
   | "SECRET_CANDIDATE"
   | "EXPORT_PATH_OUTSIDE_ROOT"
   | "STORAGE_INVALID_JSON"
+  | "EXTRACTION_CONFIG_ERROR"
+  | "EXTRACTION_PROVIDER_ERROR"
   | "UNKNOWN_ERROR";
 
 export interface OpenMembrainErrorOptions {
