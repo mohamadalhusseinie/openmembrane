@@ -6,6 +6,8 @@ export type OpenMembrainErrorCode =
   | "STORAGE_INVALID_JSON"
   | "EXTRACTION_CONFIG_ERROR"
   | "EXTRACTION_PROVIDER_ERROR"
+  | "MEMORY_NOT_FOUND"
+  | "MEMORY_ALREADY_SUPERSEDED"
   | "UNKNOWN_ERROR";
 
 export interface OpenMembrainErrorOptions {

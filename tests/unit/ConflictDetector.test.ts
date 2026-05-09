@@ -11,6 +11,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Do not use NgModules in this project." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("negation");
     });
 
     it("returns no conflict when both have same negation (both negated)", () => {
@@ -47,6 +48,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Do not use NgModules for feature organization." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("negation");
     });
   });
 
@@ -63,6 +65,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Do not use NgModules for this.", scope: "global" })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("negation");
     });
 
     it("compares when candidate scope is global", () => {
@@ -70,6 +73,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Do not use NgModules for this.", scope: "backend" })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("negation");
     });
   });
 
@@ -97,6 +101,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Use Angular for frontend components." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("alternative");
     });
 
     it("detects conflict when concise framework choices are replaced", () => {
@@ -104,6 +109,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Use Angular." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("alternative");
     });
 
     it("detects conflict when replacement wording mentions the old framework", () => {
@@ -111,6 +117,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Use React for frontend components." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("alternative");
     });
 
     it("returns no conflict when negated alternatives are compatible", () => {
@@ -125,6 +132,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Target Node 18 for backend services.", scope: "backend" })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("version_mismatch");
     });
 
     it("detects conflict when Node.js v-prefixed runtime versions are replaced", () => {
@@ -132,6 +140,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Target Node.js v18 for backend services.", scope: "backend" })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("version_mismatch");
     });
 
     it("detects conflict when deployment targets are replaced", () => {
@@ -139,6 +148,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Deploy with Docker containers.", scope: "deployment" })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("alternative");
     });
 
     it("returns no conflict when deployment wording uses compatible container terms", () => {
@@ -153,6 +163,7 @@ describe("ConflictDetector", () => {
       const existing = [entry({ content: "Always use spaces for indentation in TypeScript files." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]!.kind).toBe("alternative");
     });
 
     it("returns no conflict for unrelated same-scope memories", () => {

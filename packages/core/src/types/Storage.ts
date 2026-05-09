@@ -13,6 +13,7 @@ export interface MemoryStore {
   list(projectId: string): Promise<MemoryEntry[]>;
   findById(projectId: string, memoryId: string): Promise<MemoryEntry | undefined>;
   save(entry: MemoryEntry): Promise<MemoryEntry>;
+  supersede(projectId: string, memoryId: string, supersededBy?: string): Promise<MemoryEntry>;
   search(projectId: string, query: string, options?: MemorySearchOptions): Promise<MemoryEntry[]>;
 }
 
@@ -31,7 +32,8 @@ export interface AuditEvent {
     | "candidate_extracted"
     | "memory_saved"
     | "candidate_queued"
-    | "candidate_rejected";
+    | "candidate_rejected"
+    | "memory_superseded";
   entityId?: string;
   createdAt: string;
   details?: Record<string, unknown>;

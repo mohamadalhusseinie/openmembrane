@@ -7,6 +7,9 @@ import type {
   Sensitivity
 } from "./MemoryCandidate";
 
+export const memoryStatuses = ["active", "superseded"] as const;
+export type MemoryStatus = (typeof memoryStatuses)[number];
+
 export interface MemoryEntry {
   id: string;
   projectId: string;
@@ -18,10 +21,12 @@ export interface MemoryEntry {
   source: MemorySource;
   reason: string;
   tags: string[];
-  status: "active";
+  status: MemoryStatus;
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
+  supersededBy?: string;
+  supersededAt?: string;
 }
 
 export function memoryEntryFromCandidate(candidate: MemoryCandidate, approvedAt: string): MemoryEntry {
