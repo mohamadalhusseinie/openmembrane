@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/shared": "0.1.0"
+    "@openmembrain/shared": "0.1.0",
+    "openai": "^6.37.0"
   }
 }
