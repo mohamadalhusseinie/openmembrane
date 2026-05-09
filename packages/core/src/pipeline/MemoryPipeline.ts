@@ -63,6 +63,7 @@ export class MemoryPipeline {
     const ingested = this.ingestor.ingest(input);
     const extracted = await this.extractor.extract(ingested.input);
     const existing = await this.memoryStore.list(input.projectId);
+    const pendingCandidates: MemoryCandidate[] = await this.pendingCandidateStore.list(input.projectId);
     const saved: MemoryEntry[] = [];
     const pending: MemoryCandidate[] = [];
     const rejected: MemoryCandidate[] = [];
@@ -104,7 +105,7 @@ export class MemoryPipeline {
         continue;
       }
 
-      const duplicate = this.deduplicator.findDuplicate(candidate, [...existing, ...saved]);
+      const duplicate = this.deduplicator.findDuplicate(candidate, [...existing, ...saved, ...pendingCandidates]);
       if (duplicate) {
         const rejectedCandidate = this.reject(
           {
@@ -158,6 +159,7 @@ export class MemoryPipeline {
       if (recommendedAction === "ask_user") {
         const storedCandidate = await this.pendingCandidateStore.save(candidate);
         pending.push(storedCandidate);
+        pendingCandidates.push(storedCandidate);
         await this.auditLogStore.append({
           id: createId("audit"),
           projectId: input.projectId,

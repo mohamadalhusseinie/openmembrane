@@ -1,8 +1,10 @@
-import type { MemoryCandidate } from "../types/MemoryCandidate";
-import type { MemoryEntry } from "../types/MemoryEntry";
+export interface Dedupable {
+  id: string;
+  content: string;
+}
 
 export class Deduplicator {
-  findDuplicate(candidate: MemoryCandidate, existing: MemoryEntry[]): MemoryEntry | undefined {
+  findDuplicate<T extends Dedupable>(candidate: Dedupable, existing: T[]): T | undefined {
     const candidateNormalized = normalizeMemoryContent(candidate.content);
 
     return existing.find((memory) => {

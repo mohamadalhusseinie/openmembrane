@@ -112,4 +112,21 @@ describe("MemoryPipeline", () => {
     expect(second.rejected[0]?.duplicateOf).toBe(first.saved[0]?.id);
     await expect(memoryStore.list("project-a")).resolves.toHaveLength(1);
   });
+
+  it("does not queue duplicate pending candidate when same content is already pending", async () => {
+    const { pipeline, pendingCandidateStore } = await createPipeline();
+    const input = {
+      projectId: "project-a",
+      transcript: "architecture: Runtime environment config is preferred over compile-time environment replacement."
+    };
+
+    const first = await pipeline.process(input);
+    const second = await pipeline.process(input);
+
+    expect(first.pending).toHaveLength(1);
+    expect(second.pending).toHaveLength(0);
+    expect(second.rejected).toHaveLength(1);
+    expect(second.rejected[0]?.duplicateOf).toBe(first.pending[0]?.id);
+    await expect(pendingCandidateStore.list("project-a")).resolves.toHaveLength(1);
+  });
 });
