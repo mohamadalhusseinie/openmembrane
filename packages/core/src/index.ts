@@ -4,6 +4,7 @@ export * from "./deduplication/ConflictDetector";
 export * from "./deduplication/Deduplicator";
 export * from "./diagnostics/Diagnostics";
 export * from "./errors/OpenMembrainError";
+export * from "./extraction/ExtractionConfig";
 export * from "./extraction/MemoryExtractor";
 export * from "./extraction/MockMemoryExtractor";
 export * from "./filtering/NoiseFilter";
