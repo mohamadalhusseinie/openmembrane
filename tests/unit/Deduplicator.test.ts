@@ -94,4 +94,25 @@ describe("Deduplicator", () => {
       expect(result).toBeUndefined();
     });
   });
+
+  describe("findDuplicate — cross-type deduplication", () => {
+    it("detects duplicate when existing array contains candidates", () => {
+      const cand = candidate({ content: "USE STANDALONE COMPONENTS" });
+      const pendingCandidates = [candidate({ id: "cand_pending", content: "use standalone components" })];
+      const result = deduplicator.findDuplicate(cand, pendingCandidates);
+      expect(result).toBeDefined();
+      expect(result!.id).toBe("cand_pending");
+    });
+
+    it("detects duplicate in mixed array of entries and candidates", () => {
+      const cand = candidate({ content: "Use standalone components!" });
+      const mixed = [
+        entry({ id: "mem_1", content: "Something unrelated." }),
+        candidate({ id: "cand_pending", content: "Use standalone components." })
+      ];
+      const result = deduplicator.findDuplicate(cand, mixed);
+      expect(result).toBeDefined();
+      expect(result!.id).toBe("cand_pending");
+    });
+  });
 });
