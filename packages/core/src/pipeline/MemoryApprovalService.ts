@@ -70,6 +70,24 @@ export class MemoryApprovalService {
       }
     });
 
+    if (candidate.conflictWith && candidate.conflictWith.length > 0) {
+      for (const conflictId of candidate.conflictWith) {
+        try {
+          await this.memoryStore.supersede(projectId, conflictId, memory.id);
+          await this.auditLogStore.append({
+            id: createId("audit"),
+            projectId,
+            type: "memory_superseded",
+            entityId: conflictId,
+            createdAt: nowIso(),
+            details: { supersededBy: memory.id, reason: "Superseded by approved candidate." }
+          });
+        } catch {
+          // Conflicting memory may already be superseded or removed — skip silently.
+        }
+      }
+    }
+
     return memory;
   }
 
