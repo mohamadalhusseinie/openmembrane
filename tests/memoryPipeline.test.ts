@@ -129,4 +129,25 @@ describe("MemoryPipeline", () => {
     expect(second.rejected[0]?.duplicateOf).toBe(first.pending[0]?.id);
     await expect(pendingCandidateStore.list("project-a")).resolves.toHaveLength(1);
   });
+
+  it("queues conflicting auto-save candidates and references the existing memory", async () => {
+    const { pipeline, memoryStore, pendingCandidateStore } = await createPipeline();
+
+    const first = await pipeline.process({
+      projectId: "project-a",
+      transcript: "rule: This project uses React for frontend components."
+    });
+    const second = await pipeline.process({
+      projectId: "project-a",
+      transcript: "rule: This project uses Angular for frontend components."
+    });
+
+    expect(first.saved).toHaveLength(1);
+    expect(second.saved).toHaveLength(0);
+    expect(second.pending).toHaveLength(1);
+    expect(second.pending[0]?.recommendedAction).toBe("ask_user");
+    expect(second.pending[0]?.conflictWith).toEqual([first.saved[0]?.id]);
+    await expect(memoryStore.list("project-a")).resolves.toHaveLength(1);
+    await expect(pendingCandidateStore.list("project-a")).resolves.toHaveLength(1);
+  });
 });

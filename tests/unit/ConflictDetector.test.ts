@@ -91,10 +91,73 @@ describe("ConflictDetector", () => {
     });
   });
 
-  describe("findConflicts — known limitations", () => {
-    it("does not detect 'use tabs' vs 'use spaces' as conflict (known blind spot)", () => {
+  describe("findConflicts — alternative choices", () => {
+    it("detects conflict when framework choices are replaced", () => {
+      const cand = candidate({ content: "Use React for frontend components." });
+      const existing = [entry({ content: "Use Angular for frontend components." })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("detects conflict when concise framework choices are replaced", () => {
+      const cand = candidate({ content: "Use React." });
+      const existing = [entry({ content: "Use Angular." })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("detects conflict when replacement wording mentions the old framework", () => {
+      const cand = candidate({ content: "Use Angular instead of React for frontend components." });
+      const existing = [entry({ content: "Use React for frontend components." })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("returns no conflict when negated alternatives are compatible", () => {
+      const cand = candidate({ content: "Do not use Angular for frontend components." });
+      const existing = [entry({ content: "Use React for frontend components." })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(0);
+    });
+
+    it("detects conflict when runtime versions are replaced", () => {
+      const cand = candidate({ content: "Target Node 22 for backend services.", scope: "backend" });
+      const existing = [entry({ content: "Target Node 18 for backend services.", scope: "backend" })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("detects conflict when Node.js v-prefixed runtime versions are replaced", () => {
+      const cand = candidate({ content: "Target Node.js v22 for backend services.", scope: "backend" });
+      const existing = [entry({ content: "Target Node.js v18 for backend services.", scope: "backend" })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("detects conflict when deployment targets are replaced", () => {
+      const cand = candidate({ content: "Deploy to bare metal servers.", scope: "deployment" });
+      const existing = [entry({ content: "Deploy with Docker containers.", scope: "deployment" })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("returns no conflict when deployment wording uses compatible container terms", () => {
+      const cand = candidate({ content: "Deploy with containers.", scope: "deployment" });
+      const existing = [entry({ content: "Deploy with Docker.", scope: "deployment" })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(0);
+    });
+
+    it("detects conflict when indentation style is replaced", () => {
       const cand = candidate({ content: "Always use tabs for indentation in TypeScript files." });
       const existing = [entry({ content: "Always use spaces for indentation in TypeScript files." })];
+      const conflicts = detector.findConflicts(cand, existing);
+      expect(conflicts).toHaveLength(1);
+    });
+
+    it("returns no conflict for unrelated same-scope memories", () => {
+      const cand = candidate({ content: "Use React for frontend components." });
+      const existing = [entry({ content: "Frontend tests require mocked runtime config." })];
       const conflicts = detector.findConflicts(cand, existing);
       expect(conflicts).toHaveLength(0);
     });
