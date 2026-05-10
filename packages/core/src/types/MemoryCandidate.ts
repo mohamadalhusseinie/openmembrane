@@ -19,6 +19,10 @@ export type RecommendedAction = (typeof recommendedActions)[number];
 export const sensitivityValues = ["public", "internal", "confidential", "secret"] as const;
 export type Sensitivity = (typeof sensitivityValues)[number];
 
+export function sensitivityRank(s: Sensitivity): number {
+  return sensitivityValues.indexOf(s);
+}
+
 export const confidenceValues = ["low", "medium", "high"] as const;
 export type Confidence = (typeof confidenceValues)[number];
 

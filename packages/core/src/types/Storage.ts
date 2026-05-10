@@ -33,7 +33,8 @@ export interface AuditEvent {
     | "memory_saved"
     | "candidate_queued"
     | "candidate_rejected"
-    | "memory_superseded";
+    | "memory_superseded"
+    | "memory_updated";
   entityId?: string;
   createdAt: string;
   details?: Record<string, unknown>;

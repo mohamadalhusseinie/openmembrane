@@ -91,3 +91,12 @@ export const supersedeMemorySchema = {
   reason: z.string().min(1).optional().describe("Reason for superseding this memory."),
   replacementId: z.string().min(1).optional().describe("ID of the replacement memory, if any.")
 };
+
+export const updateMemorySchema = {
+  ...projectIdSchema,
+  memoryId: z.string().min(1).describe("The ID of the memory to update."),
+  content: z.string().min(1).optional().describe("Updated memory content."),
+  type: z.enum(memoryTypes).optional().describe("Updated memory type."),
+  scope: z.enum(memoryScopes).optional().describe("Updated memory scope."),
+  tags: z.array(z.string().min(1)).optional().describe("Updated tags (replaces existing tags).")
+};

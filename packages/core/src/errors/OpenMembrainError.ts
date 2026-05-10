@@ -8,6 +8,7 @@ export type OpenMembrainErrorCode =
   | "EXTRACTION_PROVIDER_ERROR"
   | "MEMORY_NOT_FOUND"
   | "MEMORY_ALREADY_SUPERSEDED"
+  | "SENSITIVITY_DOWNGRADE"
   | "UNKNOWN_ERROR";
 
 export interface OpenMembrainErrorOptions {

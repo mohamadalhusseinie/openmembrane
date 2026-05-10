@@ -12,6 +12,7 @@ import {
   getRelevantContextSchema,
   listAuditLogSchema,
   supersedeMemorySchema,
+  updateMemorySchema,
   listMemoryCandidatesSchema,
   proposeMemoryFromSessionSchema,
   rejectMemoryCandidateSchema,
@@ -142,6 +143,17 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: supersedeMemorySchema
     },
     async (input) => safeJsonResult(context, "supersede_memory", input, () => handlers.supersedeMemory(input))
+  );
+
+  server.registerTool(
+    "update_memory",
+    {
+      title: "Update Memory",
+      description:
+        "Update the content, type, scope, or tags of a saved memory. The updated content is re-validated through policy checks.",
+      inputSchema: updateMemorySchema
+    },
+    async (input) => safeJsonResult(context, "update_memory", input, () => handlers.updateMemory(input))
   );
 
   server.registerTool(

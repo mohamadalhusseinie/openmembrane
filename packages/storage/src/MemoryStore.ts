@@ -5,7 +5,7 @@ import { OpenMembrainError } from "@openmembrain/core";
 import { nowIso } from "@openmembrain/shared";
 import type { TypeIndex } from "./indexTypes";
 import { readJsonObject } from "./jsonFile";
-import { listEntries, readEntry, updateIndexesForEntry, writeEntry } from "./directoryStore";
+import { listEntries, readEntry, removeEntry, removeFromIndexes, updateIndexesForEntry, writeEntry } from "./directoryStore";
 import { migrateMemories } from "./migrate";
 
 export class JsonMemoryStore implements MemoryStore {
@@ -55,6 +55,15 @@ export class JsonMemoryStore implements MemoryStore {
 
   async save(entry: MemoryEntry): Promise<MemoryEntry> {
     await this.ensureMigrated();
+
+    // If the entry already exists at a different type/scope path, remove the old
+    // file and its index entry so we don't leave stale duplicates behind.
+    const existing = await this.findById(entry.projectId, entry.id);
+    if (existing && (existing.type !== entry.type || existing.scope !== entry.scope)) {
+      await removeEntry(this.baseDir, existing.type, existing.scope, existing.id);
+      await removeFromIndexes(this.baseDir, existing.type, existing.id);
+    }
+
     await writeEntry(this.baseDir, entry);
     await updateIndexesForEntry(this.baseDir, entry);
     return entry;

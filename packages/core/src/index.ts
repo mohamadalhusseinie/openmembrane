@@ -18,6 +18,7 @@ export * from "./filtering/SafetyFilter";
 export * from "./filtering/SecretDetector";
 export * from "./pipeline/MemoryPipeline";
 export * from "./pipeline/MemoryApprovalService";
+export * from "./pipeline/MemoryUpdateService";
 export * from "./pipeline/SessionIngestor";
 export * from "./policy/Policy";
 export * from "./policy/PolicyEngine";

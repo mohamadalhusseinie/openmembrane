@@ -81,6 +81,14 @@ export interface SupersedeMemoryInput extends ProjectScopedInput {
   replacementId?: string | undefined;
 }
 
+export interface UpdateMemoryInput extends ProjectScopedInput {
+  memoryId: string;
+  content?: string | undefined;
+  type?: MemoryType | undefined;
+  scope?: MemoryScope | undefined;
+  tags?: string[] | undefined;
+}
+
 export interface ReviewStaleMemoriesInput extends ProjectScopedInput {
   staleAfterMonths?: number | undefined;
 }
@@ -230,6 +238,16 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
         }
       });
       return superseded;
+    },
+
+    updateMemory: async (input: UpdateMemoryInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      return context.updateService.update(projectId, input.memoryId, {
+        content: input.content,
+        type: input.type,
+        scope: input.scope,
+        tags: input.tags
+      });
     },
 
     listAuditLog: async (input: ListAuditLogInput) => {
