@@ -57,7 +57,7 @@ function isNotFoundError(error: unknown): boolean {
 function invalidJsonError(filePath: string, cause?: unknown, kind: "array" | "object" = "array"): OpenMembrainError {
   return new OpenMembrainError({
     code: "STORAGE_INVALID_JSON",
-    message: `STORAGE_INVALID_JSON: Expected JSON ${kind} in ${filePath}.`,
+    message: `Expected JSON ${kind} in ${filePath}.`,
     safeMessage: "OpenMembrain could not read one of its local JSON store files.",
     details: { filePath },
     cause

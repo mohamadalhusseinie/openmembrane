@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
+import { OpenMembrainError } from "@openmembrain/core";
 import { readJsonObject, writeJsonObject } from "@openmembrain/storage";
 
 const tempDirs: string[] = [];
@@ -35,7 +36,12 @@ describe("readJsonObject", () => {
     const dir = await tempDir();
     const filePath = join(dir, "bad.json");
     await writeFile(filePath, '"just a string"', "utf8");
-    await expect(readJsonObject(filePath)).rejects.toThrow("STORAGE_INVALID_JSON");
+    await expect(readJsonObject(filePath)).rejects.toThrow(OpenMembrainError);
+    try {
+      await readJsonObject(filePath);
+    } catch (error) {
+      expect((error as OpenMembrainError).code).toBe("STORAGE_INVALID_JSON");
+    }
   });
 });
 
