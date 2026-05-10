@@ -2,17 +2,26 @@ import { normalizeMemoryContent } from "./Deduplicator";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
 import type { MemoryEntry } from "../types/MemoryEntry";
 
+export const conflictKinds = ["version_mismatch", "alternative", "negation"] as const;
+export type ConflictKind = (typeof conflictKinds)[number];
+
+export interface ConflictResult {
+  memory: MemoryEntry;
+  kind: ConflictKind;
+}
+
 export class ConflictDetector {
-  findConflicts(candidate: MemoryCandidate, existing: MemoryEntry[]): MemoryEntry[] {
+  findConflicts(candidate: MemoryCandidate, existing: MemoryEntry[]): ConflictResult[] {
     const candidateTokens = importantTokens(candidate.content);
     const candidateNegated = hasNegation(candidate.content);
+    const results: ConflictResult[] = [];
 
-    return existing.filter((memory) => {
+    for (const memory of existing) {
       if (memory.projectId !== candidate.projectId) {
-        return false;
+        continue;
       }
       if (memory.scope !== candidate.scope && memory.scope !== "global" && candidate.scope !== "global") {
-        return false;
+        continue;
       }
 
       const memoryTokens = importantTokens(memory.content);
@@ -24,11 +33,17 @@ export class ConflictDetector {
         candidateNegated !== memoryNegated &&
         !mentionsDifferentAlternatives(candidate.content, memory.content)
       ) {
-        return true;
+        results.push({ memory, kind: "negation" });
+        continue;
       }
 
-      return hasAlternativeConflict(candidate.content, memory.content, candidateTokens, memoryTokens);
-    });
+      const alternativeKind = getAlternativeConflictKind(candidate.content, memory.content, candidateTokens, memoryTokens);
+      if (alternativeKind) {
+        results.push({ memory, kind: alternativeKind });
+      }
+    }
+
+    return results;
   }
 }
 
@@ -70,25 +85,29 @@ function importantTokens(content: string): Set<string> {
   );
 }
 
-function hasAlternativeConflict(
+function getAlternativeConflictKind(
   candidateContent: string,
   memoryContent: string,
   candidateTokens: Set<string>,
   memoryTokens: Set<string>
-): boolean {
+): ConflictKind | undefined {
   if (hasNegation(candidateContent) || hasNegation(memoryContent)) {
-    return false;
+    return undefined;
   }
 
   if (!hasSharedContext(candidateTokens, memoryTokens) && !hasMatchingDirective(candidateContent, memoryContent)) {
-    return false;
+    return undefined;
   }
 
   if (hasDifferentNodeVersion(candidateContent, memoryContent)) {
-    return true;
+    return "version_mismatch";
   }
 
-  return alternativeGroups.some((group) => hasDifferentAlternatives(candidateContent, memoryContent, group));
+  if (alternativeGroups.some((group) => hasDifferentAlternatives(candidateContent, memoryContent, group))) {
+    return "alternative";
+  }
+
+  return undefined;
 }
 
 function hasSharedContext(left: Set<string>, right: Set<string>): boolean {

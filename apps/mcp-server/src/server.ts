@@ -11,9 +11,11 @@ import {
   getProjectRulesSchema,
   getRelevantContextSchema,
   listAuditLogSchema,
+  supersedeMemorySchema,
   listMemoryCandidatesSchema,
   proposeMemoryFromSessionSchema,
   rejectMemoryCandidateSchema,
+  reviewStaleMemoriesSchema,
   searchMemorySchema
 } from "./tools/schemas";
 
@@ -110,6 +112,18 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
   );
 
   server.registerTool(
+    "review_stale_memories",
+    {
+      title: "Review Stale Memories",
+      description:
+        "List active memories that have not been updated recently. Useful for reviewing potentially outdated project knowledge.",
+      inputSchema: reviewStaleMemoriesSchema
+    },
+    async (input) =>
+      safeJsonResult(context, "review_stale_memories", input, () => handlers.reviewStaleMemories(input))
+  );
+
+  server.registerTool(
     "get_diagnostics",
     {
       title: "Get Diagnostics",
@@ -117,6 +131,17 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: getDiagnosticsSchema
     },
     async (input) => safeJsonResult(context, "get_diagnostics", input, () => handlers.getDiagnostics(input))
+  );
+
+  server.registerTool(
+    "supersede_memory",
+    {
+      title: "Supersede Memory",
+      description:
+        "Mark an existing memory as superseded. Superseded memories are excluded from retrieval but preserved in audit history.",
+      inputSchema: supersedeMemorySchema
+    },
+    async (input) => safeJsonResult(context, "supersede_memory", input, () => handlers.supersedeMemory(input))
   );
 
   server.registerTool(

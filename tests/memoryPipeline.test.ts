@@ -130,8 +130,8 @@ describe("MemoryPipeline", () => {
     await expect(pendingCandidateStore.list("project-a")).resolves.toHaveLength(1);
   });
 
-  it("queues conflicting auto-save candidates and references the existing memory", async () => {
-    const { pipeline, memoryStore, pendingCandidateStore } = await createPipeline();
+  it("auto-supersedes clear-cut alternative conflict and saves new memory", async () => {
+    const { pipeline, memoryStore, pendingCandidateStore, auditLogStore } = await createPipeline();
 
     const first = await pipeline.process({
       projectId: "project-a",
@@ -140,6 +140,31 @@ describe("MemoryPipeline", () => {
     const second = await pipeline.process({
       projectId: "project-a",
       transcript: "rule: This project uses Angular for frontend components."
+    });
+
+    expect(first.saved).toHaveLength(1);
+    expect(second.saved).toHaveLength(1);
+    expect(second.pending).toHaveLength(0);
+    expect(second.superseded).toHaveLength(1);
+    expect(second.superseded[0]?.id).toBe(first.saved[0]?.id);
+    await expect(memoryStore.list("project-a")).resolves.toHaveLength(1);
+    await expect(pendingCandidateStore.list("project-a")).resolves.toHaveLength(0);
+
+    const auditEvents = await auditLogStore.list("project-a");
+    const supersessionEvents = auditEvents.filter((e) => e.type === "memory_superseded");
+    expect(supersessionEvents).toHaveLength(1);
+  });
+
+  it("queues ambiguous negation conflicts for user review", async () => {
+    const { pipeline, memoryStore, pendingCandidateStore } = await createPipeline();
+
+    const first = await pipeline.process({
+      projectId: "project-a",
+      transcript: "rule: This project uses NgModules for all feature modules."
+    });
+    const second = await pipeline.process({
+      projectId: "project-a",
+      transcript: "rule: Do not use NgModules in this project."
     });
 
     expect(first.saved).toHaveLength(1);

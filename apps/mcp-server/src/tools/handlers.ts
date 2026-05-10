@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { OpenMembrainError, type DiagnosticSeverity, type MemoryScope, type MemorySearchOptions, type MemoryType, type SessionInput } from "@openmembrain/core";
 import type { ExportTarget } from "@openmembrain/exporters";
 import type { OpenMembrainMcpContext } from "../context";
+import { createId, nowIso } from "@openmembrain/shared";
 import { resolveProjectId } from "../context";
 
 const ruleTypes: MemoryType[] = [
@@ -72,6 +73,16 @@ export interface GetDiagnosticsInput extends ProjectScopedInput {
 
 export interface ListAuditLogInput extends ProjectScopedInput {
   limit?: number | undefined;
+}
+
+export interface SupersedeMemoryInput extends ProjectScopedInput {
+  memoryId: string;
+  reason?: string | undefined;
+  replacementId?: string | undefined;
+}
+
+export interface ReviewStaleMemoriesInput extends ProjectScopedInput {
+  staleAfterMonths?: number | undefined;
 }
 
 export function createToolHandlers(context: OpenMembrainMcpContext) {
@@ -204,10 +215,40 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
       return context.diagnosticsLogStore.list(projectId, query);
     },
 
+    supersedeMemory: async (input: SupersedeMemoryInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      const superseded = await context.memoryStore.supersede(projectId, input.memoryId, input.replacementId);
+      await context.auditLogStore.append({
+        id: createId("audit"),
+        projectId,
+        type: "memory_superseded",
+        entityId: input.memoryId,
+        createdAt: nowIso(),
+        details: {
+          reason: input.reason ?? "Superseded via tool.",
+          replacementId: input.replacementId
+        }
+      });
+      return superseded;
+    },
+
     listAuditLog: async (input: ListAuditLogInput) => {
       const projectId = resolveProjectId(context, input.projectId);
       const events = await context.auditLogStore.list(projectId);
       return events.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, input.limit ?? 100);
+    },
+
+    reviewStaleMemories: async (input: ReviewStaleMemoriesInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      const months = input.staleAfterMonths ?? 6;
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - months);
+      const cutoffIso = cutoff.toISOString();
+
+      const memories = await context.memoryStore.list(projectId);
+      return memories
+        .filter((memory) => memory.updatedAt < cutoffIso)
+        .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
     }
   };
 }

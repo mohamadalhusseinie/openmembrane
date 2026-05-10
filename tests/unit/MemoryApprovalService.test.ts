@@ -86,6 +86,58 @@ describe("MemoryApprovalService", () => {
       expect(events[0]!.type).toBe("memory_saved");
       expect(events[0]!.details?.approvedManually).toBe(true);
     });
+
+    it("supersedes conflicting memories when candidate has conflictWith", async () => {
+      const { service, memoryStore, pendingCandidateStore, auditLogStore } = await createService();
+      const conflicting = entry({ id: "mem_old", content: "Use React for frontend." });
+      await memoryStore.save(conflicting);
+      await pendingCandidateStore.save(
+        candidate({ id: "cand_1", content: "Use Angular for frontend.", conflictWith: ["mem_old"] })
+      );
+
+      const result = await service.approve("project-a", "cand_1");
+      expect(result.id).toMatch(/^mem_/);
+
+      const memories = await memoryStore.list("project-a");
+      expect(memories).toHaveLength(1);
+      expect(memories[0]!.id).toBe(result.id);
+
+      const events = await auditLogStore.list("project-a");
+      const supersededEvents = events.filter((e) => e.type === "memory_superseded");
+      expect(supersededEvents).toHaveLength(1);
+      expect(supersededEvents[0]!.entityId).toBe("mem_old");
+      expect(supersededEvents[0]!.details?.supersededBy).toBe(result.id);
+    });
+
+    it("does not fail when conflicting memory is already superseded", async () => {
+      const { service, memoryStore, pendingCandidateStore } = await createService();
+      const conflicting = entry({ id: "mem_old", content: "Use React for frontend." });
+      await memoryStore.save(conflicting);
+      await memoryStore.supersede("project-a", "mem_old");
+      await pendingCandidateStore.save(
+        candidate({ id: "cand_1", content: "Use Angular for frontend.", conflictWith: ["mem_old"] })
+      );
+
+      const result = await service.approve("project-a", "cand_1");
+      expect(result.id).toMatch(/^mem_/);
+    });
+
+    it("does not supersede anything when candidate has no conflictWith", async () => {
+      const { service, memoryStore, pendingCandidateStore, auditLogStore } = await createService();
+      await memoryStore.save(entry({ id: "mem_existing", content: "Unrelated memory." }));
+      await pendingCandidateStore.save(
+        candidate({ id: "cand_1", content: "Angular uses OnPush detection." })
+      );
+
+      await service.approve("project-a", "cand_1");
+
+      const memories = await memoryStore.list("project-a");
+      expect(memories).toHaveLength(2);
+
+      const events = await auditLogStore.list("project-a");
+      const supersededEvents = events.filter((e) => e.type === "memory_superseded");
+      expect(supersededEvents).toHaveLength(0);
+    });
   });
 
   describe("reject", () => {

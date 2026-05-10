@@ -1,5 +1,7 @@
 import { join } from "node:path";
 import type { MemoryEntry, MemorySearchOptions, MemoryStore } from "@openmembrain/core";
+import { OpenMembrainError } from "@openmembrain/core";
+import { nowIso } from "@openmembrain/shared";
 import { readJsonArray, writeJsonArray } from "./jsonFile";
 
 export class JsonMemoryStore implements MemoryStore {
@@ -28,6 +30,39 @@ export class JsonMemoryStore implements MemoryStore {
     }
     await writeJsonArray(this.filePath, rows);
     return entry;
+  }
+
+  async supersede(projectId: string, memoryId: string, supersededBy?: string): Promise<MemoryEntry> {
+    const rows = await readJsonArray<MemoryEntry>(this.filePath);
+    const index = rows.findIndex((memory) => memory.id === memoryId && memory.projectId === projectId);
+    if (index < 0) {
+      throw new OpenMembrainError({
+        code: "MEMORY_NOT_FOUND",
+        message: `Memory ${memoryId} was not found.`,
+        safeMessage: "The memory was not found.",
+        details: { memoryId },
+      });
+    }
+
+    const memory = rows[index]!;
+    if (memory.status === "superseded") {
+      throw new OpenMembrainError({
+        code: "MEMORY_ALREADY_SUPERSEDED",
+        message: `Memory ${memoryId} is already superseded.`,
+        safeMessage: "The memory is already superseded.",
+        details: { memoryId },
+      });
+    }
+
+    const updated: MemoryEntry = {
+      ...memory,
+      status: "superseded",
+      supersededAt: nowIso(),
+      ...(supersededBy !== undefined ? { supersededBy } : {}),
+    };
+    rows[index] = updated;
+    await writeJsonArray(this.filePath, rows);
+    return updated;
   }
 
   async search(projectId: string, query: string, options: MemorySearchOptions = {}): Promise<MemoryEntry[]> {

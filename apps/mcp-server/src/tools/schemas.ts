@@ -79,3 +79,15 @@ export const listAuditLogSchema = {
   ...projectIdSchema,
   limit: z.number().int().positive().max(500).optional()
 };
+
+export const reviewStaleMemoriesSchema = {
+  ...projectIdSchema,
+  staleAfterMonths: z.number().int().positive().max(120).optional().describe("Memories older than this many months are considered stale. Defaults to 6.")
+};
+
+export const supersedeMemorySchema = {
+  ...projectIdSchema,
+  memoryId: z.string().min(1).describe("The ID of the memory to supersede."),
+  reason: z.string().min(1).optional().describe("Reason for superseding this memory."),
+  replacementId: z.string().min(1).optional().describe("ID of the replacement memory, if any.")
+};

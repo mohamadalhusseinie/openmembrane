@@ -2,6 +2,7 @@ import { createId, nowIso } from "@openmembrain/shared";
 import { ActionRecommender } from "../classification/ActionRecommender";
 import { MemoryClassifier } from "../classification/MemoryClassifier";
 import { ConflictDetector } from "../deduplication/ConflictDetector";
+import type { ConflictResult } from "../deduplication/ConflictDetector";
 import { Deduplicator } from "../deduplication/Deduplicator";
 import type { MemoryExtractor } from "../extraction/MemoryExtractor";
 import { PolicyEngine } from "../policy/PolicyEngine";
@@ -31,6 +32,7 @@ export interface MemoryPipelineResult {
   saved: MemoryEntry[];
   pending: MemoryCandidate[];
   rejected: MemoryCandidate[];
+  superseded: MemoryEntry[];
   redactions: SecretFinding[];
 }
 
@@ -68,6 +70,7 @@ export class MemoryPipeline {
     const pending: MemoryCandidate[] = [];
     const rejected: MemoryCandidate[] = [];
     const candidates: MemoryCandidate[] = [];
+    const supersededEntries: MemoryEntry[] = [];
 
     await this.auditLogStore.append({
       id: createId("audit"),
@@ -121,15 +124,40 @@ export class MemoryPipeline {
       }
 
       const conflicts = this.conflictDetector.findConflicts(candidate, [...existing, ...saved]);
-      if (conflicts.length > 0) {
+
+      const canAutoSupersede =
+        conflicts.length > 0 &&
+        candidate.confidence === "high" &&
+        conflicts.every((c) => c.kind === "version_mismatch" || c.kind === "alternative");
+
+      if (canAutoSupersede) {
+        for (const conflict of conflicts) {
+          const superseded = await this.memoryStore.supersede(input.projectId, conflict.memory.id);
+          supersededEntries.push(superseded);
+          const idx = existing.findIndex((m) => m.id === conflict.memory.id);
+          if (idx >= 0) {
+            existing.splice(idx, 1);
+          }
+          await this.auditLogStore.append({
+            id: createId("audit"),
+            projectId: input.projectId,
+            type: "memory_superseded",
+            entityId: conflict.memory.id,
+            createdAt: nowIso(),
+            details: { supersededBy: candidate.id, reason: "Auto-superseded by clear-cut conflict." }
+          });
+        }
+      }
+
+      if (!canAutoSupersede && conflicts.length > 0) {
         candidate = {
           ...candidate,
-          conflictWith: conflicts.map((memory) => memory.id)
+          conflictWith: conflicts.map((c) => c.memory.id)
         };
       }
 
       const recommendedAction = this.actionRecommender.recommend(candidate, {
-        hasConflict: conflicts.length > 0,
+        hasConflict: !canAutoSupersede && conflicts.length > 0,
         isDuplicate: false
       });
       candidate = {
@@ -182,6 +210,7 @@ export class MemoryPipeline {
       saved,
       pending,
       rejected,
+      superseded: supersededEntries,
       redactions: ingested.redactions
     };
   }
