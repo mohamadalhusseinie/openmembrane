@@ -195,6 +195,19 @@ describe("updateIndexesForEntry", () => {
     const typeIndex = await readJsonObject<{ count: number }>(join(dir, e.type, "_index.json"));
     expect(typeIndex!.count).toBe(1);
   });
+
+  it("does not crash when index.json already exists in baseDir", async () => {
+    const dir = await tempDir();
+    const e1 = entry({ id: "mem_1" });
+    await writeEntry(dir, e1);
+    await updateIndexesForEntry(dir, e1);
+    // Second entry triggers rebuildMasterFromTypeIndexes with index.json present
+    const e2 = entry({ id: "mem_2" });
+    await writeEntry(dir, e2);
+    await updateIndexesForEntry(dir, e2);
+    const master = await readJsonObject<{ totalCount: number }>(join(dir, "index.json"));
+    expect(master!.totalCount).toBe(2);
+  });
 });
 
 describe("removeFromIndexes", () => {

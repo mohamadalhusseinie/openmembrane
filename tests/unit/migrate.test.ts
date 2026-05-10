@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
+import { OpenMembrainError } from "@openmembrain/core";
 import { migrateMemories, migratePending, readJsonObject } from "@openmembrain/storage";
 import type { MasterIndex } from "@openmembrain/storage";
 import { entry, candidate } from "./helpers";
@@ -64,5 +65,31 @@ describe("migratePending", () => {
     await migratePending(legacyPath, targetDir);
     const cand1 = await readJsonObject(join(targetDir, "coding_rule", "frontend", "cand_1.json"));
     expect(cand1).toBeDefined();
+  });
+});
+
+describe("migration error handling", () => {
+  it("throws on invalid JSON in legacy file", async () => {
+    const dir = await tempDir();
+    const legacyPath = join(dir, "memories.json");
+    await writeFile(legacyPath, "not valid json", "utf8");
+    await expect(migrateMemories(legacyPath, join(dir, "memories"))).rejects.toThrow(OpenMembrainError);
+    try {
+      await migrateMemories(legacyPath, join(dir, "memories"));
+    } catch (error) {
+      expect((error as OpenMembrainError).code).toBe("STORAGE_INVALID_JSON");
+    }
+  });
+
+  it("throws on non-array JSON in legacy file", async () => {
+    const dir = await tempDir();
+    const legacyPath = join(dir, "memories.json");
+    await writeFile(legacyPath, '{"not": "an array"}', "utf8");
+    await expect(migrateMemories(legacyPath, join(dir, "memories"))).rejects.toThrow(OpenMembrainError);
+    try {
+      await migrateMemories(legacyPath, join(dir, "memories"));
+    } catch (error) {
+      expect((error as OpenMembrainError).code).toBe("STORAGE_INVALID_JSON");
+    }
   });
 });

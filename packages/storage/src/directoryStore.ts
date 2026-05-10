@@ -51,11 +51,15 @@ async function safeReaddir(dirPath: string): Promise<string[]> {
   try {
     return await readdir(dirPath);
   } catch (error) {
-    if (isNotFoundError(error)) {
+    if (isNotFoundError(error) || isNotDirectoryError(error)) {
       return [];
     }
     throw error;
   }
+}
+
+function isNotDirectoryError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOTDIR";
 }
 
 export async function listEntries<T extends HasTypeAndScope>(baseDir: string): Promise<T[]> {
@@ -193,6 +197,7 @@ async function rebuildMasterFromTypeIndexes(baseDir: string): Promise<MasterInde
   const master = emptyMasterIndex();
   const typeDirs = await safeReaddir(baseDir);
   for (const typeDir of typeDirs) {
+    if (typeDir.endsWith(".json") || typeDir.startsWith("_")) continue;
     const indexPath = join(baseDir, typeDir, "_index.json");
     const typeIndex = await readJsonObject<TypeIndex>(indexPath);
     if (typeIndex === undefined || typeIndex.count === 0) continue;
