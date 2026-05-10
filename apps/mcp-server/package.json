@@ -1,17 +1,25 @@
 {
-  "name": "@openmembrain/mcp-server",
+  "name": "openmembrain",
   "version": "0.1.0",
+  "description": "Local-first, private memory layer for AI coding tools — MCP server",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "bin": {
-    "openmembrain-mcp-server": "./src/index.ts"
+    "openmembrain": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@openmembrain/core": "0.1.0",
-    "@openmembrain/exporters": "0.1.0",
-    "@openmembrain/shared": "0.1.0",
-    "@openmembrain/storage": "0.1.0",
+    "openai": "^6.37.0",
     "zod": "^4.4.3"
   }
 }
