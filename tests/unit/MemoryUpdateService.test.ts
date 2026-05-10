@@ -181,4 +181,22 @@ describe("MemoryUpdateService", () => {
     expect(result.tags).toEqual(["new-tag"]);
     expect(saved).toHaveLength(1);
   });
+
+  it("rejects tags containing secrets", async () => {
+    const existing = entry();
+    const { memoryStore, auditLogStore } = createStubs(existing);
+    const service = new MemoryUpdateService({ memoryStore, auditLogStore });
+
+    await expect(service.update("project-a", "mem_1", { tags: ["AKIA1234567890ABCDEF"] }))
+      .rejects.toThrow("tags contain secrets");
+  });
+
+  it("rejects tags containing redacted markers", async () => {
+    const existing = entry();
+    const { memoryStore, auditLogStore } = createStubs(existing);
+    const service = new MemoryUpdateService({ memoryStore, auditLogStore });
+
+    await expect(service.update("project-a", "mem_1", { tags: ["[REDACTED:api_key]"] }))
+      .rejects.toThrow("tags contain secrets");
+  });
 });

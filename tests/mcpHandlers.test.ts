@@ -196,4 +196,25 @@ describe("MCP tool handlers", () => {
     expect(payload.error.code).toBe("VALIDATION_ERROR");
     expect(payload.error.diagnosticId).toMatch(/^diag_/);
   });
+
+  it("relocates storage when type changes via update", async () => {
+    const { handlers } = await createHandlers();
+
+    const proposed = await handlers.proposeMemoryFromSession({
+      transcript: "rule: This project uses Angular standalone components. Do not introduce NgModules."
+    });
+    const savedMemory = proposed.saved[0]!;
+    expect(savedMemory.type).toBe("coding_rule");
+
+    await handlers.updateMemory({
+      memoryId: savedMemory.id,
+      type: "known_gotcha"
+    });
+
+    // Should find exactly one result, not a duplicate at the old path
+    const allRules = await handlers.searchMemory({ query: "Angular" });
+    expect(allRules).toHaveLength(1);
+    expect(allRules[0]!.type).toBe("known_gotcha");
+    expect(allRules[0]!.id).toBe(savedMemory.id);
+  });
 });

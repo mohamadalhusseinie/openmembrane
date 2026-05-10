@@ -65,6 +65,18 @@ export class MemoryUpdateService {
       });
     }
 
+    if (fields.tags !== undefined) {
+      const tagText = fields.tags.join(" ");
+      if (tagText.length > 0 && this.secretDetector.containsSecret(tagText)) {
+        throw new OpenMembrainError({
+          code: "VALIDATION_ERROR",
+          message: "Updated tags contain secrets.",
+          safeMessage: "The updated tags contain secret material and cannot be saved.",
+          details: { memoryId }
+        });
+      }
+    }
+
     let newSensitivity: Exclude<Sensitivity, "secret"> = existing.sensitivity;
 
     if (fields.content !== undefined) {
