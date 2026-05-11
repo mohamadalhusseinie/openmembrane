@@ -19,11 +19,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "openai": "^6.37.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
     "@openmembrain/core": "*",
     "@openmembrain/exporters": "*",
     "@openmembrain/shared": "*",
-    "@openmembrain/storage": "*",
-    "openai": "^6.37.0",
-    "zod": "^4.4.3"
+    "@openmembrain/storage": "*"
   }
 }
