@@ -22,6 +22,7 @@ export * from "./pipeline/MemoryUpdateService";
 export * from "./pipeline/SessionIngestor";
 export * from "./policy/Policy";
 export * from "./policy/PolicyEngine";
+export * from "./ranking/RelevanceScorer";
 export * from "./types/MemoryCandidate";
 export * from "./types/MemoryEntry";
 export * from "./types/SessionInput";

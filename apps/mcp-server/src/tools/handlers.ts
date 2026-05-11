@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { OpenMembrainError, type DiagnosticSeverity, type MemoryScope, type MemorySearchOptions, type MemoryType, type SessionInput } from "@openmembrain/core";
+import { OpenMembrainError, rankMemories, type DiagnosticSeverity, type MemoryScope, type MemorySearchOptions, type MemoryType, type SessionInput } from "@openmembrain/core";
 import type { ExportTarget } from "@openmembrain/exporters";
 import type { OpenMembrainMcpContext } from "../context";
 import { createId, nowIso } from "@openmembrain/shared";
@@ -140,19 +140,24 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
 
     getRelevantContext: async (input: GetRelevantContextInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      const limit = input.limit ?? 10;
       const options: MemorySearchOptions = {
-        limit: input.limit ?? 10
+        limit: limit * 3
       };
       if (input.scope) {
         options.scopes = [input.scope];
       }
-      return context.memoryStore.search(projectId, input.query, options);
+      const candidates = await context.memoryStore.search(projectId, input.query, options);
+      return rankMemories(candidates, input.query, "context")
+        .slice(0, limit)
+        .map((scored) => scored.entry);
     },
 
     searchMemory: async (input: SearchMemoryInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      const limit = input.limit ?? 20;
       const options: MemorySearchOptions = {
-        limit: input.limit ?? 20
+        limit: limit * 3
       };
       if (input.scopes) {
         options.scopes = input.scopes;
@@ -163,7 +168,10 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
       if (input.tags) {
         options.tags = input.tags;
       }
-      return context.memoryStore.search(projectId, input.query ?? "", options);
+      const candidates = await context.memoryStore.search(projectId, input.query ?? "", options);
+      return rankMemories(candidates, input.query ?? "", "search")
+        .slice(0, limit)
+        .map((scored) => scored.entry);
     },
 
     listMemoryCandidates: async (input: ListMemoryCandidatesInput) => {

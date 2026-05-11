@@ -217,4 +217,80 @@ describe("MCP tool handlers", () => {
     expect(allRules[0]!.type).toBe("known_gotcha");
     expect(allRules[0]!.id).toBe(savedMemory.id);
   });
+
+  it("getRelevantContext ranks coding rules above session summaries", async () => {
+    const { context, handlers } = await createHandlers();
+
+    // Save two memories with similar content but different types directly
+    const { JsonMemoryStore } = await import("@openmembrain/storage");
+    const store = context.memoryStore;
+
+    const { entry: entryFactory } = await import("./unit/helpers");
+    await store.save(entryFactory({
+      id: "mem_summary",
+      type: "session_summary",
+      content: "We discussed React hooks for state management.",
+      confidence: "medium",
+      updatedAt: "2026-05-08T00:00:00.000Z"
+    }));
+    await store.save(entryFactory({
+      id: "mem_rule",
+      type: "coding_rule",
+      content: "Always use React hooks for state management.",
+      confidence: "high",
+      updatedAt: "2026-05-08T00:00:00.000Z"
+    }));
+
+    const results = await handlers.getRelevantContext({ query: "React hooks state" });
+
+    expect(results).toHaveLength(2);
+    expect(results[0]!.id).toBe("mem_rule");
+    expect(results[1]!.id).toBe("mem_summary");
+  });
+
+  it("searchMemory ranks by text relevance over type", async () => {
+    const { context, handlers } = await createHandlers();
+
+    const store = context.memoryStore;
+    const { entry: entryFactory } = await import("./unit/helpers");
+
+    await store.save(entryFactory({
+      id: "mem_rule",
+      type: "coding_rule",
+      content: "React components should follow the container pattern.",
+      confidence: "high",
+      updatedAt: "2026-05-08T00:00:00.000Z"
+    }));
+    await store.save(entryFactory({
+      id: "mem_fact",
+      type: "project_fact",
+      content: "React hooks manage component state and side effects in this project.",
+      confidence: "high",
+      updatedAt: "2026-05-08T00:00:00.000Z"
+    }));
+
+    const results = await handlers.searchMemory({ query: "React hooks state" });
+
+    // Both match "react", but mem_fact matches all three tokens while mem_rule only matches one
+    expect(results).toHaveLength(2);
+    expect(results[0]!.id).toBe("mem_fact");
+  });
+
+  it("getRelevantContext respects limit after ranking", async () => {
+    const { context, handlers } = await createHandlers();
+
+    const store = context.memoryStore;
+    const { entry: entryFactory } = await import("./unit/helpers");
+
+    for (let i = 0; i < 5; i++) {
+      await store.save(entryFactory({
+        id: `mem_${i}`,
+        content: `React pattern number ${i} for components.`,
+        updatedAt: `2026-05-0${i + 1}T00:00:00.000Z`
+      }));
+    }
+
+    const results = await handlers.getRelevantContext({ query: "React", limit: 2 });
+    expect(results).toHaveLength(2);
+  });
 });
