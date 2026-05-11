@@ -83,13 +83,9 @@ The MVP implements local-only mode.
 
 ## Positioning Guardrails
 
-Do not claim "everything is 100% secure" or "no data is ever shared" in vague terms.
-
-Correct positioning:
+See [Security and Privacy](security-and-privacy.md#cheu-security-positioning) for the full positioning rules. Key points:
 
 - Local-only mode keeps memory on the developer machine.
-- CH/EU sync mode should use encrypted memory and CH/EU-hosted infrastructure.
-- Self-hosted mode should run inside company infrastructure.
 - External LLM usage must be explicit and policy-controlled.
 - Stored memory should not be sent to external model providers unless explicitly configured.
 

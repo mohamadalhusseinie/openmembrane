@@ -69,22 +69,7 @@ OpenMembrain should reject:
 
 ## Audit Events Vs Diagnostics
 
-Audit events describe normal memory lifecycle activity:
-
-- session ingested
-- candidate extracted
-- memory saved
-- candidate queued
-- candidate rejected
-
-Diagnostics describe operational problems:
-
-- validation errors
-- missing candidates
-- invalid local JSON stores
-- unsafe approval attempts
-- export failures
-- future adapter/provider failures
+Audit events describe normal memory lifecycle activity. Diagnostics describe operational problems. See [Architecture](architecture.md#audit-and-diagnostic-schemas) for the full schema definitions and event type values.
 
 MCP tools should return safe user-facing errors with a diagnostic ID. Detailed diagnostics should be inspectable locally without exposing raw transcripts or secrets.
 

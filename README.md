@@ -83,19 +83,19 @@ By default, local memory is stored in `.openmembrain` under the current working 
 
 ## MCP Tools
 
-- `propose_memory_from_session`
-- `get_project_rules`
-- `get_relevant_context`
-- `search_memory`
-- `list_memory_candidates`
-- `approve_memory_candidate`
-- `reject_memory_candidate`
-- `update_memory`
-- `supersede_memory`
-- `review_stale_memories`
-- `export_static_memory_files`
-- `get_diagnostics`
-- `list_audit_log`
+- `propose_memory_from_session` — submit a session transcript or summary for memory extraction. Accepts optional `metadata` (key-value pairs) for additional context.
+- `get_project_rules` — retrieve project rules and conventions for the current scope.
+- `get_relevant_context` — find memories relevant to a natural language query.
+- `search_memory` — search saved memories by query, scope, type, or tags.
+- `list_memory_candidates` — list pending memory candidates awaiting approval.
+- `approve_memory_candidate` — approve a pending candidate to save it as memory.
+- `reject_memory_candidate` — reject a pending candidate with an optional reason.
+- `update_memory` — update the content, type, scope, or tags of a saved memory.
+- `supersede_memory` — mark a memory as superseded, optionally linking a replacement.
+- `review_stale_memories` — list memories older than a threshold (default: 6 months).
+- `export_static_memory_files` — generate static instruction files (AGENTS.md, CLAUDE.md, etc.).
+- `get_diagnostics` — retrieve diagnostic events filtered by severity or code.
+- `list_audit_log` — retrieve recent audit events.
 
 ## Architecture
 
@@ -104,14 +104,14 @@ The first implementation is centered on the autonomous memory pipeline, not a CL
 ```text
 session transcript or summary
   -> SessionIngestor
-  -> SecretDetector redaction
-  -> MemoryExtractor interface
-  -> MockMemoryExtractor
-  -> MemoryClassifier
-  -> PolicyEngine / SafetyFilter / NoiseFilter
+  -> SecretDetector redaction (pre-extraction)
+  -> MemoryExtractor interface (MockMemoryExtractor for MVP)
+  -> MemoryClassifier (+ SecretDetector check)
+  -> PolicyEngine (SecretDetector + SafetyFilter + NoiseFilter)
   -> Deduplicator
   -> ConflictDetector
   -> ActionRecommender
+  -> MemoryApprovalService (+ SecretDetector safety net)
   -> MemoryStore or PendingCandidateStore
 ```
 
@@ -181,3 +181,11 @@ Build the publishable bundle:
 ```sh
 npm run build
 ```
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — pipeline design, type schemas, MCP tool surface, package dependencies
+- [Security and Privacy](docs/security-and-privacy.md) — secret handling, data storage rules, LLM usage policy
+- [Product Vision](docs/product-vision.md) — product thesis, UX workflow, memory quality criteria
+- [Roadmap](docs/roadmap.md) — phased delivery plan from local MVP to hosted mode
+- [Contributing](CONTRIBUTING.md) — setup, development workflow, PR guidelines

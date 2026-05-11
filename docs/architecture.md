@@ -31,6 +31,27 @@ packages/
   shared/
 ```
 
+## Package Dependency Graph
+
+```text
+@openmembrain/shared        (no internal dependencies)
+       ^
+       |
+@openmembrain/core          (depends on shared)
+       ^
+       |
+  +----+----+
+  |         |
+storage   exporters         (both depend on core)
+  ^         ^
+  |         |
+  +----+----+
+       |
+  mcp-server                (imports core, storage, exporters, shared)
+```
+
+All packages are imported via path aliases: `@openmembrain/core`, `@openmembrain/storage`, `@openmembrain/exporters`, `@openmembrain/shared`.
+
 ## Package Responsibilities
 
 `packages/core` owns:
@@ -115,6 +136,9 @@ Each extracted candidate should include:
 - `tags`
 - `createdAt`
 - `updatedAt`
+- `rejectionReason` (optional) — set when the candidate is rejected; describes why
+- `duplicateOf` (optional) — ID of the existing memory this candidate duplicates
+- `conflictWith` (optional) — IDs of existing memories this candidate conflicts with
 
 Memory types:
 
@@ -160,6 +184,31 @@ Scopes:
 - `tooling`
 - `unknown`
 
+## Memory Source
+
+The `source` field on candidates and entries uses the `MemorySource` interface:
+
+- `kind`: `"session"` | `"manual"` | `"import"` | `"system"`
+- `sessionId` (optional): source session identifier
+- `tool` (optional): AI tool or adapter name that produced the session
+- `excerpt` (optional): relevant excerpt from the source session
+- `transcriptHash` (optional): hash of the source transcript for deduplication
+
+## Memory Entry
+
+A `MemoryEntry` is the persisted form of an approved memory. While `MemoryCandidate` is the pipeline's working type (extracted, classified, recommended), `MemoryEntry` is what gets saved to the memory store after approval.
+
+Key differences from `MemoryCandidate`:
+
+- `sensitivity` excludes `"secret"` — secrets can never be saved
+- `status`: `"active"` | `"superseded"`
+- `approvedAt`: timestamp when the candidate was approved
+- `supersededBy` (optional): ID of the replacement memory
+- `supersededAt` (optional): timestamp when this memory was superseded
+- No `recommendedAction`, `rejectionReason`, `duplicateOf`, or `conflictWith` — these are pipeline-only fields
+
+Conversion from candidate to entry is handled by `memoryEntryFromCandidate()` in `packages/core`.
+
 ## Decision Rules
 
 Auto-save only low-risk, high-confidence facts such as:
@@ -193,6 +242,59 @@ Reject:
 - emotional commentary
 - failed attempts without durable lessons
 
+## Memory Approval Service
+
+`MemoryApprovalService` in `packages/core` handles the approve/reject workflow for pending candidates.
+
+**Approve** (`approve(projectId, candidateId)`):
+
+1. Finds the pending candidate by ID.
+2. Blocks if the candidate is classified as `secret` sensitivity.
+3. Runs `SecretDetector.containsSecret()` on the content as a safety net.
+4. Checks for duplicates via `Deduplicator.findDuplicate()`.
+5. Converts the candidate to a `MemoryEntry` via `memoryEntryFromCandidate()`.
+6. Saves the entry, removes the candidate from pending, and logs a `memory_saved` audit event.
+7. If the candidate had `conflictWith` entries, supersedes those conflicting memories.
+
+**Reject** (`reject(projectId, candidateId, reason?)`):
+
+1. Finds the pending candidate by ID.
+2. Removes the candidate and logs a `candidate_rejected` audit event.
+
+## Memory Policy
+
+`MemoryPolicy` in `packages/core` defines configurable thresholds for the policy engine:
+
+- `maxContentLength`: maximum allowed content length (default: `1000`)
+- `maxRawCodeBlockLength`: maximum raw code block length before rejection (default: `500`)
+- `autoSaveTypes`: memory types eligible for auto-save: `project_fact`, `coding_rule`, `testing_rule`
+- `askUserTypes`: memory types that require user approval: `architecture_decision`, `known_gotcha`, `deployment_rule`, `security_rule`, `forbidden_pattern`, `domain_knowledge`, `session_summary`
+
+The `PolicyEngine` combines `SecretDetector`, `NoiseFilter`, and `SafetyFilter` to produce a `PolicyCheck` with `allowed`, `sensitivity`, and `violations` fields.
+
+## Audit And Diagnostic Schemas
+
+Audit event types:
+
+- `session_ingested`
+- `candidate_extracted`
+- `memory_saved`
+- `candidate_queued`
+- `candidate_rejected`
+- `memory_superseded`
+- `memory_updated`
+
+Each `AuditEvent` includes `id`, `projectId`, `type`, `entityId` (optional), `createdAt`, and `details` (optional).
+
+Diagnostic severity values:
+
+- `debug`
+- `info`
+- `warning`
+- `error`
+
+Each `DiagnosticEvent` includes `id`, `projectId`, `severity`, `code`, `message`, `operation` (optional), `source` (optional: `"core"` | `"storage"` | `"mcp-server"` | `"exporter"` | `"adapter"`), `entityId` (optional), `createdAt`, and `details` (optional).
+
 ## MCP Tool Surface
 
 Current tools:
@@ -207,6 +309,9 @@ Current tools:
 - `export_static_memory_files`
 - `get_diagnostics`
 - `list_audit_log`
+- `update_memory`
+- `supersede_memory`
+- `review_stale_memories`
 
 MCP is the main tool-facing access layer for the MVP, but it is not the entire product.
 
