@@ -17,6 +17,19 @@ import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@
 import { candidate, entry } from "./helpers.js";
 
 describe("validateIngestionRequest", () => {
+  it("throws VALIDATION_ERROR when projectId is empty", () => {
+    expect(() => validateIngestionRequest({ projectId: "", transcript: "t" })).toThrow(OpenMembrainError);
+    try {
+      validateIngestionRequest({ projectId: "", transcript: "t" });
+    } catch (e) {
+      expect((e as OpenMembrainError).code).toBe("VALIDATION_ERROR");
+    }
+  });
+
+  it("throws VALIDATION_ERROR when projectId is whitespace-only", () => {
+    expect(() => validateIngestionRequest({ projectId: "   ", transcript: "t" })).toThrow(OpenMembrainError);
+  });
+
   it("throws VALIDATION_ERROR when neither transcript nor summary is provided", () => {
     expect(() => validateIngestionRequest({ projectId: "p1" })).toThrow(OpenMembrainError);
     try {

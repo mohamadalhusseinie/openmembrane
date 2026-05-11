@@ -13,6 +13,14 @@ export interface IngestionRequest {
 }
 
 export function validateIngestionRequest(request: IngestionRequest): void {
+  if (!request.projectId.trim()) {
+    throw new OpenMembrainError({
+      code: "VALIDATION_ERROR",
+      message: "projectId must not be empty or whitespace-only.",
+      safeMessage: "A valid project ID is required."
+    });
+  }
+
   if (!request.transcript && !request.summary) {
     throw new OpenMembrainError({
       code: "VALIDATION_ERROR",
