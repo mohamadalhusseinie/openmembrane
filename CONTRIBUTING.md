@@ -44,7 +44,7 @@ See [Architecture](docs/architecture.md) for the package layout, dependency grap
 - TypeScript strict mode with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`
 - ESM (`"type": "module"`)
 - Use `type` imports for type-only references
-- No enums — use `as const` arrays with derived union types
+- No enums â€” use `as const` arrays with derived union types
 - Explicit return types on exported functions
 - One clear responsibility per file
 

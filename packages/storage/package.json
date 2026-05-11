@@ -1,12 +1,13 @@
 {
   "name": "@openmembrain/storage",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/core": "0.1.0"
+    "@openmembrain/core": "*"
   }
 }

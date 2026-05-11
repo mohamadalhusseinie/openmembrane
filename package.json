@@ -1,5 +1,5 @@
 {
-  "name": "openmembrain",
+  "name": "openmembrain-root",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,13 @@
     "mcp:stdio": "tsx apps/mcp-server/src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^22.15.3",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
