@@ -4,71 +4,43 @@ This roadmap keeps the product centered on the local autonomous memory engine be
 
 ## Phase 1: Local Autonomous Memory MVP
 
-Status: in progress.
+Status: complete (v0.1.0).
 
 Implemented:
 
 - TypeScript monorepo
 - core memory pipeline
 - deterministic mock extractor
+- OpenAI-backed extractor behind `MemoryExtractor` interface
+- extraction prompt design with chunking and response parsing
 - rule-based secret detection
 - noise and safety filters
 - action recommendation
 - deduplication
-- conflict detection
+- conflict detection with improved heuristics
 - JSON local memory store
+- SQLite storage backend (better-sqlite3)
 - pending approval queue
 - audit log
 - diagnostics log
-- MCP server
-- static fallback exporters
-- test suite
-
-Remaining:
-
-- real LLM extractor behind `MemoryExtractor`
-- local ingestion API for adapters
-- stronger relevance ranking
-- better conflict detection
-- more test coverage around edge cases
+- transport-agnostic ingestion API for adapters
+- multi-signal relevance scoring
+- MCP server with 13 tools
+- static fallback exporters (AGENTS.md, CLAUDE.md, copilot-instructions.md, cursor rules, project-memory.md)
+- test suite (34 test files, cross-platform CI)
+- Changesets release workflow
 
 ## Phase 2: Real Extraction With Explicit Policy
 
-Add provider-backed extraction without compromising local-first defaults.
+Status: complete (delivered as part of Phase 1).
 
-Goals:
-
-- add `OpenAiMemoryExtractor` behind `MemoryExtractor`
-- support Anthropic/local extractors later
-- require explicit configuration before external LLM usage
-- do not persist raw full conversations by default
-- redact secrets before model calls
-- log diagnostics for provider failures
-- preserve `MockMemoryExtractor` for deterministic tests
-
-Non-goals:
-
-- no provider lock-in
-- no automatic external model calls without configuration
-- no cloud sync
+The `OpenAiMemoryExtractor` is implemented behind the `MemoryExtractor` interface. Secrets are redacted before model calls. `MockMemoryExtractor` is preserved for deterministic tests. Provider configuration is explicit and required.
 
 ## Phase 3: Local Ingestion API
 
-Add a local API so adapters can submit session summaries or transcripts without treating the CLI as the product.
+Status: complete (delivered as part of Phase 1).
 
-Possible options:
-
-- local HTTP endpoint
-- filesystem drop folder
-- MCP-only ingestion for early adapters
-
-Requirements:
-
-- accepts session summaries/transcripts
-- returns candidate/save/pending/reject results
-- logs diagnostics
-- supports project identification
-- keeps raw conversation storage off by default
+The `IngestionService` provides a transport-agnostic ingestion API. It accepts session summaries/transcripts, returns candidate/save/pending/reject results, logs diagnostics, supports project identification, and keeps raw conversation storage off by default.
 
 ## Phase 4: First Tool Adapter
 
@@ -91,7 +63,7 @@ Adapter responsibilities:
 
 Improve retrieval after the MVP loop works end to end.
 
-Possible improvements:
+Initial relevance scoring (multi-signal `RelevanceScorer`) is implemented. Possible further improvements:
 
 - better token ranking
 - scope and type weighting
