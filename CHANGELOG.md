@@ -2,7 +2,7 @@
 
 All notable changes to OpenMembrain will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/).
+This changelog is now managed by [Changesets](https://github.com/changesets/changesets). See [docs/release.md](docs/release.md) for the release process.
 
 ## [Unreleased]
 
