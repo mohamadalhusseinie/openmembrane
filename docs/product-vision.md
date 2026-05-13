@@ -6,6 +6,23 @@ AI coding tools forget important project knowledge between sessions. Developers 
 
 OpenMemBrain is not primarily a CLI, not primarily an OpenCode plugin, and not only an MCP server. OpenMemBrain Core is the product.
 
+## Value Proposition
+
+**For individual developers:**
+- Stop repeating yourself. Your AI tools remember your project's rules, architecture, gotchas, and conventions across every session, across every tool.
+- Your secrets are safe. Credentials, API keys, and sensitive data are detected and blocked before anything is stored.
+- Zero maintenance. OpenMemBrain learns autonomously from your normal workflow — no manual tagging, no bookmarking, no effort.
+
+**For teams:**
+- Shared project intelligence. New team members inherit the team's accumulated knowledge from day one.
+- Consistent AI behavior. Every developer's AI tools operate with the same understanding of your project's constraints and conventions.
+- Compliance-ready. Full audit trails, policy controls, and EU/CH data residency options.
+
+**For companies:**
+- Self-hosted or managed. Run on your infrastructure or use OpenMemBrain's hosted option.
+- Organization-level policies. Control what AI tools can remember, who approves knowledge, and where data lives.
+- No vendor lock-in. Tool-agnostic by design — works with any AI coding tool that speaks MCP or reads instruction files.
+
 ## Product Thesis
 
 OpenMemBrain is the protective memory layer between AI coding tools and private project knowledge.
