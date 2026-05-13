@@ -74,6 +74,25 @@ Add to `.cursor/mcp.json` in your project:
 }
 ```
 
+### OpenCode
+
+**Automated (recommended):** Tell OpenCode:
+
+> Fetch and follow instructions from https://raw.githubusercontent.com/mohamadalhusseinie/openmembrain/refs/heads/main/.opencode/INSTALL.md
+
+**Manual:** Add to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "openmembrain": {
+      "type": "local",
+      "command": ["npx", "-y", "openmembrain"]
+    }
+  }
+}
+```
+
 ## Environment Variables
 
 By default, local memory is stored in `.openmembrain` under the current working directory. Override this with:
