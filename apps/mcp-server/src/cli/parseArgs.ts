@@ -44,7 +44,9 @@ export type ParseResult = ParseSuccess | ParseError;
 function getFlag(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
   if (index === -1 || index + 1 >= args.length) return undefined;
-  return args[index + 1];
+  const value = args[index + 1];
+  if (value !== undefined && value.startsWith("--")) return undefined;
+  return value;
 }
 
 function hasFlag(args: readonly string[], name: string): boolean {

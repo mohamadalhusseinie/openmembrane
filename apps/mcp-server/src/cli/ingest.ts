@@ -57,10 +57,10 @@ export async function runIngest(cmd: IngestCommand): Promise<void> {
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
+    const chunks: string[] = [];
     process.stdin.setEncoding("utf-8");
-    process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
-    process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    process.stdin.on("data", (chunk: string) => chunks.push(chunk));
+    process.stdin.on("end", () => resolve(chunks.join("")));
     process.stdin.on("error", reject);
   });
 }

@@ -99,6 +99,12 @@ describe("parseArgs", () => {
       const err = expectError(parseArgs(argv("ingest", "--file", "f.txt", "--format", "xml")));
       expect(err).toContain("Invalid format");
     });
+
+    it("treats flag-like value for --file as missing", () => {
+      const err = expectError(parseArgs(argv("ingest", "--file", "--tool")));
+      expect(err).toContain("--file");
+      expect(err).toContain("--stdin");
+    });
   });
 
   describe("context", () => {
