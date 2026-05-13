@@ -1,4 +1,4 @@
-# OpenMembrain Setup: Cursor
+# OpenMemBrain Setup: Cursor
 
 Cursor supports MCP servers natively. No adapter code is needed — just configuration.
 
@@ -9,7 +9,7 @@ Cursor supports MCP servers natively. No adapter code is needed — just configu
 
 ## Configuration
 
-Add the OpenMembrain MCP server in Cursor's settings.
+Add the OpenMemBrain MCP server in Cursor's settings.
 
 ### Project-level (`.cursor/mcp.json` in project root)
 

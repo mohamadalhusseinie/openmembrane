@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to OpenMembrain will be documented in this file.
+All notable changes to OpenMemBrain will be documented in this file.
 
 This changelog is now managed by [Changesets](https://github.com/changesets/changesets). See [docs/release.md](docs/release.md) for the release process.
 

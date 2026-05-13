@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Project context for AI coding tools working on the OpenMembrain codebase.
+Project context for AI coding tools working on the OpenMemBrain codebase.
 
 ## Project Overview
 
-OpenMembrain is a local-first, private, tool-agnostic memory layer for AI coding tools. It extracts durable project knowledge from session transcripts, filters out secrets and noise, and persists approved memories for future AI sessions.
+OpenMemBrain is a local-first, private, tool-agnostic memory membrane for AI coding tools. It autonomously extracts durable project knowledge from session transcripts, filters out secrets and noise, and persists approved memories — without any manual effort from the user.
 
 ## Architecture
 

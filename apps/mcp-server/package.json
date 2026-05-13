@@ -1,14 +1,30 @@
 {
   "name": "openmembrain",
-  "version": "0.1.0",
-  "description": "Local-first, private memory layer for AI coding tools — MCP server",
+  "version": "0.1.1",
+  "description": "The intelligent membrane for AI memory — autonomously learns from your sessions, blocks secrets, and persists only what matters. No manual saving. Local-first, private, tool-agnostic.",
   "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "memory",
+    "ai",
+    "coding-tools",
+    "local-first",
+    "private"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohamadalhusseinie/openmembrain.git",
+    "directory": "apps/mcp-server"
+  },
+  "homepage": "https://github.com/mohamadalhusseinie/openmembrain#readme",
   "main": "./dist/index.js",
   "bin": {
     "openmembrain": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsup",

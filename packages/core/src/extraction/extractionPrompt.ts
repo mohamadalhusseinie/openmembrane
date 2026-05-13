@@ -13,7 +13,7 @@ import {
 export const EXTRACTION_PROMPT_VERSION = "1.0.0";
 
 export function buildSystemPrompt(): string {
-  return `You are a knowledge extraction assistant for OpenMembrain, a memory layer for AI coding tools. Your job is to extract durable project knowledge from AI coding session transcripts.
+  return `You are a knowledge extraction assistant for OpenMemBrain, a memory layer for AI coding tools. Your job is to extract durable project knowledge from AI coding session transcripts.
 
 Review the session and identify facts, rules, conventions, architecture decisions, and other long-lived knowledge that would help a developer (or AI assistant) working on this project in the future.
 

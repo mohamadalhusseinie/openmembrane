@@ -1,4 +1,4 @@
-# OpenMembrain — OpenCode Installation
+# OpenMemBrain — OpenCode Installation
 
 ## Prerequisites
 
@@ -35,11 +35,11 @@
 3. Restart OpenCode to pick up the new MCP server.
 
 4. Verify the installation by using the `get_project_rules` tool. If it responds
-   without error, OpenMembrain is connected.
+   without error, OpenMemBrain is connected.
 
 ## Development (from source)
 
-If you are contributing to OpenMembrain and want to run from source without
+If you are contributing to OpenMemBrain and want to run from source without
 rebuilding between changes:
 
 ```json
@@ -54,7 +54,7 @@ clone of the repository.
 
 ## Optional: Enable LLM Extraction
 
-By default, OpenMembrain uses a mock extractor (no API keys needed). All tools
+By default, OpenMemBrain uses a mock extractor (no API keys needed). All tools
 work — you can manually manage memories, search, export, etc.
 
 To enable real memory extraction from session transcripts, add environment

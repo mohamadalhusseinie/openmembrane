@@ -1,6 +1,6 @@
 # Release Process
 
-OpenMembrain uses [Changesets](https://github.com/changesets/changesets) for version management and releases.
+OpenMemBrain uses [Changesets](https://github.com/changesets/changesets) for version management and releases.
 
 ## Versioning Strategy
 

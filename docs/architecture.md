@@ -1,6 +1,6 @@
-# OpenMembrain Architecture
+# OpenMemBrain Architecture
 
-OpenMembrain Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
+OpenMemBrain Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
 
 ## Core Pipeline
 
@@ -331,4 +331,4 @@ Adapters should be thin and tool-specific:
 - Cursor integration
 - Claude Code integration
 
-Adapters should collect session summaries or transcripts and send them to OpenMembrain Core. They should not contain memory policy logic.
+Adapters should collect session summaries or transcripts and send them to OpenMemBrain Core. They should not contain memory policy logic.

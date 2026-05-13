@@ -1,14 +1,14 @@
-# OpenMembrain Product Vision
+# OpenMemBrain Product Vision
 
-OpenMembrain is a local-first, private, tool-agnostic memory layer for AI coding tools.
+OpenMemBrain is a local-first, private, tool-agnostic memory layer for AI coding tools.
 
-AI coding tools forget important project knowledge between sessions. Developers repeatedly restate project rules, architecture decisions, gotchas, conventions, testing commands, deployment constraints, and security requirements. OpenMembrain exists to extract durable project knowledge from AI coding sessions and make it reusable across tools such as Codex, OpenCode, Claude Code, Cursor, VS Code, GitHub Copilot, and future agents.
+AI coding tools forget important project knowledge between sessions. Developers repeatedly restate project rules, architecture decisions, gotchas, conventions, testing commands, deployment constraints, and security requirements. OpenMemBrain exists to extract durable project knowledge from AI coding sessions and make it reusable across tools such as Codex, OpenCode, Claude Code, Cursor, VS Code, GitHub Copilot, and future agents.
 
-OpenMembrain is not primarily a CLI, not primarily an OpenCode plugin, and not only an MCP server. OpenMembrain Core is the product.
+OpenMemBrain is not primarily a CLI, not primarily an OpenCode plugin, and not only an MCP server. OpenMemBrain Core is the product.
 
 ## Product Thesis
 
-OpenMembrain is the protective memory layer between AI coding tools and private project knowledge.
+OpenMemBrain is the protective memory layer between AI coding tools and private project knowledge.
 
 The name combines:
 
@@ -16,18 +16,18 @@ The name combines:
 - brain
 - membrane
 
-The membrane idea matters. OpenMembrain should act as a protective boundary. It decides what project knowledge can safely become persistent memory and what must be blocked, redacted, queued for approval, or ignored.
+The membrane idea matters. OpenMemBrain should act as a protective boundary. It decides what project knowledge can safely become persistent memory and what must be blocked, redacted, queued for approval, or ignored.
 
 ## Main UX
 
 The main workflow should be autonomous:
 
 1. A developer works normally in an AI coding tool.
-2. OpenMembrain receives a session transcript or summary through an adapter, hook, MCP tool, or local ingestion API.
-3. OpenMembrain analyzes the session.
-4. OpenMembrain extracts only durable knowledge worth remembering.
-5. OpenMembrain blocks secrets and unsafe content.
-6. OpenMembrain auto-saves low-risk memory or queues important decisions for approval.
+2. OpenMemBrain receives a session transcript or summary through an adapter, hook, MCP tool, or local ingestion API.
+3. OpenMemBrain analyzes the session.
+4. OpenMemBrain extracts only durable knowledge worth remembering.
+5. OpenMemBrain blocks secrets and unsafe content.
+6. OpenMemBrain auto-saves low-risk memory or queues important decisions for approval.
 7. Future AI tools retrieve relevant memory through MCP or generated static instruction files.
 
 Commands such as `openmembrain remember`, `openmembrain recall`, and `openmembrain export` may exist later as admin or debugging tools, but they are not the core product workflow.
@@ -76,8 +76,8 @@ The product should eventually support multiple operating modes:
 
 - Local-only mode: all memory stays on the developer machine.
 - CH/EU sync mode: encrypted memory can be synced to CH/EU-hosted infrastructure.
-- Self-hosted mode: companies can run OpenMembrain inside their own infrastructure.
-- Hosted mode: OpenMembrain may provide managed sync, teams, policy, audit logs, and administration.
+- Self-hosted mode: companies can run OpenMemBrain inside their own infrastructure.
+- Hosted mode: OpenMemBrain may provide managed sync, teams, policy, audit logs, and administration.
 
 The MVP implements local-only mode.
 

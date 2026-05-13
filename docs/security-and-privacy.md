@@ -1,6 +1,6 @@
 # Security And Privacy
 
-OpenMembrain is a protective memory layer. It should persist durable project knowledge while blocking secrets, credentials, raw sensitive data, and temporary debugging noise.
+OpenMemBrain is a protective memory layer. It should persist durable project knowledge while blocking secrets, credentials, raw sensitive data, and temporary debugging noise.
 
 ## Principles
 
@@ -56,7 +56,7 @@ Candidates classified as `secret` must be rejected. Secret candidates must not b
 
 ## Noise Handling
 
-OpenMembrain should reject:
+OpenMemBrain should reject:
 
 - temporary stack traces
 - temporary logs
@@ -94,7 +94,7 @@ Correct future positioning:
 
 - Local-only mode: all memory stays on the developer machine.
 - CH/EU sync mode: encrypted memory can be synced to CH/EU-hosted infrastructure.
-- Self-hosted mode: companies can run OpenMembrain inside their own infrastructure.
+- Self-hosted mode: companies can run OpenMemBrain inside their own infrastructure.
 - External LLM usage must be explicit and policy-controlled.
 - Stored memory should not be sent to external model providers unless explicitly configured.
 

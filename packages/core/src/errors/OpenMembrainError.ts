@@ -68,7 +68,7 @@ export function normalizeOpenMembrainError(error: unknown): OpenMembrainError {
     return new OpenMembrainError({
       code: "UNKNOWN_ERROR",
       message: error.message,
-      safeMessage: "OpenMembrain hit an unexpected error while handling the request.",
+      safeMessage: "OpenMemBrain hit an unexpected error while handling the request.",
       cause: error
     });
   }
@@ -76,6 +76,6 @@ export function normalizeOpenMembrainError(error: unknown): OpenMembrainError {
   return new OpenMembrainError({
     code: "UNKNOWN_ERROR",
     message: String(error),
-    safeMessage: "OpenMembrain hit an unexpected error while handling the request."
+    safeMessage: "OpenMemBrain hit an unexpected error while handling the request."
   });
 }

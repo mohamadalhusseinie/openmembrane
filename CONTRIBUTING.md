@@ -1,4 +1,4 @@
-# Contributing to OpenMembrain
+# Contributing to OpenMemBrain
 
 ## Prerequisites
 

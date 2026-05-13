@@ -1,4 +1,4 @@
-# OpenMembrain Setup: VS Code Copilot
+# OpenMemBrain Setup: VS Code Copilot
 
 VS Code with GitHub Copilot supports MCP servers. No adapter code is needed — just configuration.
 
@@ -10,7 +10,7 @@ VS Code with GitHub Copilot supports MCP servers. No adapter code is needed — 
 
 ## Configuration
 
-Add the OpenMembrain MCP server to your VS Code settings.
+Add the OpenMemBrain MCP server to your VS Code settings.
 
 ### Project-level (`.vscode/mcp.json` in project root)
 

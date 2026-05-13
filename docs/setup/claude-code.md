@@ -1,4 +1,4 @@
-# OpenMembrain Setup: Claude Code
+# OpenMemBrain Setup: Claude Code
 
 Claude Code supports MCP servers natively. No adapter code is needed — just configuration.
 
@@ -9,7 +9,7 @@ Claude Code supports MCP servers natively. No adapter code is needed — just co
 
 ## Configuration
 
-Add the OpenMembrain MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
+Add the OpenMemBrain MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
 
 ### Project-level (`.mcp.json` in project root)
 
