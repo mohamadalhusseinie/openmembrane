@@ -139,7 +139,7 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
         options.scopes = [input.scope];
       }
       const candidates = await context.memoryStore.search(projectId, input.query, options);
-      return rankMemories(candidates, input.query, "context")
+      return rankMemories(candidates, input.query, "context", undefined, input.scope)
         .slice(0, limit)
         .map((scored) => scored.entry);
     },
@@ -160,7 +160,8 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
         options.tags = input.tags;
       }
       const candidates = await context.memoryStore.search(projectId, input.query ?? "", options);
-      return rankMemories(candidates, input.query ?? "", "search")
+      const searchScope = input.scopes?.length === 1 ? input.scopes[0] : undefined;
+      return rankMemories(candidates, input.query ?? "", "search", undefined, searchScope)
         .slice(0, limit)
         .map((scored) => scored.entry);
     },

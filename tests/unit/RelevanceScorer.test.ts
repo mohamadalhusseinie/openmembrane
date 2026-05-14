@@ -98,6 +98,54 @@ describe("scoreEntry", () => {
     // These entries have same type/confidence/recency/tags, so scores should be equal
     expect(Math.abs(scoreA - scoreB)).toBeLessThan(1e-9);
   });
+
+  it("boosts entries whose scope matches the query scope", () => {
+    const backendEntry = entry({ scope: "backend", content: "Use connection pooling." });
+    const frontendEntry = entry({ id: "mem_2", scope: "frontend", content: "Use connection pooling." });
+
+    const queryTokens = tokenize("connection pooling");
+    const scoreBackend = scoreEntry(backendEntry, queryTokens, "context", REF_MS, "backend");
+    const scoreFrontend = scoreEntry(frontendEntry, queryTokens, "context", REF_MS, "backend");
+
+    expect(scoreBackend).toBeGreaterThan(scoreFrontend);
+  });
+
+  it("gives partial score to global scope when a specific scope is queried", () => {
+    const globalEntry = entry({ scope: "global", content: "Use strict mode." });
+    const backendEntry = entry({ id: "mem_2", scope: "backend", content: "Use strict mode." });
+    const frontendEntry = entry({ id: "mem_3", scope: "frontend", content: "Use strict mode." });
+
+    const queryTokens = tokenize("strict mode");
+    const scoreGlobal = scoreEntry(globalEntry, queryTokens, "context", REF_MS, "backend");
+    const scoreBackend = scoreEntry(backendEntry, queryTokens, "context", REF_MS, "backend");
+    const scoreFrontend = scoreEntry(frontendEntry, queryTokens, "context", REF_MS, "backend");
+
+    // Backend (exact match) > Global (partial) > Frontend (mismatch)
+    expect(scoreBackend).toBeGreaterThan(scoreGlobal);
+    expect(scoreGlobal).toBeGreaterThan(scoreFrontend);
+  });
+
+  it("treats all scopes equally when no query scope is specified", () => {
+    const backendEntry = entry({ scope: "backend", content: "Use strict mode." });
+    const frontendEntry = entry({ id: "mem_2", scope: "frontend", content: "Use strict mode." });
+
+    const queryTokens = tokenize("strict mode");
+    const scoreBackend = scoreEntry(backendEntry, queryTokens, "context", REF_MS, undefined);
+    const scoreFrontend = scoreEntry(frontendEntry, queryTokens, "context", REF_MS, undefined);
+
+    expect(Math.abs(scoreBackend - scoreFrontend)).toBeLessThan(1e-9);
+  });
+
+  it("scope signal works in search strategy too", () => {
+    const matching = entry({ scope: "testing", content: "Use vitest." });
+    const nonMatching = entry({ id: "mem_2", scope: "deployment", content: "Use vitest." });
+
+    const queryTokens = tokenize("vitest");
+    const scoreMatch = scoreEntry(matching, queryTokens, "search", REF_MS, "testing");
+    const scoreNoMatch = scoreEntry(nonMatching, queryTokens, "search", REF_MS, "testing");
+
+    expect(scoreMatch).toBeGreaterThan(scoreNoMatch);
+  });
 });
 
 describe("rankMemories", () => {
@@ -184,5 +232,33 @@ describe("rankMemories", () => {
     const ranked = rankMemories(entries, "eval", "context", REF_TIME);
 
     expect(ranked[0]!.entry.id).toBe("mem_forbidden");
+  });
+
+  it("ranks entries matching query scope higher", () => {
+    const entries = [
+      entry({ id: "mem_backend", scope: "backend", content: "Use connection pooling for database queries." }),
+      entry({ id: "mem_frontend", scope: "frontend", content: "Use connection pooling for API calls." }),
+      entry({ id: "mem_global", scope: "global", content: "Use connection pooling everywhere." }),
+    ];
+
+    const ranked = rankMemories(entries, "connection pooling", "context", REF_TIME, "backend");
+
+    expect(ranked[0]!.entry.id).toBe("mem_backend");
+    // Global should rank above frontend (partial vs zero scope match)
+    const globalIdx = ranked.findIndex((r) => r.entry.id === "mem_global");
+    const frontendIdx = ranked.findIndex((r) => r.entry.id === "mem_frontend");
+    expect(globalIdx).toBeLessThan(frontendIdx);
+  });
+
+  it("does not penalize any scope when queryScope is omitted", () => {
+    const entries = [
+      entry({ id: "mem_backend", scope: "backend", content: "Same content." }),
+      entry({ id: "mem_frontend", scope: "frontend", content: "Same content." }),
+    ];
+
+    const ranked = rankMemories(entries, "Same content", "context", REF_TIME);
+
+    // Scores should be equal — no scope preference
+    expect(Math.abs(ranked[0]!.score - ranked[1]!.score)).toBeLessThan(1e-9);
   });
 });

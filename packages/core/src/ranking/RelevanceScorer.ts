@@ -16,22 +16,25 @@ interface WeightProfile {
   readonly confidence: number;
   readonly recency: number;
   readonly tagMatch: number;
+  readonly scopeMatch: number;
 }
 
 const strategyWeights: Record<RankingStrategy, WeightProfile> = {
   context: {
-    queryOverlap: 0.30,
-    typeBias: 0.30,
+    queryOverlap: 0.25,
+    typeBias: 0.25,
     confidence: 0.15,
-    recency: 0.15,
+    recency: 0.10,
     tagMatch: 0.10,
+    scopeMatch: 0.15,
   },
   search: {
-    queryOverlap: 0.55,
+    queryOverlap: 0.50,
     typeBias: 0.05,
     confidence: 0.10,
-    recency: 0.15,
+    recency: 0.10,
     tagMatch: 0.15,
+    scopeMatch: 0.10,
   },
 };
 
@@ -106,12 +109,14 @@ export function tokenize(value: string): string[] {
  * @param strategy     Ranking strategy: "context" for opinionated coding utility,
  *                     "search" for precision / recall.
  * @param referenceMs  Reference timestamp in epoch ms (for deterministic recency in tests).
+ * @param queryScope   Optional scope to boost scope-matching entries.
  */
 export function scoreEntry(
   entry: MemoryEntry,
   queryTokens: readonly string[],
   strategy: RankingStrategy,
   referenceMs: number,
+  queryScope?: string,
 ): number {
   const weights = strategyWeights[strategy];
 
@@ -156,12 +161,26 @@ export function scoreEntry(
     tagMatch = matched / queryTokens.length;
   }
 
+  // --- Scope match ---
+  let scopeMatch: number;
+  if (queryScope === undefined) {
+    // No scope filter — all memories are equally relevant for scope.
+    scopeMatch = 1;
+  } else if (entry.scope === queryScope) {
+    scopeMatch = 1;
+  } else if (entry.scope === "global") {
+    scopeMatch = 0.5;
+  } else {
+    scopeMatch = 0;
+  }
+
   return (
     weights.queryOverlap * queryOverlap +
     weights.typeBias * typeBias +
     weights.confidence * conf +
     weights.recency * recency +
-    weights.tagMatch * tagMatch
+    weights.tagMatch * tagMatch +
+    weights.scopeMatch * scopeMatch
   );
 }
 
@@ -175,12 +194,14 @@ export function scoreEntry(
  * @param query          Raw query string.
  * @param strategy       "context" for opinionated coding utility, "search" for precision / recall.
  * @param referenceTime  ISO timestamp for recency calculation (defaults to now).
+ * @param queryScope     Optional scope to boost scope-matching entries.
  */
 export function rankMemories(
   entries: readonly MemoryEntry[],
   query: string,
   strategy: RankingStrategy,
   referenceTime?: string,
+  queryScope?: string,
 ): ScoredMemory[] {
   const queryTokens = tokenize(query);
   const referenceMs = referenceTime
@@ -190,7 +211,7 @@ export function rankMemories(
   return entries
     .map((entry) => ({
       entry,
-      score: scoreEntry(entry, queryTokens, strategy, referenceMs),
+      score: scoreEntry(entry, queryTokens, strategy, referenceMs, queryScope),
     }))
     .sort((a, b) => {
       const diff = b.score - a.score;
