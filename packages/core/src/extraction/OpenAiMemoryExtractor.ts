@@ -7,22 +7,9 @@ import { buildSystemPrompt, buildUserPrompt } from "./extractionPrompt";
 import { chunkTranscript } from "./chunkTranscript";
 import { parseExtractionResponse } from "./parseExtractionResponse";
 
-export interface ExtractionChunkError {
-  chunk: number;
-  message: string;
-}
+import type { ExtractionChunkError, OnExtractionDiagnostics } from "./ExtractionDiagnostics";
 
-export interface ExtractionDiagnostics {
-  chunks: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  candidatesExtracted: number;
-  errors: ExtractionChunkError[];
-}
-
-export type OnExtractionDiagnostics = (
-  diagnostics: ExtractionDiagnostics,
-) => void;
+export type { ExtractionChunkError, ExtractionDiagnostics, OnExtractionDiagnostics } from "./ExtractionDiagnostics";
 
 export class OpenAiMemoryExtractor implements MemoryExtractor {
   private readonly client: OpenAI;

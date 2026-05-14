@@ -11,6 +11,7 @@ export * from "./extraction/MemoryExtractor";
 export * from "./extraction/chunkTranscript";
 export * from "./extraction/parseExtractionResponse";
 export * from "./extraction/MockMemoryExtractor";
+export * from "./extraction/ExtractionDiagnostics";
 export * from "./extraction/OpenAiMemoryExtractor";
 export * from "./extraction/createExtractor";
 export * from "./filtering/NoiseFilter";
