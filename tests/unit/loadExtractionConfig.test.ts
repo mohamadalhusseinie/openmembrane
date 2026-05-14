@@ -49,4 +49,35 @@ describe("loadExtractionConfig", () => {
     const config = loadExtractionConfig();
     expect(config.enabled).toBe(false);
   });
+
+  it("reads apiKey from OPENMEMBRAIN_EXTRACTION_API_KEY", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-generic");
+    const config = loadExtractionConfig();
+    expect(config.apiKey).toBe("sk-generic");
+  });
+
+  it("reads model from OPENMEMBRAIN_EXTRACTION_MODEL", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_MODEL", "claude-sonnet-4-20250514");
+    const config = loadExtractionConfig();
+    expect(config.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("reads baseUrl from OPENMEMBRAIN_EXTRACTION_BASE_URL", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_BASE_URL", "https://api.anthropic.com");
+    const config = loadExtractionConfig();
+    expect(config.baseUrl).toBe("https://api.anthropic.com");
+  });
+
+  it("prefers generic env vars over OPENAI-specific ones", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-generic");
+    vi.stubEnv("OPENMEMBRAIN_OPENAI_API_KEY", "sk-openai");
+    const config = loadExtractionConfig();
+    expect(config.apiKey).toBe("sk-generic");
+  });
+
+  it("falls back to OPENAI env vars when generic ones are absent", () => {
+    vi.stubEnv("OPENMEMBRAIN_OPENAI_API_KEY", "sk-openai-fallback");
+    const config = loadExtractionConfig();
+    expect(config.apiKey).toBe("sk-openai-fallback");
+  });
 });

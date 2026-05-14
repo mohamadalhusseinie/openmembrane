@@ -1,0 +1,1 @@
+export { OpenAiMemoryExtractor } from "./OpenAiMemoryExtractor";

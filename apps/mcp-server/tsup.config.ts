@@ -9,10 +9,5 @@ export default defineConfig({
   banner: {
     js: "#!/usr/bin/env node",
   },
-  noExternal: [
-    "@openmembrain/core",
-    "@openmembrain/shared",
-    "@openmembrain/storage",
-    "@openmembrain/exporters",
-  ],
+  noExternal: [/^@openmembrain\//],
 });

@@ -2,6 +2,7 @@ import { basename, join, resolve } from "node:path";
 import { cwd, env } from "node:process";
 import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrain/core";
 import type { AuditLogStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrain/core";
+import { OpenAiMemoryExtractor } from "@openmembrain/extractor-openai";
 import { StaticMemoryExportService } from "@openmembrain/exporters";
 import { createId, nowIso } from "@openmembrain/shared";
 import { createStores } from "@openmembrain/storage";
@@ -57,7 +58,12 @@ export function createOpenMembrainContext(
   };
 
   const pipeline = new MemoryPipeline({
-    extractor: createExtractor(loadExtractionConfig(), { onDiagnostics }),
+    extractor: createExtractor(loadExtractionConfig(), {
+      onDiagnostics,
+      providers: {
+        openai: (config, opts) => new OpenAiMemoryExtractor(config, opts),
+      },
+    }),
     memoryStore,
     pendingCandidateStore,
     auditLogStore

@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/core",
+  "name": "@openmembrain/extractor-openai",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/shared": "*"
+    "@openmembrain/core": "*",
+    "@openmembrain/shared": "*",
+    "openai": "^6.37.0"
   }
 }

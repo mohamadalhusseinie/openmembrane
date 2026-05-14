@@ -41,6 +41,7 @@
   "devDependencies": {
     "@openmembrain/core": "*",
     "@openmembrain/exporters": "*",
+    "@openmembrain/extractor-openai": "*",
     "@openmembrain/shared": "*",
     "@openmembrain/storage": "*"
   }

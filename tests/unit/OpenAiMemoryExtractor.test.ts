@@ -1,10 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type OpenAI from "openai";
-import {
-  OpenAiMemoryExtractor,
-  type OnExtractionDiagnostics,
-  type ExtractionConfig,
-} from "@openmembrain/core";
+import { OpenAiMemoryExtractor } from "@openmembrain/extractor-openai";
+import type { OnExtractionDiagnostics, ExtractionConfig } from "@openmembrain/core";
 
 function createMockClient(responses: string[]) {
   let callIndex = 0;

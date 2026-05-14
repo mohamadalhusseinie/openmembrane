@@ -1,28 +1,19 @@
 import OpenAI from "openai";
-import type { MemoryCandidate } from "../types/MemoryCandidate";
-import { getSessionText, type SessionInput } from "../types/SessionInput";
-import type { ExtractionConfig } from "./ExtractionConfig";
-import type { MemoryExtractor } from "./MemoryExtractor";
-import { buildSystemPrompt, buildUserPrompt } from "./extractionPrompt";
-import { chunkTranscript } from "./chunkTranscript";
-import { parseExtractionResponse } from "./parseExtractionResponse";
-
-export interface ExtractionChunkError {
-  chunk: number;
-  message: string;
-}
-
-export interface ExtractionDiagnostics {
-  chunks: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  candidatesExtracted: number;
-  errors: ExtractionChunkError[];
-}
-
-export type OnExtractionDiagnostics = (
-  diagnostics: ExtractionDiagnostics,
-) => void;
+import type {
+  ExtractionConfig,
+  MemoryCandidate,
+  MemoryExtractor,
+  OnExtractionDiagnostics,
+  ExtractionChunkError,
+  SessionInput,
+} from "@openmembrain/core";
+import {
+  getSessionText,
+  buildSystemPrompt,
+  buildUserPrompt,
+  chunkTranscript,
+  parseExtractionResponse,
+} from "@openmembrain/core";
 
 export class OpenAiMemoryExtractor implements MemoryExtractor {
   private readonly client: OpenAI;
