@@ -443,6 +443,20 @@ describe("partial token matching", () => {
 
     expect(ranked[0]!.entry.id).toBe("mem_1"); // reactCustomHooks
   });
+
+  it("does not give partial credit for short tokens (< 3 chars)", () => {
+    // Content "don't" tokenizes to ["don", "t"], producing the 1-char token "t".
+    // Query "database" contains "t", but should NOT get partial credit.
+    const withShortToken = entry({ content: "Don't use eval in production." });
+    const noMatch = entry({ id: "mem_2", content: "Kubernetes deployment uses Helm charts." });
+
+    const queryTokens = tokenize("database");
+    const scoreShort = scoreEntry(withShortToken, queryTokens, "search", REF_MS);
+    const scoreNone = scoreEntry(noMatch, queryTokens, "search", REF_MS);
+
+    // Neither should get partial credit — scores should be equal
+    expect(Math.abs(scoreShort - scoreNone)).toBeLessThan(1e-9);
+  });
 });
 
 describe("reason field in haystack", () => {

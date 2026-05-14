@@ -142,17 +142,20 @@ export function scoreEntry(
     );
     const haystackSet = new Set(haystack);
 
-    // Exact and partial (substring) unigram matching
+    // Exact and partial (substring) unigram matching.
+    // Both tokens must be >= 3 chars for substring checks to avoid false positives
+    // with short tokens like "a", "i", "t" that appear inside most words.
     const PARTIAL_WEIGHT = 0.5;
+    const MIN_SUBSTRING_LEN = 3;
     let unigramScore = 0;
     for (const token of queryTokens) {
       if (haystackSet.has(token)) {
         unigramScore += 1;
-      } else {
+      } else if (token.length >= MIN_SUBSTRING_LEN) {
         // Check substring: query token contained within a haystack token, or vice versa
         let foundPartial = false;
         for (const h of haystack) {
-          if (h.includes(token) || token.includes(h)) {
+          if (h.length >= MIN_SUBSTRING_LEN && (h.includes(token) || token.includes(h))) {
             foundPartial = true;
             break;
           }
