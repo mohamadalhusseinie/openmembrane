@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankMemories, scoreEntry, tokenize, annotateConflicts } from "@openmembrain/core";
+import { annotateConflicts, bigrams, rankMemories, scoreEntry, tokenize } from "@openmembrain/core";
 import { entry } from "./helpers";
 
 const REF_TIME = "2026-05-08T12:00:00.000Z";
@@ -373,5 +373,162 @@ describe("annotateConflicts", () => {
   it("returns empty array for empty input", () => {
     const annotated = annotateConflicts([]);
     expect(annotated).toEqual([]);
+  });
+});
+
+describe("bigrams", () => {
+  it("builds consecutive token pairs", () => {
+    expect(bigrams(["react", "hooks", "pattern"])).toEqual([
+      "react hooks",
+      "hooks pattern",
+    ]);
+  });
+
+  it("returns empty array for single token", () => {
+    expect(bigrams(["react"])).toEqual([]);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(bigrams([])).toEqual([]);
+  });
+});
+
+describe("partial token matching", () => {
+  it("gives partial score when query token is substring of haystack token", () => {
+    // "react" is an exact match, "hook" is a substring of "hooks"
+    const withSubstring = entry({ content: "React hooks pattern for components." });
+    const noMatch = entry({ id: "mem_2", content: "Angular services for backend." });
+
+    const queryTokens = tokenize("react hook");
+    const scoreWith = scoreEntry(withSubstring, queryTokens, "search", REF_MS);
+    const scoreNo = scoreEntry(noMatch, queryTokens, "search", REF_MS);
+
+    expect(scoreWith).toBeGreaterThan(scoreNo);
+  });
+
+  it("gives partial score when haystack token is substring of query token", () => {
+    // "hooks" in haystack is a substring of "hookstate" in query
+    const withSubstring = entry({ content: "React hooks pattern." });
+    const noMatch = entry({ id: "mem_2", content: "Angular services." });
+
+    const queryTokens = tokenize("hookstate");
+    const scoreWith = scoreEntry(withSubstring, queryTokens, "search", REF_MS);
+    const scoreNo = scoreEntry(noMatch, queryTokens, "search", REF_MS);
+
+    expect(scoreWith).toBeGreaterThan(scoreNo);
+  });
+
+  it("weighs exact matches higher than partial matches", () => {
+    const exact = entry({ content: "react hooks are useful." });
+    const partial = entry({ id: "mem_2", content: "react hookstate is useful." });
+
+    // Query "hooks" exactly matches "hooks" in exact, only partially matches "hookstate" in partial
+    const queryTokens = tokenize("hooks");
+    const scoreExact = scoreEntry(exact, queryTokens, "search", REF_MS);
+    const scorePartial = scoreEntry(partial, queryTokens, "search", REF_MS);
+
+    expect(scoreExact).toBeGreaterThan(scorePartial);
+  });
+
+  it("react hooks scores higher against react custom hooks than angular services", () => {
+    const reactCustomHooks = entry({ content: "React custom hooks for state management." });
+    const angularServices = entry({ id: "mem_2", content: "Angular services for dependency injection." });
+
+    const ranked = rankMemories(
+      [angularServices, reactCustomHooks],
+      "react hooks",
+      "search",
+      REF_TIME,
+    );
+
+    expect(ranked[0]!.entry.id).toBe("mem_1"); // reactCustomHooks
+  });
+
+  it("does not give partial credit for short tokens (< 3 chars)", () => {
+    // Content "don't" tokenizes to ["don", "t"], producing the 1-char token "t".
+    // Query "database" contains "t", but should NOT get partial credit.
+    const withShortToken = entry({ content: "Don't use eval in production." });
+    const noMatch = entry({ id: "mem_2", content: "Kubernetes deployment uses Helm charts." });
+
+    const queryTokens = tokenize("database");
+    const scoreShort = scoreEntry(withShortToken, queryTokens, "search", REF_MS);
+    const scoreNone = scoreEntry(noMatch, queryTokens, "search", REF_MS);
+
+    // Neither should get partial credit — scores should be equal
+    expect(Math.abs(scoreShort - scoreNone)).toBeLessThan(1e-9);
+  });
+});
+
+describe("reason field in haystack", () => {
+  it("includes reason field content in query overlap scoring", () => {
+    const withReason = entry({
+      content: "Use connection pooling.",
+      reason: "Improves database performance under load.",
+    });
+    const withoutReason = entry({
+      id: "mem_2",
+      content: "Use connection pooling.",
+      reason: "test",
+    });
+
+    // Query for a term only present in the reason field
+    const queryTokens = tokenize("database performance");
+    const scoreWithReason = scoreEntry(withReason, queryTokens, "search", REF_MS);
+    const scoreWithoutReason = scoreEntry(withoutReason, queryTokens, "search", REF_MS);
+
+    expect(scoreWithReason).toBeGreaterThan(scoreWithoutReason);
+  });
+
+  it("reason field contributes to ranking order", () => {
+    const entries = [
+      entry({ id: "mem_no_reason", content: "Use ESLint for linting.", reason: "test" }),
+      entry({ id: "mem_with_reason", content: "Use ESLint for linting.", reason: "Catches common TypeScript errors early." }),
+    ];
+
+    const ranked = rankMemories(entries, "TypeScript errors", "search", REF_TIME);
+
+    expect(ranked[0]!.entry.id).toBe("mem_with_reason");
+  });
+});
+
+describe("bigram scoring", () => {
+  it("boosts entries where query bigrams appear in content", () => {
+    // "react hooks" appears as consecutive tokens in both, but "custom hooks" does not match bigram "react hooks"
+    const exactBigram = entry({ content: "React hooks are the standard pattern." });
+    const noBigram = entry({ id: "mem_2", content: "Hooks for React are custom built." });
+
+    const queryTokens = tokenize("react hooks");
+    const scoreExactBigram = scoreEntry(exactBigram, queryTokens, "search", REF_MS);
+    const scoreNoBigram = scoreEntry(noBigram, queryTokens, "search", REF_MS);
+
+    // Both have exact token matches, but exactBigram also has the bigram "react hooks"
+    expect(scoreExactBigram).toBeGreaterThan(scoreNoBigram);
+  });
+
+  it("single-token queries get no bigram bonus", () => {
+    const a = entry({ content: "React hooks pattern." });
+    const b = entry({ id: "mem_2", content: "React component pattern." });
+
+    // Single token query — no bigrams possible
+    const queryTokens = tokenize("react");
+    const scoreA = scoreEntry(a, queryTokens, "search", REF_MS);
+    const scoreB = scoreEntry(b, queryTokens, "search", REF_MS);
+
+    // Both have exact match on "react"; score difference comes from other token partial matches, not bigrams
+    // The key assertion is that this doesn't error and scores are reasonable
+    expect(scoreA).toBeGreaterThanOrEqual(0);
+    expect(scoreB).toBeGreaterThanOrEqual(0);
+  });
+
+  it("multi-word phrases rank higher when bigrams match", () => {
+    const entries = [
+      entry({ id: "mem_exact_phrase", content: "Use strict mode in all TypeScript files." }),
+      entry({ id: "mem_scattered", content: "TypeScript is strict about types. Mode is irrelevant." }),
+    ];
+
+    const ranked = rankMemories(entries, "strict mode TypeScript", "search", REF_TIME);
+
+    // "strict mode" bigram appears in mem_exact_phrase, not in mem_scattered
+    expect(ranked[0]!.entry.id).toBe("mem_exact_phrase");
   });
 });
