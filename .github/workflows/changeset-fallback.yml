@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [opened, synchronize, edited]
     branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '.changeset/**'
+      - 'docs/**'
+      - '*.md'
 
 permissions:
   contents: write
