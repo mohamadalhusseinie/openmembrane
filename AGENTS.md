@@ -82,3 +82,27 @@ interface MemoryExtractor {
 - MCP tools return safe user-facing errors with a diagnostic ID. Detailed diagnostics are stored locally.
 - Keep files focused — one clear responsibility per file.
 - DRY, YAGNI. Do not add features or abstractions that are not needed yet.
+
+## Changesets
+
+When creating a PR to `main`, include a changeset file at `.changeset/<descriptive-name>.md`.
+A GitHub Action generates one from the PR title if missing, but a manually written changeset
+provides better release notes.
+
+File format:
+
+```
+---
+"openmembrain": patch
+---
+
+Brief description of the change for the changelog.
+```
+
+Bump type convention:
+- **patch** — bug fixes, docs, refactoring, chores
+- **minor** — new features, new MCP tools, new capabilities
+- **major** — breaking changes to MCP tool interfaces or stored data formats
+
+Only list `openmembrain` (the publishable package). The fixed versioning group
+handles internal packages automatically.
