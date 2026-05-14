@@ -101,6 +101,18 @@ export function tokenize(value: string): string[] {
 }
 
 /**
+ * Build bigrams (consecutive token pairs) from an ordered token array.
+ * E.g. ["react", "hooks", "pattern"] => ["react hooks", "hooks pattern"]
+ */
+export function bigrams(tokens: readonly string[]): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < tokens.length - 1; i++) {
+    result.push(`${tokens[i]} ${tokens[i + 1]}`);
+  }
+  return result;
+}
+
+/**
  * Compute a relevance score for a single memory entry against a query.
  *
  * Each signal is normalized to [0, 1] and combined using the weight profile
@@ -122,18 +134,53 @@ export function scoreEntry(
 ): number {
   const weights = strategyWeights[strategy];
 
-  // --- Query overlap ---
+  // --- Query overlap (exact + substring + bigram) ---
   let queryOverlap = 0;
   if (queryTokens.length > 0) {
-    const haystack = tokenize([entry.content, entry.type, entry.scope, ...entry.tags].join(" "));
+    const haystack = tokenize(
+      [entry.content, entry.type, entry.scope, entry.reason, ...entry.tags].join(" "),
+    );
     const haystackSet = new Set(haystack);
-    let matched = 0;
+
+    // Exact and partial (substring) unigram matching
+    const PARTIAL_WEIGHT = 0.5;
+    let unigramScore = 0;
     for (const token of queryTokens) {
       if (haystackSet.has(token)) {
-        matched++;
+        unigramScore += 1;
+      } else {
+        // Check substring: query token contained within a haystack token, or vice versa
+        let foundPartial = false;
+        for (const h of haystack) {
+          if (h.includes(token) || token.includes(h)) {
+            foundPartial = true;
+            break;
+          }
+        }
+        if (foundPartial) {
+          unigramScore += PARTIAL_WEIGHT;
+        }
       }
     }
-    queryOverlap = matched / queryTokens.length;
+    const unigramFraction = unigramScore / queryTokens.length;
+
+    // Bigram matching: blend for consecutive token pairs found in the haystack
+    const queryBigrams = bigrams(queryTokens);
+    if (queryBigrams.length > 0) {
+      const haystackBigrams = new Set(bigrams(haystack));
+      let bigramMatched = 0;
+      for (const bg of queryBigrams) {
+        if (haystackBigrams.has(bg)) {
+          bigramMatched++;
+        }
+      }
+      const bigramFraction = bigramMatched / queryBigrams.length;
+      // Blend: 80% unigram + 20% bigram phrase proximity
+      queryOverlap = unigramFraction * 0.8 + bigramFraction * 0.2;
+    } else {
+      // Single-token query — no bigrams possible, use pure unigram score
+      queryOverlap = unigramFraction;
+    }
   } else {
     // No query — all memories are equally relevant for text matching.
     queryOverlap = 1;
