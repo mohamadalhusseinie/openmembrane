@@ -89,9 +89,8 @@ Claude should invoke `search_memory` or `get_project_rules` and return results (
 
 ## Global Instructions (Recommended)
 
-To ensure Claude automatically uses OpenMemBrain at the start and end of every
-session, add instructions to your global `~/.claude/CLAUDE.md` file. Create or
-append to it:
+To ensure Claude automatically uses OpenMemBrain every session, add instructions
+to your global `~/.claude/CLAUDE.md` file. Create or append to it:
 
 ```
 # OpenMemBrain
@@ -101,11 +100,16 @@ When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
 At session start:
 - Call get_project_rules to load coding rules and constraints.
 - Call get_relevant_context with a description of the current task.
+- Call list_memory_candidates to check for pending candidates. Surface any
+  pending candidates for approval or rejection.
 
-At session end:
-- Call propose_memory_from_session with a summary of durable knowledge.
+During the session:
+- When you discover durable knowledge (rules, gotchas, architecture decisions),
+  call propose_memory_from_session right away. Do not wait for the session to end.
 - Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
   deployment:, forbidden:, remember:, domain:.
+- Also propose memories at natural pauses and before ending a session if you
+  haven't already.
 ```
 
 This works globally across all projects without per-project configuration.

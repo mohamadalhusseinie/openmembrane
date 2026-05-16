@@ -105,14 +105,15 @@ Add to `.cursor/mcp.json` in your project:
 
 Adding the MCP server gives your AI tool access to OpenMemBrain's tools. To
 ensure the AI uses them automatically — loading project memory at session start
-and saving durable knowledge at session end — add a global instruction file.
+and saving durable knowledge as it's discovered — add a global instruction file.
 
 Create `~/.config/openmembrain/instructions.md` with instructions for the AI to:
 
-- Call `get_project_rules` and `get_relevant_context` at the start of each session.
-- Call `propose_memory_from_session` with a summary at session end, using prefixes
-  like `rule:`, `architecture:`, `gotcha:`, `testing:`, `security:`, `forbidden:`,
-  `remember:`, `domain:` to mark durable knowledge.
+- Call `get_project_rules`, `get_relevant_context`, and `list_memory_candidates`
+  at the start of each session.
+- Call `propose_memory_from_session` proactively when durable knowledge is
+  discovered, using prefixes like `rule:`, `architecture:`, `gotcha:`, `testing:`,
+  `security:`, `forbidden:`, `remember:`, `domain:` to mark durable knowledge.
 
 Then wire the file into your tool's global configuration:
 

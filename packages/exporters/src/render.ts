@@ -6,13 +6,14 @@ const usagePreamble = `## Using OpenMemBrain
 If OpenMemBrain MCP tools are available in your environment:
 
 - **Session start:** Call \`get_project_rules\` and \`get_relevant_context\` to load
-  project memory before starting work.
-- **Session end:** Call \`propose_memory_from_session\` with a summary of durable
-  knowledge discovered during the session. Use prefixes like \`rule:\`,
-  \`architecture:\`, \`gotcha:\`, \`testing:\`, \`security:\`, \`forbidden:\`, \`remember:\`
-  to help extraction.
-- **Review:** Call \`list_memory_candidates\` to review and approve/reject pending
-  memories.
+  project memory before starting work. Call \`list_memory_candidates\` to surface
+  any pending memories for the developer to approve or reject.
+- **During the session:** When you discover durable knowledge (rules, gotchas,
+  architecture decisions), call \`propose_memory_from_session\` right away. Use
+  prefixes like \`rule:\`, \`architecture:\`, \`gotcha:\`, \`testing:\`, \`security:\`,
+  \`forbidden:\`, \`remember:\` to help extraction. Don't wait for the session to
+  end — propose memories at natural pauses and before ending if you haven't
+  already.
 
 The memories below were exported from OpenMemBrain for tools without MCP access.
 `;
