@@ -121,7 +121,7 @@ Then wire the file into your tool's global configuration:
 | **OpenCode** | `"instructions": ["~/.config/openmembrain/instructions.md"]` in `~/.config/opencode/opencode.json` |
 | **Claude Code** | Append to `~/.claude/CLAUDE.md` |
 | **Cursor** | Add to Rules for AI in Cursor Settings |
-| **VS Code / Copilot** | Reference via `github.copilot.chat.codeGeneration.instructions` in user `settings.json` |
+| **VS Code / Copilot** | Create `~/.copilot/instructions/openmembrain.instructions.md` with `applyTo: "**"` |
 
 See the platform-specific setup guides in [`docs/setup/`](docs/setup/) for
 detailed instructions.

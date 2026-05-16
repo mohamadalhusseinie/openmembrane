@@ -93,33 +93,29 @@ Copilot should invoke `search_memory` and return results (or confirm no memories
 ## Global Instructions (Recommended)
 
 To ensure Copilot automatically uses OpenMemBrain at the start and end of every
-session, create a global instruction file and reference it in VS Code settings.
+session, create a user-level instruction file.
 
-1. Create `~/.config/openmembrain/instructions.md` with content like:
+Create `~/.copilot/instructions/openmembrain.instructions.md`:
 
-   ```
-   When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+```markdown
+---
+applyTo: "**"
+---
+When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
 
-   At session start:
-   - Call get_project_rules to load coding rules and constraints.
-   - Call get_relevant_context with a description of the current task.
+At session start:
+- Call get_project_rules to load coding rules and constraints.
+- Call get_relevant_context with a description of the current task.
 
-   At session end:
-   - Call propose_memory_from_session with a summary of durable knowledge.
-   - Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
-     deployment:, forbidden:, remember:, domain:.
-   ```
+At session end:
+- Call propose_memory_from_session with a summary of durable knowledge.
+- Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
+  deployment:, forbidden:, remember:, domain:.
+```
 
-2. Add a file reference in your user `settings.json` (Cmd/Ctrl + Shift + P >
-   "Preferences: Open User Settings (JSON)"):
-
-   ```json
-   {
-     "github.copilot.chat.codeGeneration.instructions": [
-       { "file": "~/.config/openmembrain/instructions.md" }
-     ]
-   }
-   ```
+VS Code automatically discovers `*.instructions.md` files in
+`~/.copilot/instructions/` and applies them based on the `applyTo` pattern. No
+settings change is needed.
 
 This works globally across all projects without per-project configuration.
 
