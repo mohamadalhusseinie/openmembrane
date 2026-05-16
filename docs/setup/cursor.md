@@ -80,6 +80,30 @@ In a Cursor chat session, ask:
 
 Cursor should invoke `search_memory` and return results (or confirm no memories exist yet).
 
+## Global Instructions (Recommended)
+
+To ensure Cursor automatically uses OpenMemBrain at the start and end of every
+session, add global AI rules:
+
+1. Open Cursor Settings (Cmd/Ctrl + ,)
+2. Navigate to General > Rules for AI
+3. Add the following:
+
+```
+When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+
+At session start:
+- Call get_project_rules to load coding rules and constraints.
+- Call get_relevant_context with a description of the current task.
+
+At session end:
+- Call propose_memory_from_session with a summary of durable knowledge.
+- Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
+  deployment:, forbidden:, remember:, domain:.
+```
+
+This works globally across all projects without per-project configuration.
+
 ## Troubleshooting
 
 - **"Server not found"**: Ensure `openmembrain` is on your PATH (`which openmembrain` or `where openmembrain`).

@@ -66,6 +66,19 @@ describe("StaticMemoryExportService", () => {
     expect(result.files[0]?.memoryCount).toBe(1);
   });
 
+  it("includes usage preamble with MCP tool instructions in all exported files", () => {
+    const service = new StaticMemoryExportService();
+    const result = service.preview("project-a", [], { generatedAt: "2026-05-08T00:00:00.000Z" });
+
+    for (const file of result.files) {
+      expect(file.content).toContain("## Using OpenMemBrain");
+      expect(file.content).toContain("get_project_rules");
+      expect(file.content).toContain("get_relevant_context");
+      expect(file.content).toContain("propose_memory_from_session");
+      expect(file.content).toContain("list_memory_candidates");
+    }
+  });
+
   it("writes generated files to disk", async () => {
     const outputDir = await tempDir();
     const service = new StaticMemoryExportService();

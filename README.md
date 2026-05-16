@@ -101,6 +101,35 @@ Add to `.cursor/mcp.json` in your project:
 }
 ```
 
+## Automatic Memory Capture
+
+Adding the MCP server gives your AI tool access to OpenMemBrain's tools. To
+ensure the AI uses them automatically — loading project memory at session start
+and saving durable knowledge at session end — add a global instruction file.
+
+Create `~/.config/openmembrain/instructions.md` with instructions for the AI to:
+
+- Call `get_project_rules` and `get_relevant_context` at the start of each session.
+- Call `propose_memory_from_session` with a summary at session end, using prefixes
+  like `rule:`, `architecture:`, `gotcha:`, `testing:`, `security:`, `forbidden:`,
+  `remember:`, `domain:` to mark durable knowledge.
+
+Then wire the file into your tool's global configuration:
+
+| Platform | Global instruction mechanism |
+|----------|------------------------------|
+| **OpenCode** | `"instructions": ["~/.config/openmembrain/instructions.md"]` in `~/.config/opencode/opencode.json` |
+| **Claude Code** | Append to `~/.claude/CLAUDE.md` |
+| **Cursor** | Add to Rules for AI in Cursor Settings |
+| **VS Code / Copilot** | Create `~/.copilot/instructions/openmembrain.instructions.md` with `applyTo: "**"` |
+
+See the platform-specific setup guides in [`docs/setup/`](docs/setup/) for
+detailed instructions.
+
+Alternatively, run `export_static_memory_files` in any project to generate
+per-project instruction files (AGENTS.md, CLAUDE.md, etc.) that include both
+usage instructions and stored memories.
+
 ## Environment Variables
 
 By default, local memory is stored in `.openmembrain` under the current working directory. Override this with:
