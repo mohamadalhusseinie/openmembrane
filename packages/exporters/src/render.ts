@@ -1,6 +1,22 @@
 import type { MemoryEntry, MemoryType } from "@openmembrain/core";
 import type { MemoryExportOptions } from "./types";
 
+const usagePreamble = `## Using OpenMemBrain
+
+If OpenMemBrain MCP tools are available in your environment:
+
+- **Session start:** Call \`get_project_rules\` and \`get_relevant_context\` to load
+  project memory before starting work.
+- **Session end:** Call \`propose_memory_from_session\` with a summary of durable
+  knowledge discovered during the session. Use prefixes like \`rule:\`,
+  \`architecture:\`, \`gotcha:\`, \`testing:\`, \`security:\`, \`forbidden:\`, \`remember:\`
+  to help extraction.
+- **Review:** Call \`list_memory_candidates\` to review and approve/reject pending
+  memories.
+
+The memories below were exported from OpenMemBrain for tools without MCP access.
+`;
+
 const typeLabels: Record<MemoryType, string> = {
   project_fact: "Project Facts",
   coding_rule: "Coding Rules",
@@ -49,6 +65,8 @@ export function renderMemoryDocument(
   lines.push(`# ${options.title}`, "");
   lines.push(options.intro, "");
   lines.push(`Project: ${projectId}`, `Generated: ${generatedAt}`, "");
+
+  lines.push(usagePreamble);
 
   if (!options.includeConfidential) {
     lines.push("> Confidential memories are excluded from this static fallback file by default.", "");

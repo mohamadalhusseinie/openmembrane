@@ -90,6 +90,39 @@ In a Copilot agent mode chat, ask:
 
 Copilot should invoke `search_memory` and return results (or confirm no memories exist yet).
 
+## Global Instructions (Recommended)
+
+To ensure Copilot automatically uses OpenMemBrain at the start and end of every
+session, create a global instruction file and reference it in VS Code settings.
+
+1. Create `~/.config/openmembrain/instructions.md` with content like:
+
+   ```
+   When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+
+   At session start:
+   - Call get_project_rules to load coding rules and constraints.
+   - Call get_relevant_context with a description of the current task.
+
+   At session end:
+   - Call propose_memory_from_session with a summary of durable knowledge.
+   - Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
+     deployment:, forbidden:, remember:, domain:.
+   ```
+
+2. Add a file reference in your user `settings.json` (Cmd/Ctrl + Shift + P >
+   "Preferences: Open User Settings (JSON)"):
+
+   ```json
+   {
+     "github.copilot.chat.codeGeneration.instructions": [
+       { "file": "~/.config/openmembrain/instructions.md" }
+     ]
+   }
+   ```
+
+This works globally across all projects without per-project configuration.
+
 ## Troubleshooting
 
 - **"Server not found"**: Ensure `openmembrain` is on your PATH.

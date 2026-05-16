@@ -72,6 +72,39 @@ variables to the MCP config:
 }
 ```
 
+## Global Instructions (Recommended)
+
+To ensure OpenCode's AI automatically loads project memory at session start and
+saves durable knowledge at session end, create a global instruction file and
+reference it in your config.
+
+1. Create `~/.config/openmembrain/instructions.md` with content like:
+
+   ```
+   When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+
+   At session start:
+   - Call get_project_rules to load coding rules and constraints.
+   - Call get_relevant_context with a description of the current task.
+
+   At session end:
+   - Call propose_memory_from_session with a summary of durable knowledge.
+   - Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
+     deployment:, forbidden:, remember:, domain:.
+   ```
+
+2. Add `"instructions"` to `~/.config/opencode/opencode.json`:
+
+   ```json
+   {
+     "instructions": ["~/.config/openmembrain/instructions.md"]
+   }
+   ```
+
+3. Restart OpenCode to pick up the change.
+
+This works globally across all projects. No per-project configuration needed.
+
 ## Troubleshooting
 
 - **Server not connecting:** Ensure OpenCode was restarted after editing
