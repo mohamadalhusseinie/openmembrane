@@ -107,15 +107,18 @@ export class MemoryApprovalService {
     const approved: MemoryEntry[] = [];
     const skipped: Array<{ candidateId: string; reason: string }> = [];
 
+    const skippableCodes = new Set(["CANDIDATE_NOT_FOUND", "SECRET_CANDIDATE"]);
+
     for (const candidate of candidates) {
       try {
         const memory = await this.approve(projectId, candidate.id);
         approved.push(memory);
       } catch (error) {
-        const reason = error instanceof OpenMembrainError
-          ? error.safeMessage
-          : "Approval failed.";
-        skipped.push({ candidateId: candidate.id, reason });
+        if (error instanceof OpenMembrainError && skippableCodes.has(error.code)) {
+          skipped.push({ candidateId: candidate.id, reason: error.safeMessage });
+        } else {
+          throw error;
+        }
       }
     }
 
