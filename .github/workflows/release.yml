@@ -26,6 +26,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: npm ci
@@ -42,9 +43,16 @@ jobs:
 
       - name: Publish to npm
         if: steps.changesets.outputs.hasChangesets == 'false'
-        run: npx changeset publish
-        env:
-          NPM_CONFIG_PROVENANCE: 'true'
+        working-directory: apps/mcp-server
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view openmembrain version 2>/dev/null || echo "none")
+          if [ "$CURRENT" != "$PUBLISHED" ]; then
+            echo "Publishing openmembrain@$CURRENT (npm has $PUBLISHED)"
+            npm publish --provenance --access public
+          else
+            echo "openmembrain@$CURRENT already published, skipping"
+          fi
 
       - name: Enable auto-merge on version PR
         if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != ''
