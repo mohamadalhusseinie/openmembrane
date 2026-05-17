@@ -1,6 +1,6 @@
 {
   "name": "openmembrain",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "description": "The intelligent membrane for AI memory — autonomously learns from your sessions, blocks secrets, and persists only what matters. No manual saving. Local-first, private, tool-agnostic.",
   "type": "module",
   "license": "MIT",
