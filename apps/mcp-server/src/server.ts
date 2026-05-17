@@ -5,12 +5,14 @@ import { normalizeOpenMembrainError } from "@openmembrain/core";
 import { resolveProjectId, type OpenMembrainMcpContext } from "./context";
 import { createToolHandlers } from "./tools/handlers";
 import {
+  approveAllCandidatesSchema,
   approveMemoryCandidateSchema,
   exportStaticMemoryFilesSchema,
   getDiagnosticsSchema,
   getProjectRulesSchema,
   getRelevantContextSchema,
   listAuditLogSchema,
+  rejectAllCandidatesSchema,
   supersedeMemorySchema,
   updateMemorySchema,
   listMemoryCandidatesSchema,
@@ -98,6 +100,28 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: rejectMemoryCandidateSchema
     },
     async (input) => safeJsonResult(context, "reject_memory_candidate", input, () => handlers.rejectMemoryCandidate(input))
+  );
+
+  server.registerTool(
+    "approve_all_candidates",
+    {
+      title: "Approve All Candidates",
+      description: "Approve all pending memory candidates at once. Secret candidates are skipped.",
+      inputSchema: approveAllCandidatesSchema
+    },
+    async (input) =>
+      safeJsonResult(context, "approve_all_candidates", input, () => handlers.approveAllCandidates(input))
+  );
+
+  server.registerTool(
+    "reject_all_candidates",
+    {
+      title: "Reject All Candidates",
+      description: "Reject and remove all pending memory candidates at once.",
+      inputSchema: rejectAllCandidatesSchema
+    },
+    async (input) =>
+      safeJsonResult(context, "reject_all_candidates", input, () => handlers.rejectAllCandidates(input))
   );
 
   server.registerTool(

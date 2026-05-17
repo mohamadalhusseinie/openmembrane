@@ -42,13 +42,15 @@ describe("MCP tool handlers", () => {
     expect(proposed.saved).toHaveLength(1);
     expect(proposed.pending).toHaveLength(0);
 
-    const rules = await handlers.getProjectRules({});
-    expect(rules).toHaveLength(1);
-    expect(rules[0]?.content).toContain("Angular standalone components");
+    const rulesResult = await handlers.getProjectRules({});
+    expect(rulesResult.rules).toHaveLength(1);
+    expect(rulesResult.rules[0]?.content).toContain("Angular standalone components");
+    expect(rulesResult.pendingCandidateCount).toBe(0);
 
-    const context = await handlers.getRelevantContext({ query: "Angular components" });
-    expect(context).toHaveLength(1);
-    expect(context[0]?.type).toBe("coding_rule");
+    const contextResult = await handlers.getRelevantContext({ query: "Angular components" });
+    expect(contextResult.memories).toHaveLength(1);
+    expect(contextResult.memories[0]?.type).toBe("coding_rule");
+    expect(contextResult.pendingCandidateCount).toBe(0);
   });
 
   it("approves pending architecture decisions through the approval handler", async () => {
@@ -71,8 +73,8 @@ describe("MCP tool handlers", () => {
     expect(approved.type).toBe("architecture_decision");
     await expect(handlers.listMemoryCandidates({})).resolves.toHaveLength(0);
 
-    const rules = await handlers.getProjectRules({});
-    expect(rules.map((rule) => rule.id)).toContain(approved.id);
+    const rulesResult = await handlers.getProjectRules({});
+    expect(rulesResult.rules.map((rule) => rule.id)).toContain(approved.id);
   });
 
   it("rejects pending candidates through the rejection handler", async () => {
@@ -241,11 +243,11 @@ describe("MCP tool handlers", () => {
       updatedAt: "2026-05-08T00:00:00.000Z"
     }));
 
-    const results = await handlers.getRelevantContext({ query: "React hooks state" });
+    const result = await handlers.getRelevantContext({ query: "React hooks state" });
 
-    expect(results).toHaveLength(2);
-    expect(results[0]!.id).toBe("mem_rule");
-    expect(results[1]!.id).toBe("mem_summary");
+    expect(result.memories).toHaveLength(2);
+    expect(result.memories[0]!.id).toBe("mem_rule");
+    expect(result.memories[1]!.id).toBe("mem_summary");
   });
 
   it("searchMemory ranks by text relevance over type", async () => {
@@ -290,8 +292,8 @@ describe("MCP tool handlers", () => {
       }));
     }
 
-    const results = await handlers.getRelevantContext({ query: "React", limit: 2 });
-    expect(results).toHaveLength(2);
+    const result = await handlers.getRelevantContext({ query: "React", limit: 2 });
+    expect(result.memories).toHaveLength(2);
   });
 
   it("getRelevantContext includes conflict annotations for contradictory memories", async () => {
@@ -311,13 +313,13 @@ describe("MCP tool handlers", () => {
       updatedAt: "2026-05-08T00:00:00.000Z"
     }));
 
-    const results = await handlers.getRelevantContext({ query: "package management" });
+    const result = await handlers.getRelevantContext({ query: "package management" });
 
-    expect(results).toHaveLength(2);
+    expect(result.memories).toHaveLength(2);
 
     // Both results should have conflict annotations
-    const pnpmResult = results.find((r) => r.id === "mem_pnpm")!;
-    const yarnResult = results.find((r) => r.id === "mem_yarn")!;
+    const pnpmResult = result.memories.find((r) => r.id === "mem_pnpm")!;
+    const yarnResult = result.memories.find((r) => r.id === "mem_yarn")!;
     expect(pnpmResult).toBeDefined();
     expect(yarnResult).toBeDefined();
 
@@ -353,13 +355,61 @@ describe("MCP tool handlers", () => {
       updatedAt: "2026-05-08T00:00:00.000Z"
     }));
 
-    const results = await handlers.getRelevantContext({ query: "frontend" });
+    const contextResult = await handlers.getRelevantContext({ query: "frontend" });
 
-    expect(results).toHaveLength(2);
+    expect(contextResult.memories).toHaveLength(2);
 
     // Neither result should have conflicts
-    for (const result of results) {
-      expect("conflicts" in result).toBe(false);
+    for (const mem of contextResult.memories) {
+      expect("conflicts" in mem).toBe(false);
     }
+  });
+
+  it("surfaces pending candidate count in getProjectRules response", async () => {
+    const { handlers } = await createHandlers();
+    await handlers.proposeMemoryFromSession({
+      summary: "architecture: Runtime config is preferred over compile-time."
+    });
+    const result = await handlers.getProjectRules({});
+    expect(result.pendingCandidateCount).toBe(1);
+  });
+
+  it("surfaces pending candidate count in getRelevantContext response", async () => {
+    const { handlers } = await createHandlers();
+    await handlers.proposeMemoryFromSession({
+      summary: "architecture: Runtime config is preferred over compile-time."
+    });
+    const result = await handlers.getRelevantContext({ query: "config" });
+    expect(result.pendingCandidateCount).toBe(1);
+  });
+
+  it("batch approves all pending candidates", async () => {
+    const { handlers } = await createHandlers();
+    await handlers.proposeMemoryFromSession({
+      summary: "architecture: Use runtime config.\ndeployment: Deploy to staging first."
+    });
+    const pending = await handlers.listMemoryCandidates({});
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+
+    const result = await handlers.approveAllCandidates({});
+    expect(result.approved.length).toBe(pending.length);
+    expect(result.skipped).toHaveLength(0);
+
+    const remaining = await handlers.listMemoryCandidates({});
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("batch rejects all pending candidates", async () => {
+    const { handlers } = await createHandlers();
+    await handlers.proposeMemoryFromSession({
+      summary: "architecture: Use runtime config."
+    });
+    expect((await handlers.listMemoryCandidates({})).length).toBeGreaterThanOrEqual(1);
+
+    const result = await handlers.rejectAllCandidates({ reason: "Batch cleanup" });
+    expect(result.rejectedCount).toBeGreaterThanOrEqual(1);
+
+    const remaining = await handlers.listMemoryCandidates({});
+    expect(remaining).toHaveLength(0);
   });
 });

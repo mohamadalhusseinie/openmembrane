@@ -3,6 +3,7 @@ import { rankMemories } from "@openmembrain/core";
 import type { MemoryEntry, MemoryScope, MemoryType } from "@openmembrain/core";
 import type { ContextCommand } from "./parseArgs";
 import { formatMemories } from "./formatters";
+import { printPendingReminder } from "./pendingReminder";
 
 export async function runContext(cmd: ContextCommand): Promise<void> {
   const context = createOpenMembrainContext();
@@ -41,6 +42,7 @@ export async function runContext(cmd: ContextCommand): Promise<void> {
 
     const output = formatMemories(memories, cmd.output);
     process.stdout.write(output + "\n");
+    await printPendingReminder(context.pendingCandidateStore, projectId);
   } finally {
     context.close?.();
   }

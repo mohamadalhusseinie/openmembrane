@@ -170,4 +170,82 @@ describe("MemoryApprovalService", () => {
       expect(events[0]!.details?.reason).toBe("Rejected by user.");
     });
   });
+
+  describe("approveAll", () => {
+    it("approves multiple pending candidates", async () => {
+      const { service, memoryStore, pendingCandidateStore } = await createService();
+      await pendingCandidateStore.save(candidate({ id: "cand_1", content: "Rule one" }));
+      await pendingCandidateStore.save(candidate({ id: "cand_2", content: "Rule two" }));
+
+      const result = await service.approveAll("project-a");
+
+      expect(result.projectId).toBe("project-a");
+      expect(result.approved).toHaveLength(2);
+      expect(result.skipped).toHaveLength(0);
+
+      const memories = await memoryStore.list("project-a");
+      expect(memories).toHaveLength(2);
+    });
+
+    it("skips secret candidates and approves non-secret ones", async () => {
+      const { service, pendingCandidateStore } = await createService();
+      await pendingCandidateStore.save(candidate({ id: "cand_normal", content: "Safe rule" }));
+      await pendingCandidateStore.save(candidate({ id: "cand_secret", content: "Secret stuff", sensitivity: "secret" }));
+
+      const result = await service.approveAll("project-a");
+
+      expect(result.approved).toHaveLength(1);
+      expect(result.approved[0]!.content).toBe("Safe rule");
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]!.candidateId).toBe("cand_secret");
+      expect(result.skipped[0]!.reason).toContain("secret");
+    });
+
+    it("returns empty arrays when no pending candidates", async () => {
+      const { service } = await createService();
+
+      const result = await service.approveAll("project-a");
+
+      expect(result.projectId).toBe("project-a");
+      expect(result.approved).toHaveLength(0);
+      expect(result.skipped).toHaveLength(0);
+    });
+  });
+
+  describe("rejectAll", () => {
+    it("rejects all pending candidates", async () => {
+      const { service, pendingCandidateStore } = await createService();
+      await pendingCandidateStore.save(candidate({ id: "cand_1" }));
+      await pendingCandidateStore.save(candidate({ id: "cand_2" }));
+
+      const result = await service.rejectAll("project-a");
+
+      expect(result.projectId).toBe("project-a");
+      expect(result.rejectedCount).toBe(2);
+
+      const remaining = await pendingCandidateStore.list("project-a");
+      expect(remaining).toHaveLength(0);
+    });
+
+    it("passes reason to audit log", async () => {
+      const { service, pendingCandidateStore, auditLogStore } = await createService();
+      await pendingCandidateStore.save(candidate({ id: "cand_1" }));
+
+      await service.rejectAll("project-a", "Bulk cleanup");
+
+      const events = await auditLogStore.list("project-a");
+      const rejection = events.find((e) => e.type === "candidate_rejected");
+      expect(rejection).toBeDefined();
+      expect(rejection!.details).toHaveProperty("reason", "Bulk cleanup");
+    });
+
+    it("returns rejectedCount 0 when no pending candidates", async () => {
+      const { service } = await createService();
+
+      const result = await service.rejectAll("project-a");
+
+      expect(result.projectId).toBe("project-a");
+      expect(result.rejectedCount).toBe(0);
+    });
+  });
 });

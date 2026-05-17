@@ -13,6 +13,17 @@ export interface MemoryApprovalServiceOptions {
   deduplicator?: Deduplicator;
 }
 
+export interface BatchApproveResult {
+  projectId: string;
+  approved: MemoryEntry[];
+  skipped: Array<{ candidateId: string; reason: string }>;
+}
+
+export interface BatchRejectResult {
+  projectId: string;
+  rejectedCount: number;
+}
+
 export class MemoryApprovalService {
   private readonly memoryStore: MemoryStore;
   private readonly pendingCandidateStore: PendingCandidateStore;
@@ -89,6 +100,37 @@ export class MemoryApprovalService {
     }
 
     return memory;
+  }
+
+  async approveAll(projectId: string): Promise<BatchApproveResult> {
+    const candidates = await this.pendingCandidateStore.list(projectId);
+    const approved: MemoryEntry[] = [];
+    const skipped: Array<{ candidateId: string; reason: string }> = [];
+
+    const skippableCodes = new Set(["CANDIDATE_NOT_FOUND", "SECRET_CANDIDATE"]);
+
+    for (const candidate of candidates) {
+      try {
+        const memory = await this.approve(projectId, candidate.id);
+        approved.push(memory);
+      } catch (error) {
+        if (error instanceof OpenMembrainError && skippableCodes.has(error.code)) {
+          skipped.push({ candidateId: candidate.id, reason: error.safeMessage });
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    return { projectId, approved, skipped };
+  }
+
+  async rejectAll(projectId: string, reason?: string): Promise<BatchRejectResult> {
+    const candidates = await this.pendingCandidateStore.list(projectId);
+    for (const candidate of candidates) {
+      await this.reject(projectId, candidate.id, reason);
+    }
+    return { projectId, rejectedCount: candidates.length };
   }
 
   async reject(projectId: string, candidateId: string, reason?: string): Promise<void> {

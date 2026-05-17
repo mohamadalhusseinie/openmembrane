@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createOpenMembrainContext, resolveProjectId } from "../context";
 import type { IngestCommand } from "./parseArgs";
 import { parseSessionContent } from "./parsers/index";
+import { printPendingReminder } from "./pendingReminder";
 
 export async function runIngest(cmd: IngestCommand): Promise<void> {
   let content: string;
@@ -50,6 +51,7 @@ export async function runIngest(cmd: IngestCommand): Promise<void> {
     });
 
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    await printPendingReminder(context.pendingCandidateStore, projectId);
   } finally {
     context.close?.();
   }

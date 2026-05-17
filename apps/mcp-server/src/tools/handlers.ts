@@ -93,6 +93,12 @@ export interface ReviewStaleMemoriesInput extends ProjectScopedInput {
   staleAfterMonths?: number | undefined;
 }
 
+export type ApproveAllCandidatesInput = ProjectScopedInput;
+
+export interface RejectAllCandidatesInput extends ProjectScopedInput {
+  reason?: string | undefined;
+}
+
 export function createToolHandlers(context: OpenMembrainMcpContext) {
   return {
     proposeMemoryFromSession: async (input: ProposeMemoryInput) => {
@@ -126,7 +132,9 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
       if (input.scope) {
         options.scopes = [input.scope];
       }
-      return context.memoryStore.search(projectId, "", options);
+      const rules = await context.memoryStore.search(projectId, "", options);
+      const pending = await context.pendingCandidateStore.list(projectId);
+      return { rules, pendingCandidateCount: pending.length };
     },
 
     getRelevantContext: async (input: GetRelevantContextInput) => {
@@ -142,12 +150,14 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
       const ranked = rankMemories(candidates, input.query, "context", undefined, input.scope)
         .slice(0, limit);
       const annotated = annotateConflicts(ranked);
-      return annotated.map((scored) => {
+      const memories = annotated.map((scored) => {
         if (scored.conflicts && scored.conflicts.length > 0) {
           return { ...scored.entry, conflicts: scored.conflicts };
         }
         return scored.entry;
       });
+      const pending = await context.pendingCandidateStore.list(projectId);
+      return { memories, pendingCandidateCount: pending.length };
     },
 
     searchMemory: async (input: SearchMemoryInput) => {
@@ -260,6 +270,16 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
       const projectId = resolveProjectId(context, input.projectId);
       const events = await context.auditLogStore.list(projectId);
       return events.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, input.limit ?? 100);
+    },
+
+    approveAllCandidates: async (input: ApproveAllCandidatesInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      return context.approvalService.approveAll(projectId);
+    },
+
+    rejectAllCandidates: async (input: RejectAllCandidatesInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      return context.approvalService.rejectAll(projectId, input.reason);
     },
 
     reviewStaleMemories: async (input: ReviewStaleMemoriesInput) => {

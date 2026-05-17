@@ -61,6 +61,15 @@ export const rejectMemoryCandidateSchema = {
   reason: z.string().min(1).optional()
 };
 
+export const approveAllCandidatesSchema = {
+  ...projectIdSchema,
+};
+
+export const rejectAllCandidatesSchema = {
+  ...projectIdSchema,
+  reason: z.string().min(1).optional().describe("Reason for rejecting all candidates."),
+};
+
 export const exportStaticMemoryFilesSchema = {
   ...projectIdSchema,
   targets: z.array(z.enum(exportTargets)).optional(),
