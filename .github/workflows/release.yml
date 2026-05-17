@@ -45,6 +45,7 @@ jobs:
         if: steps.changesets.outputs.hasChangesets == 'false'
         working-directory: apps/mcp-server
         run: |
+          unset NODE_AUTH_TOKEN
           CURRENT=$(node -p "require('./package.json').version")
           PUBLISHED=$(npm view openmembrain version 2>/dev/null || echo "none")
           if [ "$CURRENT" != "$PUBLISHED" ]; then
