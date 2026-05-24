@@ -54,11 +54,13 @@ clone of the repository.
 
 ## Optional: Enable LLM Extraction
 
-By default, OpenMemBrain uses a mock extractor (no API keys needed). All tools
-work — you can manually manage memories, search, export, etc.
+The primary workflow uses the `remember` tool — no API keys needed. The AI tool
+calls `remember` directly with structured content and type, and memories are
+auto-saved through the full pipeline.
 
-To enable real memory extraction from session transcripts, add environment
-variables to the MCP config:
+For automated full-transcript extraction via `propose_memory_from_session`, you
+can enable server-side LLM extraction by adding environment variables to the MCP
+config:
 
 ```json
 "openmembrain": {
@@ -71,6 +73,9 @@ variables to the MCP config:
   }
 }
 ```
+
+Any OpenAI-compatible endpoint works (Groq, Together, local vLLM, etc.) — set
+`OPENMEMBRAIN_OPENAI_BASE_URL` to point to your provider.
 
 ## Global Instructions (Recommended)
 
@@ -91,11 +96,10 @@ reference it in your config.
 
    During the session:
    - When you discover durable knowledge (rules, gotchas, architecture decisions),
-     call propose_memory_from_session right away. Do not wait for the session to end.
-   - Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
-     deployment:, forbidden:, remember:, domain:.
-   - Also propose memories at natural pauses and before ending a session if you
-     haven't already.
+     call remember right away with structured content and type. Do not wait for
+     the session to end.
+   - Example: remember({ content: "CI requires Node 18+.", type: "known_gotcha" })
+   - Also save memories at natural pauses and before ending a session.
    ```
 
 2. Add `"instructions"` to `~/.config/opencode/opencode.json`:
