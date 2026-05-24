@@ -4,6 +4,7 @@ import { createId, nowIso } from "@openmembrain/shared";
 import { normalizeOpenMembrainError } from "@openmembrain/core";
 import { resolveProjectId, type OpenMembrainMcpContext } from "./context";
 import { createToolHandlers } from "./tools/handlers";
+import { SessionNudgeTracker, loadNudgeConfig } from "./nudge";
 import {
   approveAllCandidatesSchema,
   approveMemoryCandidateSchema,
@@ -29,6 +30,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
     version: "0.1.0"
   });
   const handlers = createToolHandlers(context);
+  const tracker = new SessionNudgeTracker(loadNudgeConfig());
 
   server.registerTool(
     "propose_memory_from_session",
@@ -39,7 +41,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: proposeMemoryFromSessionSchema
     },
     async (input) =>
-      safeJsonResult(context, "propose_memory_from_session", input, () => handlers.proposeMemoryFromSession(input))
+      safeJsonResult(context, "propose_memory_from_session", input, () => handlers.proposeMemoryFromSession(input), tracker)
   );
 
   server.registerTool(
@@ -50,7 +52,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
         "Save structured memories directly. The AI extracts and classifies knowledge itself, then passes it here for safety checks and persistence. Accepts a single {content, type} or batch {items: [...]}. This is the primary tool for saving project knowledge — no server-side LLM needed.",
       inputSchema: rememberSchema
     },
-    async (input) => safeJsonResult(context, "remember", input, () => handlers.remember(input))
+    async (input) => safeJsonResult(context, "remember", input, () => handlers.remember(input), tracker)
   );
 
   server.registerTool(
@@ -60,7 +62,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "Return saved rules, decisions, gotchas, and constraints for a project.",
       inputSchema: getProjectRulesSchema
     },
-    async (input) => safeJsonResult(context, "get_project_rules", input, () => handlers.getProjectRules(input))
+    async (input) => safeJsonResult(context, "get_project_rules", input, () => handlers.getProjectRules(input), tracker)
   );
 
   server.registerTool(
@@ -70,7 +72,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "Return saved memory relevant to a query for future AI coding sessions.",
       inputSchema: getRelevantContextSchema
     },
-    async (input) => safeJsonResult(context, "get_relevant_context", input, () => handlers.getRelevantContext(input))
+    async (input) => safeJsonResult(context, "get_relevant_context", input, () => handlers.getRelevantContext(input), tracker)
   );
 
   server.registerTool(
@@ -80,7 +82,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "Search saved OpenMembrain memory by query, scope, type, tag, or project.",
       inputSchema: searchMemorySchema
     },
-    async (input) => safeJsonResult(context, "search_memory", input, () => handlers.searchMemory(input))
+    async (input) => safeJsonResult(context, "search_memory", input, () => handlers.searchMemory(input), tracker)
   );
 
   server.registerTool(
@@ -90,7 +92,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "List pending memory candidates waiting for developer approval.",
       inputSchema: listMemoryCandidatesSchema
     },
-    async (input) => safeJsonResult(context, "list_memory_candidates", input, () => handlers.listMemoryCandidates(input))
+    async (input) => safeJsonResult(context, "list_memory_candidates", input, () => handlers.listMemoryCandidates(input), tracker)
   );
 
   server.registerTool(
@@ -101,7 +103,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: approveMemoryCandidateSchema
     },
     async (input) =>
-      safeJsonResult(context, "approve_memory_candidate", input, () => handlers.approveMemoryCandidate(input))
+      safeJsonResult(context, "approve_memory_candidate", input, () => handlers.approveMemoryCandidate(input), tracker)
   );
 
   server.registerTool(
@@ -111,7 +113,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "Reject and remove a pending memory candidate.",
       inputSchema: rejectMemoryCandidateSchema
     },
-    async (input) => safeJsonResult(context, "reject_memory_candidate", input, () => handlers.rejectMemoryCandidate(input))
+    async (input) => safeJsonResult(context, "reject_memory_candidate", input, () => handlers.rejectMemoryCandidate(input), tracker)
   );
 
   server.registerTool(
@@ -122,7 +124,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: approveAllCandidatesSchema
     },
     async (input) =>
-      safeJsonResult(context, "approve_all_candidates", input, () => handlers.approveAllCandidates(input))
+      safeJsonResult(context, "approve_all_candidates", input, () => handlers.approveAllCandidates(input), tracker)
   );
 
   server.registerTool(
@@ -133,7 +135,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: rejectAllCandidatesSchema
     },
     async (input) =>
-      safeJsonResult(context, "reject_all_candidates", input, () => handlers.rejectAllCandidates(input))
+      safeJsonResult(context, "reject_all_candidates", input, () => handlers.rejectAllCandidates(input), tracker)
   );
 
   server.registerTool(
@@ -145,7 +147,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: exportStaticMemoryFilesSchema
     },
     async (input) =>
-      safeJsonResult(context, "export_static_memory_files", input, () => handlers.exportStaticMemoryFiles(input))
+      safeJsonResult(context, "export_static_memory_files", input, () => handlers.exportStaticMemoryFiles(input), tracker)
   );
 
   server.registerTool(
@@ -157,7 +159,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       inputSchema: reviewStaleMemoriesSchema
     },
     async (input) =>
-      safeJsonResult(context, "review_stale_memories", input, () => handlers.reviewStaleMemories(input))
+      safeJsonResult(context, "review_stale_memories", input, () => handlers.reviewStaleMemories(input), tracker)
   );
 
   server.registerTool(
@@ -167,7 +169,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "Return recent OpenMembrain diagnostics for user-visible troubleshooting.",
       inputSchema: getDiagnosticsSchema
     },
-    async (input) => safeJsonResult(context, "get_diagnostics", input, () => handlers.getDiagnostics(input))
+    async (input) => safeJsonResult(context, "get_diagnostics", input, () => handlers.getDiagnostics(input), tracker)
   );
 
   server.registerTool(
@@ -178,7 +180,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
         "Mark an existing memory as superseded. Superseded memories are excluded from retrieval but preserved in audit history.",
       inputSchema: supersedeMemorySchema
     },
-    async (input) => safeJsonResult(context, "supersede_memory", input, () => handlers.supersedeMemory(input))
+    async (input) => safeJsonResult(context, "supersede_memory", input, () => handlers.supersedeMemory(input), tracker)
   );
 
   server.registerTool(
@@ -189,7 +191,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
         "Update the content, type, scope, or tags of a saved memory. The updated content is re-validated through policy checks.",
       inputSchema: updateMemorySchema
     },
-    async (input) => safeJsonResult(context, "update_memory", input, () => handlers.updateMemory(input))
+    async (input) => safeJsonResult(context, "update_memory", input, () => handlers.updateMemory(input), tracker)
   );
 
   server.registerTool(
@@ -199,14 +201,25 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
       description: "Return recent OpenMembrain audit events for memory pipeline activity.",
       inputSchema: listAuditLogSchema
     },
-    async (input) => safeJsonResult(context, "list_audit_log", input, () => handlers.listAuditLog(input))
+    async (input) => safeJsonResult(context, "list_audit_log", input, () => handlers.listAuditLog(input), tracker)
   );
 
   return server;
 }
 
-function jsonResult(value: unknown): CallToolResult {
-  return {
+function jsonResult(value: unknown, reminder?: string): CallToolResult {
+  if (reminder && typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ ...value, sessionReminder: reminder }, null, 2)
+        }
+      ]
+    };
+  }
+
+  const result: CallToolResult = {
     content: [
       {
         type: "text",
@@ -214,16 +227,31 @@ function jsonResult(value: unknown): CallToolResult {
       }
     ]
   };
+
+  if (reminder) {
+    result.content.push({ type: "text", text: reminder });
+  }
+
+  return result;
 }
 
 export async function safeJsonResult(
   context: OpenMembrainMcpContext,
   operation: string,
   input: unknown,
-  callback: () => Promise<unknown>
+  callback: () => Promise<unknown>,
+  tracker?: SessionNudgeTracker
 ): Promise<CallToolResult> {
+  const reminder = tracker?.recordToolCall(operation);
+
   try {
-    return jsonResult(await callback());
+    const value = await callback();
+
+    if (tracker?.isSaveOperation(operation) && hasSavedMemories(value)) {
+      tracker.recordMemorySaved();
+    }
+
+    return jsonResult(value, reminder);
   } catch (error) {
     const normalized = normalizeOpenMembrainError(error);
     const diagnosticId = createId("diag");
@@ -278,4 +306,24 @@ function projectIdFromInput(context: OpenMembrainMcpContext, input: unknown): st
   }
 
   return context.defaultProjectId;
+}
+
+/**
+ * Check if the handler result indicates at least one memory was actually persisted.
+ * Both `remember` and `proposeMemoryFromSession` return objects with `savedCount` or `saved` array.
+ */
+function hasSavedMemories(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+
+  if ("savedCount" in value) {
+    const count = (value as { savedCount: unknown }).savedCount;
+    return typeof count === "number" && count > 0;
+  }
+
+  if ("saved" in value) {
+    const saved = (value as { saved: unknown }).saved;
+    return Array.isArray(saved) && saved.length > 0;
+  }
+
+  return false;
 }
