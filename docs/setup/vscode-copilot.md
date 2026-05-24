@@ -60,7 +60,8 @@ Once configured, Copilot in agent mode can use these tools:
 
 | Tool | Description |
 |------|-------------|
-| `propose_memory_from_session` | Ingest a session transcript — extract, classify, filter, persist |
+| `remember` | Save structured memory directly (content + type). No API key needed. |
+| `propose_memory_from_session` | Ingest a session transcript — requires configured LLM extractor |
 | `get_project_rules` | Retrieve rule-type memories for the project |
 | `get_relevant_context` | Ranked memory retrieval by relevance query |
 | `search_memory` | Search memories by query, scope, type, or tags |
@@ -78,7 +79,7 @@ Once configured, Copilot in agent mode can use these tools:
 
 1. Add `.vscode/mcp.json` to your project root.
 2. Open the Copilot Chat panel in agent mode (select "Agent" from the mode dropdown).
-3. Copilot can call `propose_memory_from_session` to extract durable knowledge from sessions.
+3. Copilot can call `remember` to save durable knowledge as it's discovered (no API key needed).
 4. In future sessions, Copilot can call `get_relevant_context` to retrieve stored project memory.
 5. Run `export_static_memory_files` to generate static memory files (e.g., `.github/copilot-instructions.md`).
 
@@ -111,11 +112,9 @@ At session start:
 
 During the session:
 - When you discover durable knowledge (rules, gotchas, architecture decisions),
-  call propose_memory_from_session right away. Do not wait for the session to end.
-- Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
-  deployment:, forbidden:, remember:, domain:.
-- Also propose memories at natural pauses and before ending a session if you
-  haven't already.
+  call remember right away with structured content and type.
+- Example: remember({ content: "Use Angular standalone components.", type: "coding_rule" })
+- Also save memories at natural pauses and before ending a session.
 ```
 
 VS Code automatically discovers `*.instructions.md` files in
