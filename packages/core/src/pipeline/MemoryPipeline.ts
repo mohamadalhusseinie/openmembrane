@@ -66,11 +66,6 @@ export class MemoryPipeline {
     const extracted = await this.extractor.extract(ingested.input);
     const existing = await this.memoryStore.list(input.projectId);
     const pendingCandidates: MemoryCandidate[] = await this.pendingCandidateStore.list(input.projectId);
-    const saved: MemoryEntry[] = [];
-    const pending: MemoryCandidate[] = [];
-    const rejected: MemoryCandidate[] = [];
-    const candidates: MemoryCandidate[] = [];
-    const supersededEntries: MemoryEntry[] = [];
 
     await this.auditLogStore.append({
       id: createId("audit"),
@@ -83,17 +78,45 @@ export class MemoryPipeline {
       }
     });
 
+    const result = await this.processCandidates(
+      input.projectId,
+      extracted,
+      existing,
+      pendingCandidates,
+      ingested.transcriptHash
+    );
+
+    return {
+      projectId: input.projectId,
+      ...result,
+      redactions: ingested.redactions
+    };
+  }
+
+  private async processCandidates(
+    projectId: string,
+    extracted: MemoryCandidate[],
+    existing: MemoryEntry[],
+    pendingCandidates: MemoryCandidate[],
+    transcriptHash: string | undefined
+  ): Promise<{ saved: MemoryEntry[]; pending: MemoryCandidate[]; rejected: MemoryCandidate[]; candidates: MemoryCandidate[]; superseded: MemoryEntry[] }> {
+    const saved: MemoryEntry[] = [];
+    const pending: MemoryCandidate[] = [];
+    const rejected: MemoryCandidate[] = [];
+    const candidates: MemoryCandidate[] = [];
+    const supersededEntries: MemoryEntry[] = [];
+
     for (const rawCandidate of extracted) {
       await this.auditLogStore.append({
         id: createId("audit"),
-        projectId: input.projectId,
+        projectId,
         type: "candidate_extracted",
         entityId: rawCandidate.id,
         createdAt: nowIso(),
         details: { type: rawCandidate.type }
       });
 
-      let candidate = this.withTranscriptHash(this.classifier.classify(rawCandidate), ingested.transcriptHash);
+      let candidate = this.withTranscriptHash(this.classifier.classify(rawCandidate), transcriptHash);
       const policyCheck = this.policyEngine.evaluate(candidate);
       candidate = {
         ...candidate,
@@ -132,7 +155,7 @@ export class MemoryPipeline {
 
       if (canAutoSupersede) {
         for (const conflict of conflicts) {
-          const superseded = await this.memoryStore.supersede(input.projectId, conflict.memory.id);
+          const superseded = await this.memoryStore.supersede(projectId, conflict.memory.id);
           supersededEntries.push(superseded);
           const idx = existing.findIndex((m) => m.id === conflict.memory.id);
           if (idx >= 0) {
@@ -140,7 +163,7 @@ export class MemoryPipeline {
           }
           await this.auditLogStore.append({
             id: createId("audit"),
-            projectId: input.projectId,
+            projectId,
             type: "memory_superseded",
             entityId: conflict.memory.id,
             createdAt: nowIso(),
@@ -175,7 +198,7 @@ export class MemoryPipeline {
         existing.push(stored);
         await this.auditLogStore.append({
           id: createId("audit"),
-          projectId: input.projectId,
+          projectId,
           type: "memory_saved",
           entityId: stored.id,
           createdAt: nowIso(),
@@ -190,7 +213,7 @@ export class MemoryPipeline {
         pendingCandidates.push(storedCandidate);
         await this.auditLogStore.append({
           id: createId("audit"),
-          projectId: input.projectId,
+          projectId,
           type: "candidate_queued",
           entityId: candidate.id,
           createdAt: nowIso(),
@@ -205,13 +228,11 @@ export class MemoryPipeline {
     }
 
     return {
-      projectId: input.projectId,
-      candidates,
       saved,
       pending,
       rejected,
-      superseded: supersededEntries,
-      redactions: ingested.redactions
+      candidates,
+      superseded: supersededEntries
     };
   }
 
