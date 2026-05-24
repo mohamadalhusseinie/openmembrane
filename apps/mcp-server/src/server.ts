@@ -13,6 +13,7 @@ import {
   getRelevantContextSchema,
   listAuditLogSchema,
   rejectAllCandidatesSchema,
+  rememberSchema,
   supersedeMemorySchema,
   updateMemorySchema,
   listMemoryCandidatesSchema,
@@ -39,6 +40,17 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
     },
     async (input) =>
       safeJsonResult(context, "propose_memory_from_session", input, () => handlers.proposeMemoryFromSession(input))
+  );
+
+  server.registerTool(
+    "remember",
+    {
+      title: "Remember",
+      description:
+        "Save structured memories directly. The AI extracts and classifies knowledge itself, then passes it here for safety checks and persistence. Accepts a single {content, type} or batch {items: [...]}. This is the primary tool for saving project knowledge — no server-side LLM needed.",
+      inputSchema: rememberSchema
+    },
+    async (input) => safeJsonResult(context, "remember", input, () => handlers.remember(input))
   );
 
   server.registerTool(

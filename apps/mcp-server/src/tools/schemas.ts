@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { diagnosticSeverities, memoryScopes, memoryTypes } from "@openmembrain/core";
+import { confidenceValues, diagnosticSeverities, memoryScopes, memoryTypes } from "@openmembrain/core";
 import type { ExportTarget } from "@openmembrain/exporters";
 
 export const exportTargets: readonly [ExportTarget, ...ExportTarget[]] = [
@@ -108,4 +108,22 @@ export const updateMemorySchema = {
   type: z.enum(memoryTypes).optional().describe("Updated memory type."),
   scope: z.enum(memoryScopes).optional().describe("Updated memory scope."),
   tags: z.array(z.string().min(1)).optional().describe("Updated tags (replaces existing tags).")
+};
+
+const rememberItemSchema = z.object({
+  content: z.string().min(10).max(2000).describe("The memory content to save."),
+  type: z.enum(memoryTypes).describe("Memory type (coding_rule, known_gotcha, architecture_decision, etc.)"),
+  scope: z.enum(memoryScopes).optional().describe("Memory scope. Defaults to unknown."),
+  confidence: z.enum(confidenceValues).optional().describe("Confidence level. Defaults to medium."),
+  tags: z.array(z.string().min(1)).optional().describe("Optional tags for categorization.")
+});
+
+export const rememberSchema = {
+  ...projectIdSchema,
+  content: z.string().min(10).max(2000).optional().describe("The memory content (for single save). Provide content+type OR items[]."),
+  type: z.enum(memoryTypes).optional().describe("Memory type (for single save)."),
+  scope: z.enum(memoryScopes).optional().describe("Memory scope. Defaults to unknown."),
+  confidence: z.enum(confidenceValues).optional().describe("Confidence level. Defaults to medium."),
+  tags: z.array(z.string().min(1)).optional().describe("Optional tags for categorization."),
+  items: z.array(rememberItemSchema).optional().describe("Batch: array of memory items to save.")
 };
