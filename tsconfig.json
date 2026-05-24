@@ -17,7 +17,7 @@
       "@openmembrain/exporters": ["packages/exporters/src/index.ts"],
       "@openmembrain/shared": ["packages/shared/src/index.ts"],
       "@openmembrain/storage": ["packages/storage/src/index.ts"],
-      "@openmembrain/extractor-openai": ["packages/extractor-openai/src/index.ts"]
+      "@openmembrain/extractor-llm": ["packages/extractor-llm/src/index.ts"]
     }
   },
   "include": ["packages/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]

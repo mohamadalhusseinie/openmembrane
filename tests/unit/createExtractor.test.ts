@@ -8,13 +8,13 @@ import {
 } from "@openmembrain/core";
 import { OpenMembrainError } from "@openmembrain/core";
 
-class FakeOpenAiExtractor implements MemoryExtractor {
+class FakeLlmExtractor implements MemoryExtractor {
   async extract() { return []; }
 }
 
 const fakeProviders = {
-  openai: (_config: ExtractionConfig, _opts?: { onDiagnostics?: OnExtractionDiagnostics | undefined }) =>
-    new FakeOpenAiExtractor(),
+  llm: (_config: ExtractionConfig, _opts?: { onDiagnostics?: OnExtractionDiagnostics | undefined }) =>
+    new FakeLlmExtractor(),
 };
 
 describe("createExtractor", () => {
@@ -25,23 +25,33 @@ describe("createExtractor", () => {
   });
 
   it("returns MockMemoryExtractor when enabled is false regardless of provider", () => {
-    const config: ExtractionConfig = { provider: "openai", enabled: false };
+    const config: ExtractionConfig = { provider: "llm", enabled: false };
     const extractor = createExtractor(config, { providers: fakeProviders });
     expect(extractor).toBeInstanceOf(MockMemoryExtractor);
   });
 
-  it("uses provider factory from providers map for openai", () => {
+  it("uses provider factory from providers map for llm", () => {
     const config: ExtractionConfig = {
-      provider: "openai",
+      provider: "llm",
       enabled: true,
-      apiKey: "test-key",
     };
     const extractor = createExtractor(config, { providers: fakeProviders });
-    expect(extractor).toBeInstanceOf(FakeOpenAiExtractor);
+    expect(extractor).toBeInstanceOf(FakeLlmExtractor);
   });
 
-  it("throws EXTRACTION_CONFIG_ERROR for openai without apiKey when enabled", () => {
-    const config: ExtractionConfig = { provider: "openai", enabled: true };
+  it("does not throw for llm provider without apiKey", () => {
+    const config: ExtractionConfig = {
+      provider: "llm",
+      enabled: true,
+      baseUrl: "http://localhost:11434/v1",
+      model: "llama3.1",
+    };
+    const extractor = createExtractor(config, { providers: fakeProviders });
+    expect(extractor).toBeInstanceOf(FakeLlmExtractor);
+  });
+
+  it("throws EXTRACTION_CONFIG_ERROR for anthropic without apiKey when enabled", () => {
+    const config: ExtractionConfig = { provider: "anthropic", enabled: true };
     expect(() => createExtractor(config, { providers: fakeProviders })).toThrow(OpenMembrainError);
     try {
       createExtractor(config, { providers: fakeProviders });
@@ -67,14 +77,13 @@ describe("createExtractor", () => {
   });
 
   it("passes onDiagnostics to provider factory", () => {
-    const factory = vi.fn(() => new FakeOpenAiExtractor());
+    const factory = vi.fn(() => new FakeLlmExtractor());
     const onDiagnostics = vi.fn();
     const config: ExtractionConfig = {
-      provider: "openai",
+      provider: "llm",
       enabled: true,
-      apiKey: "test-key",
     };
-    createExtractor(config, { providers: { openai: factory }, onDiagnostics });
+    createExtractor(config, { providers: { llm: factory }, onDiagnostics });
     expect(factory).toHaveBeenCalledWith(config, { onDiagnostics });
   });
 });
