@@ -61,6 +61,19 @@ export class MemoryPipeline {
     this.actionRecommender = options.actionRecommender ?? new ActionRecommender();
   }
 
+  async processStructured(projectId: string, candidates: MemoryCandidate[]): Promise<MemoryPipelineResult> {
+    const existing = await this.memoryStore.list(projectId);
+    const pendingCandidates: MemoryCandidate[] = await this.pendingCandidateStore.list(projectId);
+
+    const result = await this.processCandidates(projectId, candidates, existing, pendingCandidates, undefined);
+
+    return {
+      projectId,
+      ...result,
+      redactions: []
+    };
+  }
+
   async process(input: SessionInput): Promise<MemoryPipelineResult> {
     const ingested = this.ingestor.ingest(input);
     const extracted = await this.extractor.extract(ingested.input);
