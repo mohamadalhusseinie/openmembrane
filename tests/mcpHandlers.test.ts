@@ -134,9 +134,9 @@ describe("MCP tool handlers", () => {
     expect(payload.error.diagnosticId).toMatch(/^diag_/);
 
     const diagnostics = await handlers.getDiagnostics({});
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0]?.id).toBe(payload.error.diagnosticId);
-    expect(diagnostics[0]?.operation).toBe("propose_memory_from_session");
+    const errorDiag = diagnostics.find((d) => d.id === payload.error.diagnosticId);
+    expect(errorDiag).toBeDefined();
+    expect(errorDiag?.operation).toBe("propose_memory_from_session");
   });
 
   it("exposes audit events for memory pipeline activity", async () => {

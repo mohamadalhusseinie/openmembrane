@@ -57,8 +57,23 @@ export async function createOpenMembrainContext(
     });
   };
 
+  const extractionConfig = loadExtractionConfig();
+
+  if (!extractionConfig.enabled || extractionConfig.provider === "mock") {
+    await diagnosticsLogStore.append({
+      id: createId("diag"),
+      projectId: defaultProjectId,
+      severity: "info",
+      code: "EXTRACTION_MOCK_FALLBACK",
+      message: "No extraction API key configured — using MockMemoryExtractor. Only explicitly prefixed text will be extracted.",
+      operation: "startup",
+      source: "core",
+      createdAt: nowIso(),
+    });
+  }
+
   const pipeline = new MemoryPipeline({
-    extractor: createExtractor(loadExtractionConfig(), {
+    extractor: createExtractor(extractionConfig, {
       onDiagnostics,
       providers: {
         openai: (config, opts) => new OpenAiMemoryExtractor(config, opts),

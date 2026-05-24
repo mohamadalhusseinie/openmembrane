@@ -17,6 +17,7 @@ describe("loadExtractionConfig", () => {
 
   it("reads provider from OPENMEMBRAIN_EXTRACTION_PROVIDER", () => {
     vi.stubEnv("OPENMEMBRAIN_EXTRACTION_PROVIDER", "openai");
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test");
     const config = loadExtractionConfig();
     expect(config.provider).toBe("openai");
   });
@@ -79,5 +80,41 @@ describe("loadExtractionConfig", () => {
     vi.stubEnv("OPENMEMBRAIN_OPENAI_API_KEY", "sk-openai-fallback");
     const config = loadExtractionConfig();
     expect(config.apiKey).toBe("sk-openai-fallback");
+  });
+
+  it("auto-enables when API key is present and ENABLED not set", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-key");
+    const config = loadExtractionConfig();
+    expect(config.enabled).toBe(true);
+  });
+
+  it("defaults provider to openai when API key is present but no provider specified", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-key");
+    const config = loadExtractionConfig();
+    expect(config.provider).toBe("openai");
+  });
+
+  it("explicit ENABLED=false overrides auto-enable when API key is present", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-key");
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "false");
+    const config = loadExtractionConfig();
+    expect(config.enabled).toBe(false);
+  });
+
+  it("forces mock fallback when no API key regardless of ENABLED value", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "true");
+    const config = loadExtractionConfig();
+    expect(config.provider).toBe("mock");
+    expect(config.enabled).toBe(false);
+  });
+
+  it("works unchanged when all three env vars are explicitly set", () => {
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_PROVIDER", "openai");
+    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-full");
+    const config = loadExtractionConfig();
+    expect(config.enabled).toBe(true);
+    expect(config.provider).toBe("openai");
+    expect(config.apiKey).toBe("sk-full");
   });
 });
