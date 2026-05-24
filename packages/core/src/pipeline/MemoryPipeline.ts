@@ -62,10 +62,11 @@ export class MemoryPipeline {
   }
 
   async processStructured(projectId: string, candidates: MemoryCandidate[]): Promise<MemoryPipelineResult> {
+    const normalized = candidates.map((c) => c.projectId === projectId ? c : { ...c, projectId });
     const existing = await this.memoryStore.list(projectId);
     const pendingCandidates: MemoryCandidate[] = await this.pendingCandidateStore.list(projectId);
 
-    const result = await this.processCandidates(projectId, candidates, existing, pendingCandidates, undefined);
+    const result = await this.processCandidates(projectId, normalized, existing, pendingCandidates, undefined);
 
     return {
       projectId,
