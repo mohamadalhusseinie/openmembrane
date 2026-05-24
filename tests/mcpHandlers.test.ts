@@ -412,4 +412,84 @@ describe("MCP tool handlers", () => {
     const remaining = await handlers.listMemoryCandidates({});
     expect(remaining).toHaveLength(0);
   });
+
+  // --- remember handler tests ---
+
+  it("remember: single save stores a memory", async () => {
+    const { handlers } = await createHandlers();
+    const result = await handlers.remember({
+      content: "Always use ESM imports in this project.",
+      type: "coding_rule",
+      confidence: "high"
+    });
+    expect(result.savedCount).toBe(1);
+    const search = await handlers.searchMemory({ query: "ESM imports" });
+    expect(search.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("remember: batch save stores multiple memories", async () => {
+    const { handlers } = await createHandlers();
+    const result = await handlers.remember({
+      items: [
+        { content: "Always run tests before committing code.", type: "coding_rule", confidence: "high" },
+        { content: "Node 16 fails silently on ESM imports in CI.", type: "testing_rule", confidence: "high" }
+      ]
+    });
+    expect(result.savedCount).toBe(2);
+  });
+
+  it("remember: validation error when missing content+type and no items", async () => {
+    const { context, handlers } = await createHandlers();
+    const result = await safeJsonResult(context, "remember", {}, () =>
+      handlers.remember({} as any)
+    );
+    expect(result.isError).toBe(true);
+    const payload = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "{}") as {
+      error: { code: string };
+    };
+    expect(payload.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("remember: redacts secrets from content before saving", async () => {
+    const { handlers } = await createHandlers();
+    const result = await handlers.remember({
+      content: "Use key sk-proj-abcdefghijklmnop1234567890abcdef for authentication.",
+      type: "coding_rule",
+      confidence: "high"
+    });
+    expect(result.redactionCount).toBeGreaterThanOrEqual(1);
+    if (result.saved.length > 0) {
+      expect(result.saved[0]!.content).not.toContain("sk-proj-");
+    }
+  });
+
+  it("remember: deduplicates identical content", async () => {
+    const { handlers } = await createHandlers();
+    const first = await handlers.remember({
+      content: "Never use var declarations in TypeScript files.",
+      type: "coding_rule",
+      confidence: "high"
+    });
+    expect(first.savedCount).toBe(1);
+
+    const second = await handlers.remember({
+      content: "Never use var declarations in TypeScript files.",
+      type: "coding_rule",
+      confidence: "high"
+    });
+    expect(second.savedCount).toBe(0);
+    expect(second.rejectedCount).toBe(1);
+  });
+
+  it("remember: defaults scope to unknown", async () => {
+    const { handlers } = await createHandlers();
+    await handlers.remember({
+      content: "Use descriptive variable names throughout codebase.",
+      type: "coding_rule",
+      confidence: "high"
+    });
+    const search = await handlers.searchMemory({ query: "descriptive variable names" });
+    expect(search.length).toBeGreaterThanOrEqual(1);
+    expect(search[0]!.scope).toBe("unknown");
+  });
 });
