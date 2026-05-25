@@ -44,6 +44,7 @@
   "devDependencies": {
     "@openmembrain/core": "*",
     "@openmembrain/exporters": "*",
+    "@openmembrain/extractor-anthropic": "*",
     "@openmembrain/extractor-llm": "*",
     "@openmembrain/shared": "*",
     "@openmembrain/storage": "*"

@@ -3,6 +3,7 @@ import { cwd, env } from "node:process";
 import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrain/core";
 import type { AuditLogStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrain/core";
 import { LlmMemoryExtractor } from "@openmembrain/extractor-llm";
+import { AnthropicMemoryExtractor } from "@openmembrain/extractor-anthropic";
 import { StaticMemoryExportService } from "@openmembrain/exporters";
 import { createId, nowIso } from "@openmembrain/shared";
 import { createStores } from "@openmembrain/storage";
@@ -77,6 +78,7 @@ export async function createOpenMembrainContext(
       onDiagnostics,
       providers: {
         llm: (config, opts) => new LlmMemoryExtractor(config, opts),
+        anthropic: (config, opts) => new AnthropicMemoryExtractor(config, opts),
       },
     }),
     memoryStore,
