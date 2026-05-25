@@ -221,14 +221,21 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString();
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function truncate(str, len = 80) {
   if (!str) return '';
-  return str.length > len ? str.slice(0, len) + '…' : str;
+  const escaped = escapeHtml(str);
+  return escaped.length > len ? escaped.slice(0, len) + '…' : escaped;
 }
 
 function badgeHtml(text, prefix) {
-  const cls = prefix ? `badge badge-${text}` : 'badge';
-  return `<span class="${cls}">${text}</span>`;
+  const safe = escapeHtml(text);
+  const cls = prefix ? `badge badge-${safe}` : 'badge';
+  return `<span class="${cls}">${safe}</span>`;
 }
 
 async function loadMemories() {
@@ -250,9 +257,9 @@ async function loadMemories() {
     let html = '<table><thead><tr><th>Type</th><th>Scope</th><th>Content</th><th>Confidence</th><th>Tags</th><th>Created</th></tr></thead><tbody>';
     items.forEach((m, i) => {
       html += `<tr class="expandable" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='table-row'?'none':'table-row'">
-        <td>${badgeHtml(m.type, true)}</td><td>${m.scope || ''}</td><td>${truncate(m.content)}</td>
-        <td>${m.confidence || ''}</td><td>${(m.tags || []).join(', ')}</td><td>${formatDate(m.createdAt)}</td>
-      </tr><tr style="display:none"><td colspan="6" class="expanded-content">${m.content || ''}</td></tr>`;
+        <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(m.scope)}</td><td>${truncate(m.content)}</td>
+        <td>${escapeHtml(m.confidence)}</td><td>${escapeHtml((m.tags || []).join(', '))}</td><td>${formatDate(m.createdAt)}</td>
+      </tr><tr style="display:none"><td colspan="6" class="expanded-content">${escapeHtml(m.content)}</td></tr>`;
     });
     html += '</tbody></table>';
     document.getElementById('memories-content').innerHTML = html;
@@ -276,18 +283,18 @@ async function loadCandidates() {
     items.forEach(c => {
       const isSecret = c.sensitivity === 'secret';
       html += `<div class="card">
-        <div class="card-content">${c.content || ''}</div>
+        <div class="card-content">${escapeHtml(c.content)}</div>
         <div class="card-meta">
           ${badgeHtml(c.type, true)}
-          <span>Scope: ${c.scope || 'unknown'}</span>
-          <span>Sensitivity: ${c.sensitivity || ''}</span>
-          <span>Confidence: ${c.confidence || ''}</span>
-          ${c.reason ? `<span>Reason: ${c.reason}</span>` : ''}
-          ${c.recommendedAction ? `<span>Action: ${c.recommendedAction}</span>` : ''}
+          <span>Scope: ${escapeHtml(c.scope || 'unknown')}</span>
+          <span>Sensitivity: ${escapeHtml(c.sensitivity)}</span>
+          <span>Confidence: ${escapeHtml(c.confidence)}</span>
+          ${c.reason ? `<span>Reason: ${escapeHtml(c.reason)}</span>` : ''}
+          ${c.recommendedAction ? `<span>Action: ${escapeHtml(c.recommendedAction)}</span>` : ''}
         </div>
         <div class="card-actions">
-          <button class="btn btn-success" onclick="approveCandidate('${c.id}')" ${isSecret ? 'disabled title="Cannot approve secret candidates"' : ''}>Approve</button>
-          <button class="btn btn-danger" onclick="rejectCandidate('${c.id}')">Reject</button>
+          <button class="btn btn-success" onclick="approveCandidate('${escapeHtml(c.id)}')" ${isSecret ? 'disabled title="Cannot approve secret candidates"' : ''}>Approve</button>
+          <button class="btn btn-danger" onclick="rejectCandidate('${escapeHtml(c.id)}')">Reject</button>
         </div>
       </div>`;
     });
@@ -308,11 +315,11 @@ async function loadAudit() {
     }
     let html = '';
     items.forEach((ev, i) => {
-      const details = ev.details ? JSON.stringify(ev.details, null, 2) : '';
+      const details = ev.details ? escapeHtml(JSON.stringify(ev.details, null, 2)) : '';
       html += `<div class="audit-item">
-        ${badgeHtml(ev.type || ev.action || '', false)} <strong>${ev.entityId || ev.memoryId || ''}</strong>
-        <span style="color:var(--text-muted);margin-left:0.5rem">${formatDate(ev.timestamp)}</span>
-        ${details ? `<div class="audit-details" onclick="const el=this.nextElementSibling;el.style.display=el.style.display==='block'?'none':'block'">details ▸</div><div class="audit-json">${details}</div>` : ''}
+        ${badgeHtml(ev.type || ev.action || '', false)} <strong>${escapeHtml(ev.entityId || ev.memoryId || '')}</strong>
+        <span style="color:var(--text-muted);margin-left:0.5rem">${formatDate(ev.createdAt)}</span>
+        ${details ? `<div class="audit-details" onclick="const el=this.nextElementSibling;el.style.display=el.style.display==='block'?'none':'block'">details &#9656;</div><div class="audit-json">${details}</div>` : ''}
       </div>`;
     });
     document.getElementById('audit-content').innerHTML = html;
@@ -336,8 +343,8 @@ async function loadDiagnostics() {
     let html = '';
     items.forEach(d => {
       html += `<div class="diag-item">
-        ${badgeHtml(d.severity, true)} <strong>${d.code || ''}</strong> — ${d.message || ''}
-        <span style="color:var(--text-muted);margin-left:0.5rem">${d.operation || ''} ${formatDate(d.timestamp)}</span>
+        ${badgeHtml(d.severity, true)} <strong>${escapeHtml(d.code)}</strong> — ${escapeHtml(d.message)}
+        <span style="color:var(--text-muted);margin-left:0.5rem">${escapeHtml(d.operation || '')} ${formatDate(d.createdAt)}</span>
       </div>`;
     });
     document.getElementById('diagnostics-content').innerHTML = html;
