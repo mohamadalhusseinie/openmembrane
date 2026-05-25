@@ -67,15 +67,15 @@ config:
   "type": "local",
   "command": ["npx", "-y", "openmembrain"],
   "environment": {
-    "OPENMEMBRAIN_EXTRACTION_PROVIDER": "openai",
-    "OPENMEMBRAIN_EXTRACTION_ENABLED": "true",
-    "OPENMEMBRAIN_OPENAI_API_KEY": "your-openai-api-key"
+    "OPENMEMBRAIN_EXTRACTION_API_KEY": "your-api-key"
   }
 }
 ```
 
-Any OpenAI-compatible endpoint works (Groq, Together, local vLLM, etc.) — set
-`OPENMEMBRAIN_OPENAI_BASE_URL` to point to your provider.
+Any OpenAI-compatible endpoint works (Ollama, Groq, Together, vLLM, OpenRouter,
+etc.) — set `OPENMEMBRAIN_EXTRACTION_BASE_URL` to point to your provider and
+`OPENMEMBRAIN_EXTRACTION_MODEL` to select the model. For local models that don't
+support JSON mode, also set `OPENMEMBRAIN_EXTRACTION_JSON_MODE=false`.
 
 ## Global Instructions (Recommended)
 

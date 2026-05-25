@@ -15,9 +15,10 @@ import {
   parseExtractionResponse,
 } from "@openmembrain/core";
 
-export class OpenAiMemoryExtractor implements MemoryExtractor {
+export class LlmMemoryExtractor implements MemoryExtractor {
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly jsonMode: boolean;
   private readonly maxChunkCharacters: number | undefined;
   private readonly onDiagnostics: OnExtractionDiagnostics | undefined;
 
@@ -31,10 +32,11 @@ export class OpenAiMemoryExtractor implements MemoryExtractor {
     this.client =
       options?.client ??
       new OpenAI({
-        apiKey: config.apiKey,
+        apiKey: config.apiKey ?? "",
         ...(config.baseUrl !== undefined ? { baseURL: config.baseUrl } : {}),
       });
     this.model = config.model ?? "gpt-4o";
+    this.jsonMode = config.jsonMode !== false;
     this.maxChunkCharacters = config.maxChunkCharacters;
     this.onDiagnostics = options?.onDiagnostics;
   }
@@ -61,11 +63,12 @@ export class OpenAiMemoryExtractor implements MemoryExtractor {
             { role: "system", content: systemPrompt },
             { role: "user", content: buildUserPrompt(chunk) },
           ],
-          response_format: { type: "json_object" },
+          ...(this.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
           temperature: 0.2,
         });
 
-        const content = response.choices[0]?.message?.content;
+        const rawContent = response.choices[0]?.message?.content;
+        const content = rawContent ? this.extractJson(rawContent) : undefined;
         if (content) {
           const candidates = parseExtractionResponse(content, input.projectId, {
             ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
@@ -102,5 +105,36 @@ export class OpenAiMemoryExtractor implements MemoryExtractor {
     });
 
     return deduplicated;
+  }
+
+  /**
+   * Extracts JSON from the response content. When JSON mode is disabled,
+   * the model may wrap JSON in markdown fences or add surrounding text.
+   */
+  private extractJson(raw: string): string {
+    const trimmed = raw.trim();
+
+    // If it starts with { or [ it's likely raw JSON
+    if (
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    ) {
+      return trimmed;
+    }
+
+    // Try to extract from markdown code fences
+    const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (fenceMatch?.[1]) {
+      return fenceMatch[1].trim();
+    }
+
+    // Try to find a JSON object or array anywhere in the text
+    const jsonMatch = trimmed.match(/[\[{][\s\S]*[\]}]/);
+    if (jsonMatch?.[0]) {
+      return jsonMatch[0];
+    }
+
+    // Return as-is and let parseExtractionResponse handle the error
+    return trimmed;
   }
 }
