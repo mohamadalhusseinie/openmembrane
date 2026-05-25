@@ -1,0 +1,15 @@
+{
+  "name": "@openmembrain/review-ui",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsup src/index.ts --format esm --dts"
+  },
+  "devDependencies": {
+    "@openmembrain/core": "*",
+    "@openmembrain/shared": "*",
+    "@openmembrain/storage": "*"
+  }
+}
