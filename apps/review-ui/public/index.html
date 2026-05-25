@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenMemBrain — Review UI</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --text: #1a1a1a;
+  --text-muted: #666666;
+  --border: #e0e0e0;
+  --accent: #0066cc;
+  --success: #1a8a3e;
+  --danger: #cc2222;
+  --badge-bg: #e8e8e8;
+  --tab-active-border: #0066cc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --bg-secondary: #252525;
+    --text: #e0e0e0;
+    --text-muted: #999999;
+    --border: #333333;
+    --accent: #4da6ff;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --badge-bg: #333333;
+    --tab-active-border: #4da6ff;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.tab-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  border-bottom: 2px solid transparent;
+  position: relative;
+}
+.tab-btn.active { color: var(--text); border-bottom-color: var(--tab-active-border); font-weight: 600; }
+.tab-btn .badge {
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+  margin-left: 0.3rem;
+  vertical-align: top;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.filter-row { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.filter-row input, .filter-row select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+.filter-row input { flex: 1; min-width: 150px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+th { font-weight: 600; background: var(--bg-secondary); position: sticky; top: 0; }
+.table-wrap { overflow-x: auto; }
+tr.expandable { cursor: pointer; }
+tr.expandable:hover { background: var(--bg-secondary); }
+.expanded-content { white-space: pre-wrap; word-break: break-word; padding: 0.5rem; background: var(--bg-secondary); }
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--badge-bg);
+  color: var(--text);
+}
+.badge-coding_rule { background: #dbeafe; color: #1e40af; }
+.badge-known_gotcha { background: #fef3c7; color: #92400e; }
+.badge-architecture_decision { background: #ede9fe; color: #6b21a8; }
+.badge-security_rule { background: #fee2e2; color: #991b1b; }
+.badge-testing_rule { background: #d1fae5; color: #065f46; }
+.badge-deployment_rule { background: #e0e7ff; color: #3730a3; }
+.badge-forbidden_pattern { background: #fce7f3; color: #9d174d; }
+.badge-project_fact { background: #f3f4f6; color: #374151; }
+.badge-domain_knowledge { background: #ecfdf5; color: #047857; }
+.badge-session_summary { background: #f5f3ff; color: #5b21b6; }
+.badge-debug { background: #9ca3af; color: #fff; }
+.badge-info { background: #3b82f6; color: #fff; }
+.badge-warning { background: #f59e0b; color: #fff; }
+.badge-error { background: #ef4444; color: #fff; }
+.empty { color: var(--text-muted); padding: 2rem; text-align: center; }
+.card { border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; margin-bottom: 0.5rem; background: var(--bg-secondary); }
+.card-content { margin-bottom: 0.5rem; }
+.card-meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.card-actions { display: flex; gap: 0.5rem; }
+.btn {
+  padding: 0.3rem 0.7rem;
+  border: none;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-success { background: var(--success); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.bulk-actions { margin-bottom: 0.75rem; display: flex; gap: 0.5rem; }
+.audit-item, .diag-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+.audit-details { cursor: pointer; color: var(--accent); font-size: 0.75rem; }
+.audit-json { display: none; white-space: pre-wrap; font-size: 0.7rem; background: var(--bg-secondary); padding: 0.5rem; margin-top: 0.3rem; word-break: break-all; }
+#toast-container { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+.toast { padding: 0.6rem 1rem; border-radius: 4px; font-size: 0.8rem; color: #fff; }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+</style>
+</head>
+<body>
+<h1>OpenMemBrain</h1>
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('memories')">Memories</button>
+  <button class="tab-btn" onclick="switchTab('pending')" id="pending-tab-btn">Pending</button>
+  <button class="tab-btn" onclick="switchTab('audit')">Audit</button>
+  <button class="tab-btn" onclick="switchTab('diagnostics')">Diagnostics</button>
+</div>
+
+<div id="tab-memories" class="tab-content active">
+  <div class="filter-row">
+    <input type="text" id="mem-search" placeholder="Search..." oninput="loadMemories()">
+    <select id="mem-type" onchange="loadMemories()">
+      <option value="">All types</option>
+      <option value="project_fact">project_fact</option>
+      <option value="coding_rule">coding_rule</option>
+      <option value="architecture_decision">architecture_decision</option>
+      <option value="known_gotcha">known_gotcha</option>
+      <option value="testing_rule">testing_rule</option>
+      <option value="deployment_rule">deployment_rule</option>
+      <option value="security_rule">security_rule</option>
+      <option value="forbidden_pattern">forbidden_pattern</option>
+      <option value="domain_knowledge">domain_knowledge</option>
+      <option value="session_summary">session_summary</option>
+    </select>
+    <select id="mem-scope" onchange="loadMemories()">
+      <option value="">All scopes</option>
+      <option value="global">global</option>
+      <option value="frontend">frontend</option>
+      <option value="backend">backend</option>
+      <option value="database">database</option>
+      <option value="deployment">deployment</option>
+      <option value="testing">testing</option>
+      <option value="security">security</option>
+      <option value="tooling">tooling</option>
+      <option value="unknown">unknown</option>
+    </select>
+  </div>
+  <div class="table-wrap" id="memories-content"></div>
+</div>
+
+<div id="tab-pending" class="tab-content">
+  <div class="bulk-actions">
+    <button class="btn btn-success" onclick="approveAllCandidates()">Approve All</button>
+    <button class="btn btn-danger" onclick="rejectAllCandidates()">Reject All</button>
+  </div>
+  <div id="pending-content"></div>
+</div>
+
+<div id="tab-audit" class="tab-content">
+  <div id="audit-content"></div>
+</div>
+
+<div id="tab-diagnostics" class="tab-content">
+  <div class="filter-row">
+    <select id="diag-severity" onchange="loadDiagnostics()">
+      <option value="">All severities</option>
+      <option value="debug">debug</option>
+      <option value="info">info</option>
+      <option value="warning">warning</option>
+      <option value="error">error</option>
+    </select>
+  </div>
+  <div id="diagnostics-content"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false };
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
+  if (!tabsLoaded[name]) {
+    tabsLoaded[name] = true;
+    if (name === 'memories') loadMemories();
+    else if (name === 'pending') loadCandidates();
+    else if (name === 'audit') loadAudit();
+    else if (name === 'diagnostics') loadDiagnostics();
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString();
+}
+
+function truncate(str, len = 80) {
+  if (!str) return '';
+  return str.length > len ? str.slice(0, len) + '…' : str;
+}
+
+function badgeHtml(text, prefix) {
+  const cls = prefix ? `badge badge-${text}` : 'badge';
+  return `<span class="${cls}">${text}</span>`;
+}
+
+async function loadMemories() {
+  const q = document.getElementById('mem-search').value;
+  const type = document.getElementById('mem-type').value;
+  const scope = document.getElementById('mem-scope').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (type) params.set('type', type);
+  if (scope) params.set('scope', scope);
+  try {
+    const res = await fetch('/api/memories?' + params);
+    const data = await res.json();
+    const items = data.memories || data || [];
+    if (!items.length) {
+      document.getElementById('memories-content').innerHTML = '<div class="empty">No memories found</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>Type</th><th>Scope</th><th>Content</th><th>Confidence</th><th>Tags</th><th>Created</th></tr></thead><tbody>';
+    items.forEach((m, i) => {
+      html += `<tr class="expandable" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='table-row'?'none':'table-row'">
+        <td>${badgeHtml(m.type, true)}</td><td>${m.scope || ''}</td><td>${truncate(m.content)}</td>
+        <td>${m.confidence || ''}</td><td>${(m.tags || []).join(', ')}</td><td>${formatDate(m.createdAt)}</td>
+      </tr><tr style="display:none"><td colspan="6" class="expanded-content">${m.content || ''}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('memories-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('memories-content').innerHTML = '<div class="empty">Error loading memories</div>';
+  }
+}
+
+async function loadCandidates() {
+  try {
+    const res = await fetch('/api/candidates');
+    const data = await res.json();
+    const items = data.candidates || data || [];
+    const btn = document.getElementById('pending-tab-btn');
+    btn.innerHTML = items.length ? `Pending <span class="badge">${items.length}</span>` : 'Pending';
+    if (!items.length) {
+      document.getElementById('pending-content').innerHTML = '<div class="empty">No pending candidates</div>';
+      return;
+    }
+    let html = '';
+    items.forEach(c => {
+      const isSecret = c.sensitivity === 'secret';
+      html += `<div class="card">
+        <div class="card-content">${c.content || ''}</div>
+        <div class="card-meta">
+          ${badgeHtml(c.type, true)}
+          <span>Scope: ${c.scope || 'unknown'}</span>
+          <span>Sensitivity: ${c.sensitivity || ''}</span>
+          <span>Confidence: ${c.confidence || ''}</span>
+          ${c.reason ? `<span>Reason: ${c.reason}</span>` : ''}
+          ${c.recommendedAction ? `<span>Action: ${c.recommendedAction}</span>` : ''}
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-success" onclick="approveCandidate('${c.id}')" ${isSecret ? 'disabled title="Cannot approve secret candidates"' : ''}>Approve</button>
+          <button class="btn btn-danger" onclick="rejectCandidate('${c.id}')">Reject</button>
+        </div>
+      </div>`;
+    });
+    document.getElementById('pending-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('pending-content').innerHTML = '<div class="empty">Error loading candidates</div>';
+  }
+}
+
+async function loadAudit() {
+  try {
+    const res = await fetch('/api/audit?limit=100');
+    const data = await res.json();
+    const items = data.events || data || [];
+    if (!items.length) {
+      document.getElementById('audit-content').innerHTML = '<div class="empty">No audit events</div>';
+      return;
+    }
+    let html = '';
+    items.forEach((ev, i) => {
+      const details = ev.details ? JSON.stringify(ev.details, null, 2) : '';
+      html += `<div class="audit-item">
+        ${badgeHtml(ev.type || ev.action || '', false)} <strong>${ev.entityId || ev.memoryId || ''}</strong>
+        <span style="color:var(--text-muted);margin-left:0.5rem">${formatDate(ev.timestamp)}</span>
+        ${details ? `<div class="audit-details" onclick="const el=this.nextElementSibling;el.style.display=el.style.display==='block'?'none':'block'">details ▸</div><div class="audit-json">${details}</div>` : ''}
+      </div>`;
+    });
+    document.getElementById('audit-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('audit-content').innerHTML = '<div class="empty">Error loading audit log</div>';
+  }
+}
+
+async function loadDiagnostics() {
+  const severity = document.getElementById('diag-severity').value;
+  const params = new URLSearchParams({ limit: '100' });
+  if (severity) params.set('severity', severity);
+  try {
+    const res = await fetch('/api/diagnostics?' + params);
+    const data = await res.json();
+    const items = data.diagnostics || data || [];
+    if (!items.length) {
+      document.getElementById('diagnostics-content').innerHTML = '<div class="empty">No diagnostics</div>';
+      return;
+    }
+    let html = '';
+    items.forEach(d => {
+      html += `<div class="diag-item">
+        ${badgeHtml(d.severity, true)} <strong>${d.code || ''}</strong> — ${d.message || ''}
+        <span style="color:var(--text-muted);margin-left:0.5rem">${d.operation || ''} ${formatDate(d.timestamp)}</span>
+      </div>`;
+    });
+    document.getElementById('diagnostics-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('diagnostics-content').innerHTML = '<div class="empty">Error loading diagnostics</div>';
+  }
+}
+
+async function approveCandidate(id) {
+  try {
+    const res = await fetch(`/api/candidates/${id}/approve`, { method: 'POST' });
+    if (!res.ok) throw new Error();
+    showToast('Candidate approved', 'success');
+    tabsLoaded.pending = false; loadCandidates();
+  } catch { showToast('Failed to approve', 'error'); }
+}
+
+async function rejectCandidate(id) {
+  const reason = window.prompt('Reason for rejection:');
+  if (reason === null) return;
+  try {
+    const res = await fetch(`/api/candidates/${id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+    if (!res.ok) throw new Error();
+    showToast('Candidate rejected', 'success');
+    tabsLoaded.pending = false; loadCandidates();
+  } catch { showToast('Failed to reject', 'error'); }
+}
+
+async function approveAllCandidates() {
+  try {
+    const res = await fetch('/api/candidates/approve-all', { method: 'POST' });
+    if (!res.ok) throw new Error();
+    showToast('All candidates approved', 'success');
+    tabsLoaded.pending = false; loadCandidates();
+  } catch { showToast('Failed to approve all', 'error'); }
+}
+
+async function rejectAllCandidates() {
+  const reason = window.prompt('Reason for rejecting all:');
+  if (reason === null) return;
+  try {
+    const res = await fetch('/api/candidates/reject-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+    if (!res.ok) throw new Error();
+    showToast('All candidates rejected', 'success');
+    tabsLoaded.pending = false; loadCandidates();
+  } catch { showToast('Failed to reject all', 'error'); }
+}
+
+function showToast(message, type) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// Initial load
+tabsLoaded.memories = true;
+loadMemories();
+</script>
+</body>
+</html>
