@@ -84,11 +84,7 @@ Add to `.cursor/mcp.json` in your project:
 
 ### OpenCode
 
-**Automated (recommended):** Tell OpenCode:
-
-> Fetch and follow instructions from https://raw.githubusercontent.com/mohamadalhusseinie/openmembrain/refs/heads/main/.opencode/INSTALL.md
-
-**Manual:** Add to `~/.config/opencode/opencode.json`:
+Add to `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -101,6 +97,9 @@ Add to `.cursor/mcp.json` in your project:
 }
 ```
 
+See [`.opencode/INSTALL.md`](../../.opencode/INSTALL.md) for detailed setup including
+global instructions and development-from-source configuration.
+
 ## Environment Variables
 
 By default, local memory is stored in `.openmembrain` under the current working directory. Override this with:
@@ -110,13 +109,16 @@ By default, local memory is stored in `.openmembrain` under the current working 
 
 ## MCP Tools
 
-- `propose_memory_from_session` — submit a session transcript or summary for memory extraction. Accepts optional `metadata` (key-value pairs) for additional context.
+- `remember` — save structured memory directly. Provide content, type, and optional scope/tags. No API key needed. Supports single and batch mode.
+- `propose_memory_from_session` — submit a session transcript or summary for server-side LLM extraction. Requires a configured extractor. Useful for automation adapters.
 - `get_project_rules` — retrieve project rules and conventions for the current scope.
 - `get_relevant_context` — find memories relevant to a natural language query.
 - `search_memory` — search saved memories by query, scope, type, or tags.
 - `list_memory_candidates` — list pending memory candidates awaiting approval.
 - `approve_memory_candidate` — approve a pending candidate to save it as memory.
+- `approve_all_candidates` — approve all pending candidates at once.
 - `reject_memory_candidate` — reject a pending candidate with an optional reason.
+- `reject_all_candidates` — reject all pending candidates at once.
 - `update_memory` — update the content, type, scope, or tags of a saved memory.
 - `supersede_memory` — mark a memory as superseded, optionally linking a replacement.
 - `review_stale_memories` — list memories older than a threshold (default: 6 months).
@@ -126,19 +128,24 @@ By default, local memory is stored in `.openmembrain` under the current working 
 
 ## Architecture
 
-The first implementation is centered on the autonomous memory pipeline, not a CLI workflow.
+OpenMemBrain supports two paths for saving memory:
+
+1. **`remember` (primary):** The AI tool calls `remember` directly with structured content and type. No server-side LLM needed. Memories go through the full pipeline (secret detection, policy filtering, deduplication) and are auto-saved.
+
+2. **`propose_memory_from_session` (secondary):** An adapter or AI tool submits a full session transcript for server-side LLM extraction. Requires a configured extractor (OpenAI or compatible provider).
 
 ```text
-session transcript or summary
-  -> SessionIngestor
-  -> SecretDetector redaction (pre-extraction)
-  -> MemoryExtractor interface (MockMemoryExtractor for MVP)
-  -> MemoryClassifier (+ SecretDetector check)
-  -> PolicyEngine (SecretDetector + SafetyFilter + NoiseFilter)
-  -> Deduplicator
-  -> ConflictDetector
-  -> ActionRecommender
-  -> MemoryApprovalService (+ SecretDetector safety net)
+remember tool                          propose_memory_from_session
+  |                                      |
+  v                                      v
+processStructured()                    SessionIngestor
+  |                                      -> SecretDetector redaction
+  v                                      -> MemoryExtractor interface
+MemoryClassifier                         -> MemoryClassifier
+  -> PolicyEngine                        -> PolicyEngine
+  -> Deduplicator                        -> Deduplicator
+  -> ConflictDetector                    -> ConflictDetector
+  -> ActionRecommender                   -> ActionRecommender
   -> MemoryStore or PendingCandidateStore
 ```
 
@@ -158,7 +165,7 @@ interface MemoryExtractor {
 }
 ```
 
-The MVP ships with `MockMemoryExtractor` so the pipeline can be tested deterministically before adding OpenAI, Anthropic, or local model extractors.
+The `MockMemoryExtractor` is used for deterministic testing. The `OpenAiMemoryExtractor` supports OpenAI and any compatible API endpoint (via `baseUrl`).
 
 ## Diagnostics And Errors
 

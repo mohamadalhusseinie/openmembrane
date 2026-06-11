@@ -40,12 +40,12 @@ The membrane idea matters. OpenMemBrain should act as a protective boundary. It 
 The main workflow should be autonomous:
 
 1. A developer works normally in an AI coding tool.
-2. OpenMemBrain receives a session transcript or summary through an adapter, hook, MCP tool, or local ingestion API.
-3. OpenMemBrain analyzes the session.
-4. OpenMemBrain extracts only durable knowledge worth remembering.
-5. OpenMemBrain blocks secrets and unsafe content.
-6. OpenMemBrain auto-saves low-risk memory or queues important decisions for approval.
-7. Future AI tools retrieve relevant memory through MCP or generated static instruction files.
+2. The AI tool discovers durable project knowledge during the session and calls `remember` to save it directly (structured content + type). Alternatively, adapters or hooks can submit full session transcripts via `propose_memory_from_session` for server-side extraction.
+3. OpenMemBrain runs the memory through its pipeline (secret detection, policy filtering, deduplication, conflict detection).
+4. OpenMemBrain auto-saves low-risk memory or queues important decisions for approval.
+5. Future AI tools retrieve relevant memory through MCP or generated static instruction files.
+
+The primary `remember` path requires no API key — the AI tool performs extraction. The secondary `propose_memory_from_session` path uses a configured LLM extractor for full transcript analysis.
 
 Commands such as `openmembrain remember`, `openmembrain recall`, and `openmembrain export` may exist later as admin or debugging tools, but they are not the core product workflow.
 

@@ -10,8 +10,10 @@ Implemented:
 
 - TypeScript monorepo
 - core memory pipeline
-- deterministic mock extractor
-- OpenAI-compatible extractor behind `MemoryExtractor` interface, with OpenAI API-compatible endpoints supported via `baseUrl`
+- `remember` tool (primary path — AI-side extraction, no server LLM needed)
+- `propose_memory_from_session` (secondary path — server-side LLM extraction)
+- deterministic mock extractor (for testing)
+- OpenAI-compatible LLM extractor behind `MemoryExtractor` interface, with configurable `baseUrl` and JSON mode
 - extraction prompt design with chunking and response parsing
 - rule-based secret detection
 - noise and safety filters
@@ -25,7 +27,7 @@ Implemented:
 - diagnostics log
 - transport-agnostic ingestion API for adapters
 - multi-signal relevance scoring
-- MCP server with 13 tools
+- MCP server with 16 tools
 - static fallback exporters (AGENTS.md, CLAUDE.md, copilot-instructions.md, cursor rules, project-memory.md)
 - test suite (34 test files, cross-platform CI)
 - Changesets release workflow
@@ -34,7 +36,7 @@ Implemented:
 
 Status: complete (delivered as part of Phase 1).
 
-The `OpenAiMemoryExtractor` is implemented behind the `MemoryExtractor` interface. Secrets are redacted before model calls. `MockMemoryExtractor` is preserved for deterministic tests. Provider configuration is explicit and required.
+The `LlmMemoryExtractor` is implemented behind the `MemoryExtractor` interface. Secrets are redacted before model calls. `MockMemoryExtractor` is preserved for deterministic tests. Provider configuration is explicit and required.
 
 ## Phase 3: Local Ingestion API
 

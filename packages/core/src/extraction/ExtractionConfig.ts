@@ -1,7 +1,7 @@
 import type { Result } from "@openmembrain/shared";
 import { OpenMembrainError } from "../errors/OpenMembrainError";
 
-export const extractionProviders = ["mock", "openai", "anthropic", "local"] as const;
+export const extractionProviders = ["mock", "llm", "anthropic"] as const;
 
 export type ExtractionProvider = (typeof extractionProviders)[number];
 
@@ -12,6 +12,7 @@ export interface ExtractionConfig {
   model?: string | undefined;
   baseUrl?: string | undefined;
   maxChunkCharacters?: number | undefined;
+  jsonMode?: boolean | undefined;
 }
 
 export const defaultExtractionConfig: ExtractionConfig = {
@@ -35,7 +36,7 @@ export function validateExtractionConfig(
 
   if (
     config.enabled &&
-    (config.provider === "openai" || config.provider === "anthropic") &&
+    config.provider === "anthropic" &&
     !config.apiKey
   ) {
     return {

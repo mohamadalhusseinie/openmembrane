@@ -54,11 +54,12 @@ clone of the repository.
 
 ## Optional: Enable LLM Extraction
 
-By default, OpenMemBrain uses a mock extractor (no API keys needed). All tools
-work — you can manually manage memories, search, export, etc.
+The primary workflow uses the `remember` tool — no API keys needed. The AI tool
+calls `remember` directly with structured content and type, and memories are
+auto-saved through the full pipeline.
 
-To enable real memory extraction from session transcripts with the registered
-OpenAI-compatible extractor, add extraction environment variables to the MCP
+For automated full-transcript extraction via `propose_memory_from_session`, you
+can enable server-side LLM extraction by adding environment variables to the MCP
 config:
 
 ```json
@@ -66,17 +67,21 @@ config:
   "type": "local",
   "command": ["npx", "-y", "openmembrain"],
   "environment": {
-    "OPENMEMBRAIN_EXTRACTION_PROVIDER": "openai",
-    "OPENMEMBRAIN_EXTRACTION_ENABLED": "true",
     "OPENMEMBRAIN_EXTRACTION_API_KEY": "your-api-key",
     "OPENMEMBRAIN_EXTRACTION_MODEL": "gpt-4o"
   }
 }
 ```
 
-The `openai` provider value selects the registered OpenAI-compatible extractor.
-For an endpoint that implements the OpenAI API, keep the provider set to
-`openai` and set `OPENMEMBRAIN_EXTRACTION_BASE_URL` to that endpoint's base URL.
+The presence of `OPENMEMBRAIN_EXTRACTION_API_KEY` auto-enables the registered
+`llm` extractor. Any OpenAI-compatible endpoint works (OpenAI, Groq, Together,
+vLLM, OpenRouter, etc.) — set `OPENMEMBRAIN_EXTRACTION_BASE_URL` to point to
+your provider and `OPENMEMBRAIN_EXTRACTION_MODEL` to select the model.
+
+For local models without an API key, set
+`OPENMEMBRAIN_EXTRACTION_PROVIDER=llm` and
+`OPENMEMBRAIN_EXTRACTION_ENABLED=true`. If the endpoint does not support JSON
+mode, also set `OPENMEMBRAIN_EXTRACTION_JSON_MODE=false`.
 
 ## Global Instructions (Recommended)
 
@@ -97,11 +102,10 @@ reference it in your config.
 
    During the session:
    - When you discover durable knowledge (rules, gotchas, architecture decisions),
-     call propose_memory_from_session right away. Do not wait for the session to end.
-   - Use prefixes: rule:, architecture:, gotcha:, testing:, security:,
-     deployment:, forbidden:, remember:, domain:.
-   - Also propose memories at natural pauses and before ending a session if you
-     haven't already.
+     call remember right away with structured content and type. Do not wait for
+     the session to end.
+   - Example: remember({ content: "CI requires Node 18+.", type: "known_gotcha" })
+   - Also save memories at natural pauses and before ending a session.
    ```
 
 2. Add `"instructions"` to `~/.config/opencode/opencode.json`:

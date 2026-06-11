@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/extractor-openai",
+  "name": "@openmembrain/extractor-llm",
   "version": "0.1.0",
   "private": true,
   "type": "module",

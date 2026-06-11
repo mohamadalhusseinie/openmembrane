@@ -6,8 +6,8 @@ import {
 } from "@openmembrain/core";
 
 describe("ExtractionConfig", () => {
-  it("accepts valid openai config with apiKey when enabled", () => {
-    const config: ExtractionConfig = { provider: "openai", enabled: true, apiKey: "sk-test" };
+  it("accepts valid llm config with apiKey when enabled", () => {
+    const config: ExtractionConfig = { provider: "llm", enabled: true, apiKey: "sk-test" };
     const result = validateExtractionConfig(config);
     expect(result.ok).toBe(true);
   });
@@ -18,8 +18,19 @@ describe("ExtractionConfig", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("rejects openai without apiKey when enabled", () => {
-    const config: ExtractionConfig = { provider: "openai", enabled: true };
+  it("accepts llm provider without apiKey when enabled (local models)", () => {
+    const config: ExtractionConfig = {
+      provider: "llm",
+      enabled: true,
+      model: "llama3.1",
+      baseUrl: "http://localhost:11434/v1",
+    };
+    const result = validateExtractionConfig(config);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects anthropic without apiKey when enabled", () => {
+    const config: ExtractionConfig = { provider: "anthropic", enabled: true };
     const result = validateExtractionConfig(config);
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -27,8 +38,8 @@ describe("ExtractionConfig", () => {
     }
   });
 
-  it("accepts openai without apiKey when not enabled", () => {
-    const config: ExtractionConfig = { provider: "openai", enabled: false };
+  it("accepts anthropic without apiKey when not enabled", () => {
+    const config: ExtractionConfig = { provider: "anthropic", enabled: false };
     const result = validateExtractionConfig(config);
     expect(result.ok).toBe(true);
   });
@@ -44,6 +55,16 @@ describe("ExtractionConfig", () => {
 
   it("validates defaultExtractionConfig", () => {
     const result = validateExtractionConfig(defaultExtractionConfig);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts jsonMode in config", () => {
+    const config: ExtractionConfig = {
+      provider: "llm",
+      enabled: true,
+      jsonMode: false,
+    };
+    const result = validateExtractionConfig(config);
     expect(result.ok).toBe(true);
   });
 });

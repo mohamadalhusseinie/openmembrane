@@ -2,7 +2,8 @@ import { basename, join, resolve } from "node:path";
 import { cwd, env } from "node:process";
 import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrain/core";
 import type { AuditLogStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrain/core";
-import { OpenAiMemoryExtractor } from "@openmembrain/extractor-openai";
+import { LlmMemoryExtractor } from "@openmembrain/extractor-llm";
+import { AnthropicMemoryExtractor } from "@openmembrain/extractor-anthropic";
 import { StaticMemoryExportService } from "@openmembrain/exporters";
 import { createId, nowIso } from "@openmembrain/shared";
 import { createStores } from "@openmembrain/storage";
@@ -57,11 +58,27 @@ export async function createOpenMembrainContext(
     });
   };
 
+  const extractionConfig = loadExtractionConfig();
+
+  if (!extractionConfig.enabled || extractionConfig.provider === "mock") {
+    await diagnosticsLogStore.append({
+      id: createId("diag"),
+      projectId: defaultProjectId,
+      severity: "info",
+      code: "EXTRACTION_MOCK_FALLBACK",
+      message: "No extraction API key configured — using MockMemoryExtractor. Only explicitly prefixed text will be extracted.",
+      operation: "startup",
+      source: "core",
+      createdAt: nowIso(),
+    });
+  }
+
   const pipeline = new MemoryPipeline({
-    extractor: createExtractor(loadExtractionConfig(), {
+    extractor: createExtractor(extractionConfig, {
       onDiagnostics,
       providers: {
-        openai: (config, opts) => new OpenAiMemoryExtractor(config, opts),
+        llm: (config, opts) => new LlmMemoryExtractor(config, opts),
+        anthropic: (config, opts) => new AnthropicMemoryExtractor(config, opts),
       },
     }),
     memoryStore,

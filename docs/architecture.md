@@ -106,10 +106,10 @@ interface MemoryExtractor {
 }
 ```
 
-Current implementations:
+Implementations:
 
-- `MockMemoryExtractor`
-- `OpenAiMemoryExtractor` in `packages/extractor-openai/` for OpenAI-compatible APIs, including custom base URLs through extraction config
+- `MockMemoryExtractor` — deterministic regex-based extraction for testing
+- `LlmMemoryExtractor` in `packages/extractor-llm/` — production extractor for OpenAI-compatible API endpoints, including configurable `baseUrl` and JSON mode
 
 Future implementations:
 
@@ -118,6 +118,8 @@ Future implementations:
 - enterprise/self-hosted extractor
 
 The core must not hardwire a single LLM provider.
+
+Note: The extractor is only used by the `propose_memory_from_session` path. The primary `remember` tool bypasses extraction entirely — the AI tool does the extraction and provides structured content directly.
 
 ## Memory Candidate Schema
 
@@ -299,19 +301,24 @@ Each `DiagnosticEvent` includes `id`, `projectId`, `severity`, `code`, `message`
 
 Current tools:
 
-- `propose_memory_from_session`
+- `remember` — save structured memory directly (primary path, no server LLM needed)
+- `propose_memory_from_session` — submit transcript for server-side LLM extraction (secondary, requires configured extractor)
 - `get_project_rules`
 - `get_relevant_context`
 - `search_memory`
 - `list_memory_candidates`
 - `approve_memory_candidate`
+- `approve_all_candidates`
 - `reject_memory_candidate`
+- `reject_all_candidates`
 - `export_static_memory_files`
 - `get_diagnostics`
 - `list_audit_log`
 - `update_memory`
 - `supersede_memory`
 - `review_stale_memories`
+
+The `remember` tool uses `processStructured()` to bypass the extraction step and feed pre-structured candidates directly into the classification/policy/dedup/conflict pipeline.
 
 MCP is the main tool-facing access layer for the MVP, but it is not the entire product.
 
