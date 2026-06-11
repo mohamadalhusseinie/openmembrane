@@ -67,15 +67,21 @@ config:
   "type": "local",
   "command": ["npx", "-y", "openmembrain"],
   "environment": {
-    "OPENMEMBRAIN_EXTRACTION_API_KEY": "your-api-key"
+    "OPENMEMBRAIN_EXTRACTION_API_KEY": "your-api-key",
+    "OPENMEMBRAIN_EXTRACTION_MODEL": "gpt-4o"
   }
 }
 ```
 
-Any OpenAI-compatible endpoint works (Ollama, Groq, Together, vLLM, OpenRouter,
-etc.) — set `OPENMEMBRAIN_EXTRACTION_BASE_URL` to point to your provider and
-`OPENMEMBRAIN_EXTRACTION_MODEL` to select the model. For local models that don't
-support JSON mode, also set `OPENMEMBRAIN_EXTRACTION_JSON_MODE=false`.
+The presence of `OPENMEMBRAIN_EXTRACTION_API_KEY` auto-enables the registered
+`llm` extractor. Any OpenAI-compatible endpoint works (OpenAI, Groq, Together,
+vLLM, OpenRouter, etc.) — set `OPENMEMBRAIN_EXTRACTION_BASE_URL` to point to
+your provider and `OPENMEMBRAIN_EXTRACTION_MODEL` to select the model.
+
+For local models without an API key, set
+`OPENMEMBRAIN_EXTRACTION_PROVIDER=llm` and
+`OPENMEMBRAIN_EXTRACTION_ENABLED=true`. If the endpoint does not support JSON
+mode, also set `OPENMEMBRAIN_EXTRACTION_JSON_MODE=false`.
 
 ## Global Instructions (Recommended)
 
