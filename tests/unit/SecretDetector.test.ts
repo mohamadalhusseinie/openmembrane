@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SecretDetector } from "@openmembrain/core";
+import { SecretDetector } from "@openmembrane/core";
 
 const detector = new SecretDetector();
 

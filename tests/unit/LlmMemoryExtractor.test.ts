@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type OpenAI from "openai";
-import { LlmMemoryExtractor } from "@openmembrain/extractor-llm";
-import type { ExtractionConfig } from "@openmembrain/core";
+import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
+import type { ExtractionConfig } from "@openmembrane/core";
 
 function createMockClient(responses: string[]) {
   let callIndex = 0;

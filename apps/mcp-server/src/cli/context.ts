@@ -1,12 +1,12 @@
-import { createOpenMembrainContext, resolveProjectId } from "../context";
-import { rankMemories } from "@openmembrain/core";
-import type { MemoryEntry, MemoryScope, MemoryType } from "@openmembrain/core";
+import { createOpenMembraneContext, resolveProjectId } from "../context";
+import { rankMemories } from "@openmembrane/core";
+import type { MemoryEntry, MemoryScope, MemoryType } from "@openmembrane/core";
 import type { ContextCommand } from "./parseArgs";
 import { formatMemories } from "./formatters";
 import { printPendingReminder } from "./pendingReminder";
 
 export async function runContext(cmd: ContextCommand): Promise<void> {
-  const context = await createOpenMembrainContext();
+  const context = await createOpenMembraneContext();
   try {
     const projectId = resolveProjectId(context, cmd.project);
 

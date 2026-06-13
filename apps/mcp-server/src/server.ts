@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createId, nowIso } from "@openmembrain/shared";
-import { normalizeOpenMembrainError } from "@openmembrain/core";
-import { resolveProjectId, type OpenMembrainMcpContext } from "./context";
+import { createId, nowIso } from "@openmembrane/shared";
+import { normalizeOpenMembraneError } from "@openmembrane/core";
+import { resolveProjectId, type OpenMembraneMcpContext } from "./context";
 import { createToolHandlers } from "./tools/handlers";
 import { SessionNudgeTracker, loadNudgeConfig } from "./nudge";
 import {
@@ -24,9 +24,9 @@ import {
   searchMemorySchema
 } from "./tools/schemas";
 
-export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): McpServer {
+export function createOpenMembraneMcpServer(context: OpenMembraneMcpContext): McpServer {
   const server = new McpServer({
-    name: "openmembrain",
+    name: "openmembrane",
     version: "0.1.0"
   });
   const handlers = createToolHandlers(context);
@@ -79,7 +79,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
     "search_memory",
     {
       title: "Search Memory",
-      description: "Search saved OpenMembrain memory by query, scope, type, tag, or project.",
+      description: "Search saved OpenMembrane memory by query, scope, type, tag, or project.",
       inputSchema: searchMemorySchema
     },
     async (input) => safeJsonResult(context, "search_memory", input, () => handlers.searchMemory(input), tracker)
@@ -166,7 +166,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
     "get_diagnostics",
     {
       title: "Get Diagnostics",
-      description: "Return recent OpenMembrain diagnostics for user-visible troubleshooting.",
+      description: "Return recent OpenMembrane diagnostics for user-visible troubleshooting.",
       inputSchema: getDiagnosticsSchema
     },
     async (input) => safeJsonResult(context, "get_diagnostics", input, () => handlers.getDiagnostics(input), tracker)
@@ -198,7 +198,7 @@ export function createOpenMembrainMcpServer(context: OpenMembrainMcpContext): Mc
     "list_audit_log",
     {
       title: "List Audit Log",
-      description: "Return recent OpenMembrain audit events for memory pipeline activity.",
+      description: "Return recent OpenMembrane audit events for memory pipeline activity.",
       inputSchema: listAuditLogSchema
     },
     async (input) => safeJsonResult(context, "list_audit_log", input, () => handlers.listAuditLog(input), tracker)
@@ -236,7 +236,7 @@ function jsonResult(value: unknown, reminder?: string): CallToolResult {
 }
 
 export async function safeJsonResult(
-  context: OpenMembrainMcpContext,
+  context: OpenMembraneMcpContext,
   operation: string,
   input: unknown,
   callback: () => Promise<unknown>,
@@ -253,7 +253,7 @@ export async function safeJsonResult(
 
     return jsonResult(value, reminder);
   } catch (error) {
-    const normalized = normalizeOpenMembrainError(error);
+    const normalized = normalizeOpenMembraneError(error);
     const diagnosticId = createId("diag");
     const projectId = projectIdFromInput(context, input);
 
@@ -297,7 +297,7 @@ export async function safeJsonResult(
   }
 }
 
-function projectIdFromInput(context: OpenMembrainMcpContext, input: unknown): string {
+function projectIdFromInput(context: OpenMembraneMcpContext, input: unknown): string {
   if (typeof input === "object" && input !== null && "projectId" in input) {
     const projectId = input.projectId;
     if (typeof projectId === "string") {

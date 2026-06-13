@@ -5,8 +5,8 @@ import {
   type ExtractionConfig,
   type MemoryExtractor,
   type OnExtractionDiagnostics,
-} from "@openmembrain/core";
-import { OpenMembrainError } from "@openmembrain/core";
+} from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
 
 class FakeLlmExtractor implements MemoryExtractor {
   async extract() { return []; }
@@ -52,12 +52,12 @@ describe("createExtractor", () => {
 
   it("throws EXTRACTION_CONFIG_ERROR for anthropic without apiKey when enabled", () => {
     const config: ExtractionConfig = { provider: "anthropic", enabled: true };
-    expect(() => createExtractor(config, { providers: fakeProviders })).toThrow(OpenMembrainError);
+    expect(() => createExtractor(config, { providers: fakeProviders })).toThrow(OpenMembraneError);
     try {
       createExtractor(config, { providers: fakeProviders });
     } catch (err) {
-      expect(err).toBeInstanceOf(OpenMembrainError);
-      expect((err as OpenMembrainError).code).toBe("EXTRACTION_CONFIG_ERROR");
+      expect(err).toBeInstanceOf(OpenMembraneError);
+      expect((err as OpenMembraneError).code).toBe("EXTRACTION_CONFIG_ERROR");
     }
   });
 
@@ -67,12 +67,12 @@ describe("createExtractor", () => {
       enabled: true,
       apiKey: "test-key",
     };
-    expect(() => createExtractor(config)).toThrow(OpenMembrainError);
+    expect(() => createExtractor(config)).toThrow(OpenMembraneError);
     try {
       createExtractor(config);
     } catch (err) {
-      expect(err).toBeInstanceOf(OpenMembrainError);
-      expect((err as OpenMembrainError).code).toBe("EXTRACTION_CONFIG_ERROR");
+      expect(err).toBeInstanceOf(OpenMembraneError);
+      expect((err as OpenMembraneError).code).toBe("EXTRACTION_CONFIG_ERROR");
     }
   });
 

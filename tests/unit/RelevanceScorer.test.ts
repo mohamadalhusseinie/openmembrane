@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { annotateConflicts, bigrams, rankMemories, scoreEntry, tokenize } from "@openmembrain/core";
+import { annotateConflicts, bigrams, rankMemories, scoreEntry, tokenize } from "@openmembrane/core";
 import { entry } from "./helpers";
 
 const REF_TIME = "2026-05-08T12:00:00.000Z";

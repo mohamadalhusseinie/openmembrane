@@ -1,8 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryEntry, MemorySearchOptions, MemoryScope, MemoryStore, MemoryType } from "@openmembrain/core";
-import { OpenMembrainError } from "@openmembrain/core";
-import { nowIso } from "@openmembrain/shared";
+import type { MemoryEntry, MemorySearchOptions, MemoryScope, MemoryStore, MemoryType } from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
+import { nowIso } from "@openmembrane/shared";
 import type { TypeIndex } from "./indexTypes";
 import { readJsonObject } from "./jsonFile";
 import { listEntries, readEntry, removeEntry, removeFromIndexes, updateIndexesForEntry, writeEntry } from "./directoryStore";
@@ -73,7 +73,7 @@ export class JsonMemoryStore implements MemoryStore {
     await this.ensureMigrated();
     const existing = await this.findById(projectId, memoryId);
     if (existing === undefined) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "MEMORY_NOT_FOUND",
         message: `Memory ${memoryId} was not found.`,
         safeMessage: "The memory was not found.",
@@ -82,7 +82,7 @@ export class JsonMemoryStore implements MemoryStore {
     }
 
     if (existing.status === "superseded") {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "MEMORY_ALREADY_SUPERSEDED",
         message: `Memory ${memoryId} is already superseded.`,
         safeMessage: "The memory is already superseded.",

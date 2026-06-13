@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { printPendingReminder } from "../../../apps/mcp-server/src/cli/pendingReminder";
-import type { PendingCandidateStore } from "@openmembrain/core";
+import type { PendingCandidateStore } from "@openmembrane/core";
 
 function mockStore(count: number): PendingCandidateStore {
   const items = Array.from({ length: count }, (_, i) => ({ id: `cand_${i}` }));

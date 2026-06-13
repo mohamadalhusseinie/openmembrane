@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/core",
+  "name": "@openmembrane/core",
   "version": "1.0.2",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/shared": "*"
+    "@openmembrane/shared": "*"
   }
 }

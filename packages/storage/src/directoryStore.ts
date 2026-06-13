@@ -1,6 +1,6 @@
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryScope, MemoryType } from "@openmembrain/core";
+import type { MemoryScope, MemoryType } from "@openmembrane/core";
 import { readJsonObject, writeJsonObject } from "./jsonFile";
 import type { MasterIndex, TypeIndex, TypeIndexEntry } from "./indexTypes";
 import { emptyMasterIndex, emptyTypeIndex } from "./indexTypes";

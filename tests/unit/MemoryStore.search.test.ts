@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { JsonMemoryStore } from "@openmembrain/storage";
+import { JsonMemoryStore } from "@openmembrane/storage";
 import { entry } from "./helpers";
 
 const tempDirs: string[] = [];
@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 async function createStore(): Promise<JsonMemoryStore> {
-  const dir = await mkdtemp(join(tmpdir(), "openmembrain-search-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "openmembrane-search-test-"));
   tempDirs.push(dir);
   return new JsonMemoryStore(dir);
 }

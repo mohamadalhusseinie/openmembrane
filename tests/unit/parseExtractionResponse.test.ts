@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExtractionResponse } from "@openmembrain/core";
+import { parseExtractionResponse } from "@openmembrane/core";
 
 describe("parseExtractionResponse", () => {
   const projectId = "proj_test123";

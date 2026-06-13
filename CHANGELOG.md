@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to OpenMemBrain will be documented in this file.
+All notable changes to OpenMembrane will be documented in this file.
 
 This changelog is now managed by [Changesets](https://github.com/changesets/changesets). See [docs/release.md](docs/release.md) for the release process.
 
@@ -15,4 +15,4 @@ This changelog is now managed by [Changesets](https://github.com/changesets/chan
 - Rule-based secret detection and redaction.
 - Noise and safety filters.
 - Mock memory extractor for deterministic testing.
-- npm package distribution (`npx openmembrain`).
+- npm package distribution (`npx openmembrane`).

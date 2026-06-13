@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { AuditEvent, AuditLogStore } from "@openmembrain/core";
+import type { AuditEvent, AuditLogStore } from "@openmembrane/core";
 import { readJsonArray, writeJsonArray } from "./jsonFile";
 
 export class JsonAuditLogStore implements AuditLogStore {

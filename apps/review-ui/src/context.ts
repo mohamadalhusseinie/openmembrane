@@ -1,9 +1,9 @@
 import { basename, join, resolve } from "node:path";
 import { cwd, env } from "node:process";
-import { MemoryApprovalService } from "@openmembrain/core";
-import type { AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "@openmembrain/core";
-import { createStores } from "@openmembrain/storage";
-import type { StorageBackend, StoreSet } from "@openmembrain/storage";
+import { MemoryApprovalService } from "@openmembrane/core";
+import type { AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
+import { createStores } from "@openmembrane/storage";
+import type { StorageBackend, StoreSet } from "@openmembrane/storage";
 
 export interface ReviewUiContext {
   projectId: string;
@@ -25,10 +25,10 @@ export interface ReviewUiOptions {
 
 export async function createReviewUiContext(options: ReviewUiOptions = {}): Promise<ReviewUiContext> {
   const workingDirectory = cwd();
-  const storageDir = resolve(options.home ?? env.OPENMEMBRAIN_HOME ?? join(workingDirectory, ".openmembrain"));
-  const projectId = options.project ?? env.OPENMEMBRAIN_PROJECT_ID ?? basename(workingDirectory);
+  const storageDir = resolve(options.home ?? env.OPENMEMBRANE_HOME ?? join(workingDirectory, ".openmembrane"));
+  const projectId = options.project ?? env.OPENMEMBRANE_PROJECT_ID ?? basename(workingDirectory);
 
-  const backend: StorageBackend = env.OPENMEMBRAIN_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
+  const backend: StorageBackend = env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
   const stores: StoreSet = await createStores({ backend, baseDir: storageDir });
   const { memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore } = stores;
 

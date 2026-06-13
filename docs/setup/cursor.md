@@ -1,26 +1,26 @@
-# OpenMemBrain Setup: Cursor
+# OpenMembrane Setup: Cursor
 
 Cursor supports MCP servers natively. No adapter code is needed — just configuration.
 
 ## Prerequisites
 
 - Node.js >= 18
-- `openmembrain` installed: `npm install -g openmembrain`
+- `openmembrane` installed: `npm install -g openmembrane`
 
 ## Configuration
 
-Add the OpenMemBrain MCP server in Cursor's settings.
+Add the OpenMembrane MCP server in Cursor's settings.
 
 ### Project-level (`.cursor/mcp.json` in project root)
 
 ```json
 {
   "mcpServers": {
-    "openmembrain": {
-      "command": "openmembrain",
+    "openmembrane": {
+      "command": "openmembrane",
       "args": ["serve"],
       "env": {
-        "OPENMEMBRAIN_PROJECT_ID": "my-project"
+        "OPENMEMBRANE_PROJECT_ID": "my-project"
       }
     }
   }
@@ -32,17 +32,17 @@ Add the OpenMemBrain MCP server in Cursor's settings.
 1. Open Cursor Settings (Cmd/Ctrl + ,)
 2. Search for "MCP"
 3. Add a new MCP server with:
-   - **Name**: `openmembrain`
-   - **Command**: `openmembrain`
+   - **Name**: `OpenMembrane`
+   - **Command**: `openmembrane`
    - **Args**: `["serve"]`
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENMEMBRAIN_HOME` | `.openmembrain` (in cwd) | Storage directory |
-| `OPENMEMBRAIN_PROJECT_ID` | basename of cwd | Default project identifier |
-| `OPENMEMBRAIN_STORAGE_BACKEND` | `json` | Storage backend: `json` or `sqlite` |
+| `OPENMEMBRANE_HOME` | `.openmembrane` (in cwd) | Storage directory |
+| `OPENMEMBRANE_PROJECT_ID` | basename of cwd | Default project identifier |
+| `OPENMEMBRANE_STORAGE_BACKEND` | `json` | Storage backend: `json` or `sqlite` |
 
 ## Available Tools
 
@@ -77,13 +77,13 @@ Once configured, Cursor can use these tools:
 
 In a Cursor chat session, ask:
 
-> "Use the openmembrain tools to search for any stored project memories."
+> "Use the OpenMembrane tools to search for any stored project memories."
 
 Cursor should invoke `search_memory` and return results (or confirm no memories exist yet).
 
 ## Global Instructions (Recommended)
 
-To ensure Cursor automatically uses OpenMemBrain every session, add global AI
+To ensure Cursor automatically uses OpenMembrane every session, add global AI
 rules:
 
 1. Open Cursor Settings (Cmd/Ctrl + ,)
@@ -91,7 +91,7 @@ rules:
 3. Add the following:
 
 ```
-When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+When OpenMembrane MCP tools are available (prefixed with openmembrane_):
 
 At session start:
 - Call get_project_rules to load coding rules and constraints.
@@ -110,6 +110,6 @@ This works globally across all projects without per-project configuration.
 
 ## Troubleshooting
 
-- **"Server not found"**: Ensure `openmembrain` is on your PATH (`which openmembrain` or `where openmembrain`).
+- **"Server not found"**: Ensure `openmembrane` is on your PATH (`which openmembrane` or `where openmembrane`).
 - **No tools appear**: Check `.cursor/mcp.json` exists and restart Cursor.
 - **Permission errors**: Ensure the storage directory is writable.

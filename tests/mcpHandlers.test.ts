@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { createOpenMembrainContext } from "../apps/mcp-server/src/context";
+import { createOpenMembraneContext } from "../apps/mcp-server/src/context";
 import { safeJsonResult } from "../apps/mcp-server/src/server";
 import { createToolHandlers } from "../apps/mcp-server/src/tools/handlers";
 import { SessionNudgeTracker } from "../apps/mcp-server/src/nudge";
@@ -14,11 +14,11 @@ afterEach(async () => {
 });
 
 async function createHandlers() {
-  const storageDir = await mkdtemp(join(tmpdir(), "openmembrain-mcp-test-"));
-  const projectRoot = await mkdtemp(join(tmpdir(), "openmembrain-project-test-"));
+  const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-mcp-test-"));
+  const projectRoot = await mkdtemp(join(tmpdir(), "openmembrane-project-test-"));
   tempDirs.push(storageDir, projectRoot);
 
-  const context = await createOpenMembrainContext({
+  const context = await createOpenMembraneContext({
     defaultProjectId: "project-a",
     projectRoot,
     storageDir
@@ -225,7 +225,7 @@ describe("MCP tool handlers", () => {
     const { context, handlers } = await createHandlers();
 
     // Save two memories with similar content but different types directly
-    const { JsonMemoryStore } = await import("@openmembrain/storage");
+    const { JsonMemoryStore } = await import("@openmembrane/storage");
     const store = context.memoryStore;
 
     const { entry: entryFactory } = await import("./unit/helpers");

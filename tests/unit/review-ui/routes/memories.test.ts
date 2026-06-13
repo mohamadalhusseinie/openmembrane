@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createMemoryRoutes } from "../../../../apps/review-ui/src/routes/memories";
-import type { MemoryStore } from "@openmembrain/core";
+import type { MemoryStore } from "@openmembrane/core";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 function mockContext(params: Record<string, string> = {}, query = new URLSearchParams()) {

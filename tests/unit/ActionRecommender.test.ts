@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ActionRecommender } from "@openmembrain/core";
+import { ActionRecommender } from "@openmembrane/core";
 import { candidate } from "./helpers";
 
 const recommender = new ActionRecommender();

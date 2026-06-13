@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
-import { rankMemories, annotateConflicts, SecretDetector, OpenMembrainError, mapPipelineResult, type Confidence, type DiagnosticSeverity, type IngestionRequest, type MemoryCandidate, type MemoryScope, type MemorySearchOptions, type MemoryType, type SecretFinding } from "@openmembrain/core";
-import type { ExportTarget } from "@openmembrain/exporters";
-import type { OpenMembrainMcpContext } from "../context";
-import { createId, nowIso } from "@openmembrain/shared";
+import { rankMemories, annotateConflicts, SecretDetector, OpenMembraneError, mapPipelineResult, type Confidence, type DiagnosticSeverity, type IngestionRequest, type MemoryCandidate, type MemoryScope, type MemorySearchOptions, type MemoryType, type SecretFinding } from "@openmembrane/core";
+import type { ExportTarget } from "@openmembrane/exporters";
+import type { OpenMembraneMcpContext } from "../context";
+import { createId, nowIso } from "@openmembrane/shared";
 import { resolveProjectId } from "../context";
 
 const ruleTypes: MemoryType[] = [
@@ -116,7 +116,7 @@ export interface RememberInput extends ProjectScopedInput {
   items?: RememberItemInput[] | undefined;
 }
 
-export function createToolHandlers(context: OpenMembrainMcpContext) {
+export function createToolHandlers(context: OpenMembraneMcpContext) {
   return {
     proposeMemoryFromSession: async (input: ProposeMemoryInput) => {
       const request: IngestionRequest = {
@@ -315,7 +315,7 @@ export function createToolHandlers(context: OpenMembrainMcpContext) {
           tags: input.tags
         }];
       } else {
-        throw new OpenMembrainError({
+        throw new OpenMembraneError({
           code: "VALIDATION_ERROR",
           message: "Either content+type or items[] is required.",
           safeMessage: "Provide content and type for a single memory, or items[] for batch."

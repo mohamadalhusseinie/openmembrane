@@ -1,5 +1,5 @@
 node_modules/
-.openmembrain/
+.openmembrane/
 dist/
 coverage/
 *.log

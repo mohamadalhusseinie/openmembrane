@@ -1,4 +1,4 @@
-import type { MemoryEntry } from "@openmembrain/core";
+import type { MemoryEntry } from "@openmembrane/core";
 import type { OutputFormat } from "./parseArgs";
 
 export function formatMemories(memories: readonly MemoryEntry[], format: OutputFormat): string {

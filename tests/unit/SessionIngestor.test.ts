@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { SessionIngestor } from "@openmembrain/core";
+import { SessionIngestor } from "@openmembrane/core";
 
 const ingestor = new SessionIngestor();
 

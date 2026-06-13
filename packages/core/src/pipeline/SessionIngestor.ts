@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { nowIso } from "@openmembrain/shared";
+import { nowIso } from "@openmembrane/shared";
 import { SecretDetector, type SecretFinding } from "../filtering/SecretDetector";
 import type { SessionInput } from "../types/SessionInput";
 

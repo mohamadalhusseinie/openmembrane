@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryCandidate, MemoryType, PendingCandidateStore } from "@openmembrain/core";
+import type { MemoryCandidate, MemoryType, PendingCandidateStore } from "@openmembrane/core";
 import type { TypeIndex } from "./indexTypes";
 import { readJsonObject } from "./jsonFile";
 import { listEntries, readEntry, removeEntry, removeFromIndexes, updateIndexesForEntry, writeEntry } from "./directoryStore";

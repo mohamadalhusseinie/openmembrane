@@ -8,7 +8,7 @@ import {
   confidenceValues,
   sensitivityValues,
   recommendedActions,
-} from "@openmembrain/core";
+} from "@openmembrane/core";
 
 describe("EXTRACTION_PROMPT_VERSION", () => {
   it("is a valid semver string", () => {

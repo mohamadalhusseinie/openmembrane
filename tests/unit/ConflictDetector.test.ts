@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConflictDetector } from "@openmembrain/core";
+import { ConflictDetector } from "@openmembrane/core";
 import { candidate, entry } from "./helpers";
 
 const detector = new ConflictDetector();

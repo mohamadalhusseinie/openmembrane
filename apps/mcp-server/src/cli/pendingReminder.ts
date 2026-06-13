@@ -1,4 +1,4 @@
-import type { PendingCandidateStore } from "@openmembrain/core";
+import type { PendingCandidateStore } from "@openmembrane/core";
 
 export async function printPendingReminder(
   store: PendingCandidateStore,

@@ -47,12 +47,12 @@ jobs:
         working-directory: apps/mcp-server
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          PUBLISHED=$(npm view openmembrain version 2>/dev/null || echo "none")
+          PUBLISHED=$(npm view openmembrane version 2>/dev/null || echo "none")
           if [ "$CURRENT" != "$PUBLISHED" ]; then
-            echo "Publishing openmembrain@$CURRENT (npm has $PUBLISHED)"
+            echo "Publishing openmembrane@$CURRENT (npm has $PUBLISHED)"
             npm publish --access public
           else
-            echo "openmembrain@$CURRENT already published, skipping"
+            echo "openmembrane@$CURRENT already published, skipping"
           fi
 
       - name: Enable auto-merge on version PR

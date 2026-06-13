@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createCandidateRoutes } from "../../../../apps/review-ui/src/routes/candidates";
-import type { MemoryApprovalService, PendingCandidateStore } from "@openmembrain/core";
+import type { MemoryApprovalService, PendingCandidateStore } from "@openmembrane/core";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 function mockContext(params: Record<string, string> = {}, query = new URLSearchParams(), body: unknown = undefined) {

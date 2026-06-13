@@ -1,4 +1,4 @@
-# OpenMemBrain — OpenCode Installation
+# OpenMembrane — OpenCode Installation
 
 ## Prerequisites
 
@@ -13,9 +13,9 @@
 2. Add the following entry inside the `"mcp"` object:
 
    ```json
-   "openmembrain": {
+   "openmembrane": {
      "type": "local",
-     "command": ["npx", "-y", "openmembrain"]
+     "command": ["npx", "-y", "openmembrane"]
    }
    ```
 
@@ -24,9 +24,9 @@
    ```json
    {
      "mcp": {
-       "openmembrain": {
+       "openmembrane": {
          "type": "local",
-         "command": ["npx", "-y", "openmembrain"]
+         "command": ["npx", "-y", "openmembrane"]
        }
      }
    }
@@ -35,21 +35,21 @@
 3. Restart OpenCode to pick up the new MCP server.
 
 4. Verify the installation by using the `get_project_rules` tool. If it responds
-   without error, OpenMemBrain is connected.
+   without error, OpenMembrane is connected.
 
 ## Development (from source)
 
-If you are contributing to OpenMemBrain and want to run from source without
+If you are contributing to OpenMembrane and want to run from source without
 rebuilding between changes:
 
 ```json
-"openmembrain": {
+"openmembrane": {
   "type": "local",
-  "command": ["npx", "tsx", "/absolute/path/to/openmembrain/apps/mcp-server/src/index.ts"]
+  "command": ["npx", "tsx", "/absolute/path/to/OpenMembrane/apps/mcp-server/src/index.ts"]
 }
 ```
 
-Replace `/absolute/path/to/openmembrain` with the absolute path to your local
+Replace `/absolute/path/to/OpenMembrane` with the absolute path to your local
 clone of the repository.
 
 ## Optional: Enable LLM Extraction
@@ -63,19 +63,19 @@ can enable server-side LLM extraction by adding environment variables to the MCP
 config:
 
 ```json
-"openmembrain": {
+"openmembrane": {
   "type": "local",
-  "command": ["npx", "-y", "openmembrain"],
+  "command": ["npx", "-y", "openmembrane"],
   "environment": {
-    "OPENMEMBRAIN_EXTRACTION_API_KEY": "your-api-key"
+    "OPENMEMBRANE_EXTRACTION_API_KEY": "your-api-key"
   }
 }
 ```
 
 Any OpenAI-compatible endpoint works (Ollama, Groq, Together, vLLM, OpenRouter,
-etc.) — set `OPENMEMBRAIN_EXTRACTION_BASE_URL` to point to your provider and
-`OPENMEMBRAIN_EXTRACTION_MODEL` to select the model. For local models that don't
-support JSON mode, also set `OPENMEMBRAIN_EXTRACTION_JSON_MODE=false`.
+etc.) — set `OPENMEMBRANE_EXTRACTION_BASE_URL` to point to your provider and
+`OPENMEMBRANE_EXTRACTION_MODEL` to select the model. For local models that don't
+support JSON mode, also set `OPENMEMBRANE_EXTRACTION_JSON_MODE=false`.
 
 ## Global Instructions (Recommended)
 
@@ -83,10 +83,10 @@ To ensure OpenCode's AI automatically loads project memory at session start and
 saves durable knowledge as it's discovered, create a global instruction file and
 reference it in your config.
 
-1. Create `~/.config/openmembrain/instructions.md` with content like:
+1. Create `~/.config/openmembrane/instructions.md` with content like:
 
    ```
-   When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+   When OpenMembrane MCP tools are available (prefixed with openmembrane_):
 
    At session start:
    - Call get_project_rules to load coding rules and constraints.
@@ -106,7 +106,7 @@ reference it in your config.
 
    ```json
    {
-     "instructions": ["~/.config/openmembrain/instructions.md"]
+     "instructions": ["~/.config/openmembrane/instructions.md"]
    }
    ```
 
@@ -120,4 +120,4 @@ This works globally across all projects. No per-project configuration needed.
   `opencode.json`. Check that the JSON is valid (no trailing commas).
 - **npx not found:** Ensure Node.js 18+ is installed and `npx` is on your PATH.
 - **Tools not appearing:** OpenCode prefixes MCP tools with the server name
-  (e.g., `openmembrain_get_project_rules`). Check that the server is enabled.
+  (e.g., `openmembrane_get_project_rules`). Check that the server is enabled.

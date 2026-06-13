@@ -1,4 +1,4 @@
-import type { MemoryEntry } from "@openmembrain/core";
+import type { MemoryEntry } from "@openmembrane/core";
 
 export type ExportTarget = "agents" | "claude" | "copilot" | "cursor" | "project_memory";
 

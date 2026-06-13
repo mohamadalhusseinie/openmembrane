@@ -1,4 +1,4 @@
-# OpenMemBrain Roadmap
+# OpenMembrane Roadmap
 
 This roadmap keeps the product centered on the local autonomous memory engine before adding hosted, team, or enterprise features.
 
@@ -57,7 +57,7 @@ Adapter responsibilities:
 
 - detect current project
 - collect session summary/transcript if available
-- send data to local OpenMemBrain
+- send data to local OpenMembrane
 - retrieve relevant memory for new sessions
 - never own memory policy
 

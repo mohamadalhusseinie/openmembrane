@@ -1,4 +1,4 @@
-import { createId, nowIso } from "@openmembrain/shared";
+import { createId, nowIso } from "@openmembrane/shared";
 import type {
   Confidence,
   MemoryCandidate,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PolicyEngine } from "@openmembrain/core";
+import { PolicyEngine } from "@openmembrane/core";
 import { candidate } from "./helpers";
 
 describe("PolicyEngine", () => {

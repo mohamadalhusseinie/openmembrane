@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { confidenceValues, diagnosticSeverities, memoryScopes, memoryTypes } from "@openmembrain/core";
-import type { ExportTarget } from "@openmembrain/exporters";
+import { confidenceValues, diagnosticSeverities, memoryScopes, memoryTypes } from "@openmembrane/core";
+import type { ExportTarget } from "@openmembrane/exporters";
 
 export const exportTargets: readonly [ExportTarget, ...ExportTarget[]] = [
   "agents",
@@ -11,7 +11,7 @@ export const exportTargets: readonly [ExportTarget, ...ExportTarget[]] = [
 ];
 
 export const projectIdSchema = {
-  projectId: z.string().min(1).optional().describe("Project identifier. Defaults to OPENMEMBRAIN_PROJECT_ID or the current folder name.")
+  projectId: z.string().min(1).optional().describe("Project identifier. Defaults to OPENMEMBRANE_PROJECT_ID or the current folder name.")
 };
 
 export const proposeMemoryFromSessionSchema = {

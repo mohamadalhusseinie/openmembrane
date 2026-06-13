@@ -1,17 +1,17 @@
-# OpenMemBrain Product Vision
+# OpenMembrane Product Vision
 
-OpenMemBrain is a local-first, private, tool-agnostic memory layer for AI coding tools.
+OpenMembrane is a local-first, private, tool-agnostic memory layer for AI coding tools.
 
-AI coding tools forget important project knowledge between sessions. Developers repeatedly restate project rules, architecture decisions, gotchas, conventions, testing commands, deployment constraints, and security requirements. OpenMemBrain exists to extract durable project knowledge from AI coding sessions and make it reusable across tools such as Codex, OpenCode, Claude Code, Cursor, VS Code, GitHub Copilot, and future agents.
+AI coding tools forget important project knowledge between sessions. Developers repeatedly restate project rules, architecture decisions, gotchas, conventions, testing commands, deployment constraints, and security requirements. OpenMembrane exists to extract durable project knowledge from AI coding sessions and make it reusable across tools such as Codex, OpenCode, Claude Code, Cursor, VS Code, GitHub Copilot, and future agents.
 
-OpenMemBrain is not primarily a CLI, not primarily an OpenCode plugin, and not only an MCP server. OpenMemBrain Core is the product.
+OpenMembrane is not primarily a CLI, not primarily an OpenCode plugin, and not only an MCP server. OpenMembrane Core is the product.
 
 ## Value Proposition
 
 **For individual developers:**
 - Stop repeating yourself. Your AI tools remember your project's rules, architecture, gotchas, and conventions across every session, across every tool.
 - Your secrets are safe. Credentials, API keys, and sensitive data are detected and blocked before anything is stored.
-- Zero maintenance. OpenMemBrain learns autonomously from your normal workflow — no manual tagging, no bookmarking, no effort.
+- Zero maintenance. OpenMembrane learns autonomously from your normal workflow — no manual tagging, no bookmarking, no effort.
 
 **For teams:**
 - Shared project intelligence. New team members inherit the team's accumulated knowledge from day one.
@@ -19,13 +19,13 @@ OpenMemBrain is not primarily a CLI, not primarily an OpenCode plugin, and not o
 - Compliance-ready. Full audit trails, policy controls, and EU/CH data residency options.
 
 **For companies:**
-- Self-hosted or managed. Run on your infrastructure or use OpenMemBrain's hosted option.
+- Self-hosted or managed. Run on your infrastructure or use OpenMembrane's hosted option.
 - Organization-level policies. Control what AI tools can remember, who approves knowledge, and where data lives.
 - No vendor lock-in. Tool-agnostic by design — works with any AI coding tool that speaks MCP or reads instruction files.
 
 ## Product Thesis
 
-OpenMemBrain is the protective memory layer between AI coding tools and private project knowledge.
+OpenMembrane is the protective memory layer between AI coding tools and private project knowledge.
 
 The name combines:
 
@@ -33,7 +33,7 @@ The name combines:
 - brain
 - membrane
 
-The membrane idea matters. OpenMemBrain should act as a protective boundary. It decides what project knowledge can safely become persistent memory and what must be blocked, redacted, queued for approval, or ignored.
+The membrane idea matters. OpenMembrane should act as a protective boundary. It decides what project knowledge can safely become persistent memory and what must be blocked, redacted, queued for approval, or ignored.
 
 ## Main UX
 
@@ -41,13 +41,13 @@ The main workflow should be autonomous:
 
 1. A developer works normally in an AI coding tool.
 2. The AI tool discovers durable project knowledge during the session and calls `remember` to save it directly (structured content + type). Alternatively, adapters or hooks can submit full session transcripts via `propose_memory_from_session` for server-side extraction.
-3. OpenMemBrain runs the memory through its pipeline (secret detection, policy filtering, deduplication, conflict detection).
-4. OpenMemBrain auto-saves low-risk memory or queues important decisions for approval.
+3. OpenMembrane runs the memory through its pipeline (secret detection, policy filtering, deduplication, conflict detection).
+4. OpenMembrane auto-saves low-risk memory or queues important decisions for approval.
 5. Future AI tools retrieve relevant memory through MCP or generated static instruction files.
 
 The primary `remember` path requires no API key — the AI tool performs extraction. The secondary `propose_memory_from_session` path uses a configured LLM extractor for full transcript analysis.
 
-Commands such as `openmembrain remember`, `openmembrain recall`, and `openmembrain export` may exist later as admin or debugging tools, but they are not the core product workflow.
+Commands such as `openmembrane remember`, `openmembrane recall`, and `openmembrane export` may exist later as admin or debugging tools, but they are not the core product workflow.
 
 ## Memory Worth Saving
 
@@ -93,8 +93,8 @@ The product should eventually support multiple operating modes:
 
 - Local-only mode: all memory stays on the developer machine.
 - CH/EU sync mode: encrypted memory can be synced to CH/EU-hosted infrastructure.
-- Self-hosted mode: companies can run OpenMemBrain inside their own infrastructure.
-- Hosted mode: OpenMemBrain may provide managed sync, teams, policy, audit logs, and administration.
+- Self-hosted mode: companies can run OpenMembrane inside their own infrastructure.
+- Hosted mode: OpenMembrane may provide managed sync, teams, policy, audit logs, and administration.
 
 The MVP implements local-only mode.
 

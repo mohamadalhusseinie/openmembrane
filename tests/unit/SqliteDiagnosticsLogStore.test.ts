@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type Database from "better-sqlite3";
-import type { DiagnosticEvent } from "@openmembrain/core";
+import type { DiagnosticEvent } from "@openmembrane/core";
 import { openDatabase } from "../../packages/storage/src/sqlite/db";
 import { SqliteDiagnosticsLogStore } from "../../packages/storage/src/sqlite/SqliteDiagnosticsLogStore";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { unlinkSync } from "node:fs";
 
 function tmpDbPath(): string {
-  return join(tmpdir(), `openmembrain-test-${randomUUID()}.db`);
+  return join(tmpdir(), `openmembrane-test-${randomUUID()}.db`);
 }
 
 function diagEvent(overrides: Partial<DiagnosticEvent> = {}): DiagnosticEvent {

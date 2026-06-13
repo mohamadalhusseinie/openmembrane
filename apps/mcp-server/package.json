@@ -1,5 +1,5 @@
 {
-  "name": "openmembrain",
+  "name": "openmembrane",
   "version": "1.0.2",
   "description": "The intelligent membrane for AI memory — autonomously learns from your sessions, blocks secrets, and persists only what matters. No manual saving. Local-first, private, tool-agnostic.",
   "type": "module",
@@ -14,13 +14,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/mohamadalhusseinie/openmembrain.git",
+    "url": "https://github.com/mohamadalhusseinie/openmembrane.git",
     "directory": "apps/mcp-server"
   },
-  "homepage": "https://github.com/mohamadalhusseinie/openmembrain#readme",
+  "homepage": "https://github.com/mohamadalhusseinie/openmembrane#readme",
   "main": "./dist/index.js",
   "bin": {
-    "openmembrain": "./dist/index.js"
+    "openmembrane": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -42,11 +42,11 @@
     "better-sqlite3": "^12.9.0"
   },
   "devDependencies": {
-    "@openmembrain/core": "*",
-    "@openmembrain/exporters": "*",
-    "@openmembrain/extractor-anthropic": "*",
-    "@openmembrain/extractor-llm": "*",
-    "@openmembrain/shared": "*",
-    "@openmembrain/storage": "*"
+    "@openmembrane/core": "*",
+    "@openmembrane/exporters": "*",
+    "@openmembrane/extractor-anthropic": "*",
+    "@openmembrane/extractor-llm": "*",
+    "@openmembrane/shared": "*",
+    "@openmembrane/storage": "*"
   }
 }

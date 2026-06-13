@@ -1,4 +1,4 @@
-import type { AuditLogStore } from "@openmembrain/core";
+import type { AuditLogStore } from "@openmembrane/core";
 import type { RouteContext, RouteResponse } from "../router";
 
 export function createAuditRoutes(projectId: string, auditStore: AuditLogStore) {

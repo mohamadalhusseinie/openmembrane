@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MemoryEntry } from "@openmembrain/core";
-import { StaticMemoryExportService } from "@openmembrain/exporters";
+import type { MemoryEntry } from "@openmembrane/core";
+import { StaticMemoryExportService } from "@openmembrane/exporters";
 
 const tempDirs: string[] = [];
 
@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 async function tempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "openmembrain-export-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "openmembrane-export-test-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -58,7 +58,7 @@ describe("StaticMemoryExportService", () => {
       "AGENTS.md",
       "CLAUDE.md",
       ".github/copilot-instructions.md",
-      ".cursor/rules/openmembrain.mdc",
+      ".cursor/rules/openmembrane.mdc",
       "docs/ai/project-memory.md"
     ]);
     expect(result.files[0]?.content).toContain("Angular standalone components");
@@ -71,7 +71,7 @@ describe("StaticMemoryExportService", () => {
     const result = service.preview("project-a", [], { generatedAt: "2026-05-08T00:00:00.000Z" });
 
     for (const file of result.files) {
-      expect(file.content).toContain("## Using OpenMemBrain");
+      expect(file.content).toContain("## Using OpenMembrane");
       expect(file.content).toContain("get_project_rules");
       expect(file.content).toContain("get_relevant_context");
       expect(file.content).toContain("propose_memory_from_session");
@@ -92,9 +92,9 @@ describe("StaticMemoryExportService", () => {
     });
 
     const agents = await readFile(join(outputDir, "AGENTS.md"), "utf8");
-    const cursor = await readFile(join(outputDir, ".cursor", "rules", "openmembrain.mdc"), "utf8");
+    const cursor = await readFile(join(outputDir, ".cursor", "rules", "openmembrane.mdc"), "utf8");
 
     expect(agents).toContain("Frontend tests require runtime config to be mocked.");
-    expect(cursor).toMatch(/^---\ndescription: OpenMembrain project memory\nalwaysApply: true\n---/);
+    expect(cursor).toMatch(/^---\ndescription: OpenMembrane project memory\nalwaysApply: true\n---/);
   });
 });

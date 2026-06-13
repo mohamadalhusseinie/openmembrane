@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Project context for AI coding tools working on the OpenMemBrain codebase.
+Project context for AI coding tools working on the OpenMembrane codebase.
 
 ## Project Overview
 
-OpenMemBrain is a local-first, private, tool-agnostic memory membrane for AI coding tools. It autonomously extracts durable project knowledge from session transcripts, filters out secrets and noise, and persists approved memories — without any manual effort from the user.
+OpenMembrane is a local-first, private, tool-agnostic memory membrane for AI coding tools. It autonomously extracts durable project knowledge from session transcripts, filters out secrets and noise, and persists approved memories — without any manual effort from the user.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ apps/mcp-server/     — MCP server (tool registration, validation, error respon
 tests/               — All test files (unit and integration)
 ```
 
-Packages are imported via path aliases: `@openmembrain/core`, `@openmembrain/storage`, `@openmembrain/exporters`, `@openmembrain/shared`.
+Packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/shared`.
 
 ### Extractor Boundary
 
@@ -93,7 +93,7 @@ File format:
 
 ```
 ---
-"openmembrain": patch
+"openmembrane": patch
 ---
 
 Brief description of the change for the changelog.
@@ -104,5 +104,5 @@ Bump type convention:
 - **minor** — new features, new MCP tools, new capabilities
 - **major** — breaking changes to MCP tool interfaces or stored data formats
 
-Only list `openmembrain` (the publishable package). The fixed versioning group
+Only list `openmembrane` (the publishable package). The fixed versioning group
 handles internal packages automatically.

@@ -1,15 +1,15 @@
 import { basename, join, resolve } from "node:path";
 import { cwd, env } from "node:process";
-import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrain/core";
-import type { AuditLogStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrain/core";
-import { LlmMemoryExtractor } from "@openmembrain/extractor-llm";
-import { AnthropicMemoryExtractor } from "@openmembrain/extractor-anthropic";
-import { StaticMemoryExportService } from "@openmembrain/exporters";
-import { createId, nowIso } from "@openmembrain/shared";
-import { createStores } from "@openmembrain/storage";
-import type { StorageBackend, StoreSet } from "@openmembrain/storage";
+import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrane/core";
+import type { AuditLogStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
+import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
+import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
+import { StaticMemoryExportService } from "@openmembrane/exporters";
+import { createId, nowIso } from "@openmembrane/shared";
+import { createStores } from "@openmembrane/storage";
+import type { StorageBackend, StoreSet } from "@openmembrane/storage";
 
-export interface OpenMembrainMcpContext {
+export interface OpenMembraneMcpContext {
   defaultProjectId: string;
   projectRoot: string;
   storageDir: string;
@@ -25,15 +25,15 @@ export interface OpenMembrainMcpContext {
   close?: () => void;
 }
 
-export async function createOpenMembrainContext(
-  options: Partial<Pick<OpenMembrainMcpContext, "defaultProjectId" | "projectRoot" | "storageDir">> = {}
-): Promise<OpenMembrainMcpContext> {
+export async function createOpenMembraneContext(
+  options: Partial<Pick<OpenMembraneMcpContext, "defaultProjectId" | "projectRoot" | "storageDir">> = {}
+): Promise<OpenMembraneMcpContext> {
   const workingDirectory = cwd();
   const projectRoot = resolve(options.projectRoot ?? workingDirectory);
-  const storageDir = resolve(options.storageDir ?? env.OPENMEMBRAIN_HOME ?? join(workingDirectory, ".openmembrain"));
-  const defaultProjectId = options.defaultProjectId ?? env.OPENMEMBRAIN_PROJECT_ID ?? basename(workingDirectory);
+  const storageDir = resolve(options.storageDir ?? env.OPENMEMBRANE_HOME ?? join(workingDirectory, ".openmembrane"));
+  const defaultProjectId = options.defaultProjectId ?? env.OPENMEMBRANE_PROJECT_ID ?? basename(workingDirectory);
 
-  const backend: StorageBackend = env.OPENMEMBRAIN_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
+  const backend: StorageBackend = env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
   const stores: StoreSet = await createStores({ backend, baseDir: storageDir });
   const { memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore } = stores;
 
@@ -114,7 +114,7 @@ export async function createOpenMembrainContext(
   };
 }
 
-export function resolveProjectId(context: Pick<OpenMembrainMcpContext, "defaultProjectId">, projectId?: string): string {
+export function resolveProjectId(context: Pick<OpenMembraneMcpContext, "defaultProjectId">, projectId?: string): string {
   const normalized = projectId?.trim();
   return normalized || context.defaultProjectId;
 }

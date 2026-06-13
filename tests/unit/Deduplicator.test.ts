@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Deduplicator, normalizeMemoryContent } from "@openmembrain/core";
+import { Deduplicator, normalizeMemoryContent } from "@openmembrane/core";
 import { candidate, entry } from "./helpers";
 
 const deduplicator = new Deduplicator();

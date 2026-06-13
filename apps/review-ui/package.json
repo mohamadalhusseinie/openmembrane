@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/review-ui",
+  "name": "@openmembrane/review-ui",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -8,8 +8,8 @@
     "build": "tsup src/index.ts --format esm --dts"
   },
   "devDependencies": {
-    "@openmembrain/core": "*",
-    "@openmembrain/shared": "*",
-    "@openmembrain/storage": "*"
+    "@openmembrane/core": "*",
+    "@openmembrane/shared": "*",
+    "@openmembrane/storage": "*"
   }
 }

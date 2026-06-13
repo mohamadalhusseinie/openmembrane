@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseArgs, type CliCommand, type ParseResult } from "../../../apps/mcp-server/src/cli/parseArgs";
 
 function argv(...args: string[]): readonly string[] {
-  return ["node", "openmembrain", ...args];
+  return ["node", "openmembrane", ...args];
 }
 
 function expectOk(result: ParseResult): CliCommand {

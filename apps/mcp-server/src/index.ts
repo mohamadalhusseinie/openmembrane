@@ -16,11 +16,11 @@ if (!result.ok) {
 
     case "serve": {
       const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
-      const { createOpenMembrainContext } = await import("./context");
-      const { createOpenMembrainMcpServer } = await import("./server");
+      const { createOpenMembraneContext } = await import("./context");
+      const { createOpenMembraneMcpServer } = await import("./server");
 
-      const context = await createOpenMembrainContext();
-      const server = createOpenMembrainMcpServer(context);
+      const context = await createOpenMembraneContext();
+      const server = createOpenMembraneMcpServer(context);
       await server.connect(new StdioServerTransport());
       break;
     }
