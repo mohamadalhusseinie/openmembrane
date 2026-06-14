@@ -4,6 +4,27 @@ OpenMembrane is the intelligent membrane for AI coding memory. It autonomously r
 
 No manual effort. No data leaves your machine unless you choose it. Safe, private, and trustworthy by design.
 
+<details>
+<summary><strong>Table of Contents</strong></summary>
+
+- [Installation](#installation)
+- [Configuring Your AI Tool](#configuring-your-ai-tool)
+  - [Claude Desktop](#claude-desktop)
+  - [Claude Code](#claude-code)
+  - [VS Code / GitHub Copilot](#vs-code--github-copilot)
+  - [Cursor](#cursor)
+  - [OpenCode](#opencode)
+- [Automatic Memory Capture](#automatic-memory-capture)
+- [Environment Variables](#environment-variables)
+- [MCP Tools](#mcp-tools)
+- [Architecture](#architecture)
+- [Diagnostics And Errors](#diagnostics-and-errors)
+- [Static Fallback Files](#static-fallback-files)
+- [Development](#development)
+- [Documentation](#documentation)
+
+</details>
+
 - **Zero-effort** — learns from sessions automatically, no commands or prompts needed
 - **Secure by default** — secrets are detected and rejected before they ever reach storage
 - **Self-managing** — deduplicates, resolves conflicts, and filters noise on its own
