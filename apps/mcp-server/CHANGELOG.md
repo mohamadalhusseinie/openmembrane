@@ -1,5 +1,33 @@
 # openmembrane
 
+## 2.0.0
+
+### Major Changes
+
+- f890b5f: Rename the project, package, CLI, environment variables, MCP tools, and default storage paths to the new OpenMembrane/openmembrane name.
+
+### Minor Changes
+
+- 5df7114: Add local developer review UI for inspecting memories, approving/rejecting candidates, and viewing audit/diagnostics history. Launch with `npm run review-ui` or `tsx apps/review-ui/src/index.ts`.
+- ffceec8: Auto-enable AI extractor when API key environment variable is present. Previously, users had to set both `OPENMEMBRANE_EXTRACTION_ENABLED=true` and `OPENMEMBRANE_EXTRACTION_PROVIDER=openai` alongside the API key. Now, the presence of an API key alone is sufficient to enable the real extractor. Explicit `ENABLED=false` still overrides. A startup diagnostic is logged when falling back to mock extraction.
+- 2ff566d: add remember tool for direct AI-side memory extraction
+- 52eafe5: Refactor extractor-openai into provider-agnostic extractor-llm for any OpenAI-compatible endpoint.
+
+  - Rename `@openmembrane/extractor-openai` to `@openmembrane/extractor-llm`
+  - Rename `OpenAiMemoryExtractor` to `LlmMemoryExtractor`
+  - Make `apiKey` optional for local models (Ollama, LM Studio, vLLM)
+  - Add `jsonMode` config flag to conditionally send `response_format`
+  - Add JSON extraction from freeform responses (markdown fences, surrounding text)
+  - Update provider list to `[mock, llm, anthropic]`
+  - Remove `OPENMEMBRANE_OPENAI_*` env var fallbacks
+  - Add `OPENMEMBRANE_EXTRACTION_JSON_MODE` env var support
+
+### Patch Changes
+
+- dd567a7: Update all documentation to reflect remember-first architecture. The `remember` tool is now presented as the primary interface for saving memory (no API key needed), with `propose_memory_from_session` documented as the secondary automation path.
+- 2936c08: Update OpenCode and extraction documentation to reflect the current LLM extractor configuration.
+- 8bf9734: Update exported static memory guidance to use the remember-first save flow and explicit user-triggered saves.
+
 ## 1.0.2
 
 ### Patch Changes
