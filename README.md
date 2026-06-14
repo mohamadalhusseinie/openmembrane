@@ -4,8 +4,7 @@ OpenMembrane is the intelligent membrane for AI coding memory. It autonomously r
 
 No manual effort. No data leaves your machine unless you choose it. Safe, private, and trustworthy by design.
 
-<details>
-<summary><strong>Table of Contents</strong></summary>
+## Table of Contents
 
 - [Installation](#installation)
 - [Configuring Your AI Tool](#configuring-your-ai-tool)
@@ -22,8 +21,6 @@ No manual effort. No data leaves your machine unless you choose it. Safe, privat
 - [Static Fallback Files](#static-fallback-files)
 - [Development](#development)
 - [Documentation](#documentation)
-
-</details>
 
 - **Zero-effort** — learns from sessions automatically, no commands or prompts needed
 - **Secure by default** — secrets are detected and rejected before they ever reach storage
