@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/storage",
+  "name": "@openmembrane/storage",
   "version": "1.0.2",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/core": "*",
+    "@openmembrane/core": "*",
     "better-sqlite3": "^12.9.0"
   },
   "devDependencies": {

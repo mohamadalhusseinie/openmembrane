@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SafetyFilter } from "@openmembrain/core";
+import { SafetyFilter } from "@openmembrane/core";
 
 const filter = new SafetyFilter();
 

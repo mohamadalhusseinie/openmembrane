@@ -1,5 +1,5 @@
-import { createId, nowIso } from "@openmembrain/shared";
-import { OpenMembrainError } from "../errors/OpenMembrainError";
+import { createId, nowIso } from "@openmembrane/shared";
+import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import { PolicyEngine } from "../policy/PolicyEngine";
 import type { MemoryScope, MemoryType, Sensitivity } from "../types/MemoryCandidate";
@@ -37,7 +37,7 @@ export class MemoryUpdateService {
   async update(projectId: string, memoryId: string, fields: MemoryUpdateFields): Promise<MemoryEntry> {
     const existing = await this.memoryStore.findById(projectId, memoryId);
     if (!existing) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "MEMORY_NOT_FOUND",
         message: `Memory ${memoryId} was not found.`,
         safeMessage: "The memory was not found.",
@@ -46,7 +46,7 @@ export class MemoryUpdateService {
     }
 
     if (existing.status === "superseded") {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "MEMORY_ALREADY_SUPERSEDED",
         message: `Memory ${memoryId} is superseded and cannot be updated.`,
         safeMessage: "Superseded memories cannot be updated.",
@@ -57,7 +57,7 @@ export class MemoryUpdateService {
     const newContent = fields.content ?? existing.content;
 
     if (fields.content !== undefined && this.secretDetector.containsSecret(newContent)) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "VALIDATION_ERROR",
         message: "Updated content contains secrets.",
         safeMessage: "The updated memory content contains secret material and cannot be saved.",
@@ -68,7 +68,7 @@ export class MemoryUpdateService {
     if (fields.tags !== undefined) {
       const tagText = fields.tags.join(" ");
       if (tagText.length > 0 && this.secretDetector.containsSecret(tagText)) {
-        throw new OpenMembrainError({
+        throw new OpenMembraneError({
           code: "VALIDATION_ERROR",
           message: "Updated tags contain secrets.",
           safeMessage: "The updated tags contain secret material and cannot be saved.",
@@ -98,7 +98,7 @@ export class MemoryUpdateService {
 
       const check = this.policyEngine.evaluate(syntheticCandidate);
       if (!check.allowed) {
-        throw new OpenMembrainError({
+        throw new OpenMembraneError({
           code: "VALIDATION_ERROR",
           message: `Updated content violates policy: ${check.violations.join("; ")}`,
           safeMessage: "The updated memory content does not pass policy validation.",
@@ -108,7 +108,7 @@ export class MemoryUpdateService {
 
       if (sensitivityRank(check.sensitivity) > sensitivityRank(existing.sensitivity)) {
         if (check.sensitivity === "secret") {
-          throw new OpenMembrainError({
+          throw new OpenMembraneError({
             code: "VALIDATION_ERROR",
             message: "Updated content was classified as secret.",
             safeMessage: "The updated memory content contains secret material and cannot be saved.",

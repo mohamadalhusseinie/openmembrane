@@ -41,7 +41,7 @@
 
 ```json
 {
-  "name": "@openmembrain/extractor-llm",
+  "name": "@openmembrane/extractor-llm",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -50,8 +50,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/core": "*",
-    "@openmembrain/shared": "*",
+    "@openmembrane/core": "*",
+    "@openmembrane/shared": "*",
     "openai": "^6.37.0"
   }
 }
@@ -80,14 +80,14 @@ import type {
   OnExtractionDiagnostics,
   ExtractionChunkError,
   SessionInput,
-} from "@openmembrain/core";
+} from "@openmembrane/core";
 import {
   getSessionText,
   buildSystemPrompt,
   buildUserPrompt,
   chunkTranscript,
   parseExtractionResponse,
-} from "@openmembrain/core";
+} from "@openmembrane/core";
 
 export class LlmMemoryExtractor implements MemoryExtractor {
   private readonly client: OpenAI;
@@ -262,8 +262,8 @@ Expected: FAIL — `"llm"` is not in the providers list yet.
 Change `packages/core/src/extraction/ExtractionConfig.ts` to:
 
 ```ts
-import type { Result } from "@openmembrain/shared";
-import { OpenMembrainError } from "../errors/OpenMembrainError";
+import type { Result } from "@openmembrane/shared";
+import { OpenMembraneError } from "../errors/OpenMembraneError";
 
 export const extractionProviders = ["mock", "llm", "anthropic"] as const;
 
@@ -286,11 +286,11 @@ export const defaultExtractionConfig: ExtractionConfig = {
 
 export function validateExtractionConfig(
   config: ExtractionConfig
-): Result<ExtractionConfig, OpenMembrainError> {
+): Result<ExtractionConfig, OpenMembraneError> {
   if (!(extractionProviders as readonly string[]).includes(config.provider)) {
     return {
       ok: false,
-      error: new OpenMembrainError({
+      error: new OpenMembraneError({
         code: "EXTRACTION_CONFIG_ERROR",
         message: `Unknown extraction provider: ${config.provider as string}`,
         safeMessage: "Invalid extraction provider."
@@ -305,7 +305,7 @@ export function validateExtractionConfig(
   ) {
     return {
       ok: false,
-      error: new OpenMembrainError({
+      error: new OpenMembraneError({
         code: "EXTRACTION_CONFIG_ERROR",
         message: `Provider "${config.provider}" requires an apiKey when enabled.`,
         safeMessage: "Missing API key for extraction provider."
@@ -349,12 +349,12 @@ import { env } from "node:process";
 import { defaultExtractionConfig, type ExtractionConfig, type ExtractionProvider } from "./ExtractionConfig";
 
 export function loadExtractionConfig(): ExtractionConfig {
-  const provider = (env.OPENMEMBRAIN_EXTRACTION_PROVIDER as ExtractionProvider | undefined) ?? defaultExtractionConfig.provider;
-  const enabled = env.OPENMEMBRAIN_EXTRACTION_ENABLED === "true";
-  const apiKey = env.OPENMEMBRAIN_EXTRACTION_API_KEY;
-  const model = env.OPENMEMBRAIN_EXTRACTION_MODEL;
-  const baseUrl = env.OPENMEMBRAIN_EXTRACTION_BASE_URL;
-  const jsonModeEnv = env.OPENMEMBRAIN_EXTRACTION_JSON_MODE;
+  const provider = (env.OPENMEMBRANE_EXTRACTION_PROVIDER as ExtractionProvider | undefined) ?? defaultExtractionConfig.provider;
+  const enabled = env.OPENMEMBRANE_EXTRACTION_ENABLED === "true";
+  const apiKey = env.OPENMEMBRANE_EXTRACTION_API_KEY;
+  const model = env.OPENMEMBRANE_EXTRACTION_MODEL;
+  const baseUrl = env.OPENMEMBRANE_EXTRACTION_BASE_URL;
+  const jsonModeEnv = env.OPENMEMBRANE_EXTRACTION_JSON_MODE;
   const jsonMode = jsonModeEnv === undefined ? undefined : jsonModeEnv !== "false";
 
   return {
@@ -369,8 +369,8 @@ export function loadExtractionConfig(): ExtractionConfig {
 ```
 
 Key changes:
-- Removed `OPENMEMBRAIN_OPENAI_*` fallback env vars (clean break)
-- Added `OPENMEMBRAIN_EXTRACTION_JSON_MODE` env var support
+- Removed `OPENMEMBRANE_OPENAI_*` fallback env vars (clean break)
+- Added `OPENMEMBRANE_EXTRACTION_JSON_MODE` env var support
 
 - [ ] **Step 2: Update `tests/unit/loadExtractionConfig.test.ts`**
 
@@ -378,7 +378,7 @@ Replace the full test file:
 
 ```ts
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { loadExtractionConfig } from "@openmembrain/core";
+import { loadExtractionConfig } from "@openmembrane/core";
 
 describe("loadExtractionConfig", () => {
   afterEach(() => {
@@ -395,32 +395,32 @@ describe("loadExtractionConfig", () => {
     expect(config).not.toHaveProperty("jsonMode");
   });
 
-  it("reads provider from OPENMEMBRAIN_EXTRACTION_PROVIDER", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_PROVIDER", "llm");
+  it("reads provider from OPENMEMBRANE_EXTRACTION_PROVIDER", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "llm");
     const config = loadExtractionConfig();
     expect(config.provider).toBe("llm");
   });
 
-  it("reads apiKey from OPENMEMBRAIN_EXTRACTION_API_KEY", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-123");
+  it("reads apiKey from OPENMEMBRANE_EXTRACTION_API_KEY", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "sk-test-123");
     const config = loadExtractionConfig();
     expect(config.apiKey).toBe("sk-test-123");
   });
 
-  it("reads model from OPENMEMBRAIN_EXTRACTION_MODEL", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_MODEL", "llama3.1");
+  it("reads model from OPENMEMBRANE_EXTRACTION_MODEL", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_MODEL", "llama3.1");
     const config = loadExtractionConfig();
     expect(config.model).toBe("llama3.1");
   });
 
-  it("reads baseUrl from OPENMEMBRAIN_EXTRACTION_BASE_URL", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_BASE_URL", "http://localhost:11434/v1");
+  it("reads baseUrl from OPENMEMBRANE_EXTRACTION_BASE_URL", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_BASE_URL", "http://localhost:11434/v1");
     const config = loadExtractionConfig();
     expect(config.baseUrl).toBe("http://localhost:11434/v1");
   });
 
   it("treats enabled=false correctly", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "false");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "false");
     const config = loadExtractionConfig();
     expect(config.enabled).toBe(false);
   });
@@ -430,14 +430,14 @@ describe("loadExtractionConfig", () => {
     expect(config.enabled).toBe(false);
   });
 
-  it("reads jsonMode=true from OPENMEMBRAIN_EXTRACTION_JSON_MODE", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_JSON_MODE", "true");
+  it("reads jsonMode=true from OPENMEMBRANE_EXTRACTION_JSON_MODE", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_JSON_MODE", "true");
     const config = loadExtractionConfig();
     expect(config.jsonMode).toBe(true);
   });
 
-  it("reads jsonMode=false from OPENMEMBRAIN_EXTRACTION_JSON_MODE", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_JSON_MODE", "false");
+  it("reads jsonMode=false from OPENMEMBRANE_EXTRACTION_JSON_MODE", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_JSON_MODE", "false");
     const config = loadExtractionConfig();
     expect(config.jsonMode).toBe(false);
   });
@@ -472,11 +472,11 @@ git commit -m "feat: simplify loadExtractionConfig, remove OpenAI-specific env v
 
 Change:
 ```json
-"@openmembrain/extractor-openai": ["packages/extractor-openai/src/index.ts"]
+"@openmembrane/extractor-openai": ["packages/extractor-openai/src/index.ts"]
 ```
 To:
 ```json
-"@openmembrain/extractor-llm": ["packages/extractor-llm/src/index.ts"]
+"@openmembrane/extractor-llm": ["packages/extractor-llm/src/index.ts"]
 ```
 
 - [ ] **Step 2: Run typecheck**
@@ -501,22 +501,22 @@ In `dependencies`, remove:
 
 In `devDependencies`, change:
 ```json
-"@openmembrain/extractor-openai": "*",
+"@openmembrane/extractor-openai": "*",
 ```
 To:
 ```json
-"@openmembrain/extractor-llm": "*",
+"@openmembrane/extractor-llm": "*",
 ```
 
 - [ ] **Step 2: Update `apps/mcp-server/src/context.ts`**
 
 Change import (line 5):
 ```ts
-import { OpenAiMemoryExtractor } from "@openmembrain/extractor-openai";
+import { OpenAiMemoryExtractor } from "@openmembrane/extractor-openai";
 ```
 To:
 ```ts
-import { LlmMemoryExtractor } from "@openmembrain/extractor-llm";
+import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
 ```
 
 Change provider registration (line 64):
@@ -554,8 +554,8 @@ import {
   type ExtractionConfig,
   type MemoryExtractor,
   type OnExtractionDiagnostics,
-} from "@openmembrain/core";
-import { OpenMembrainError } from "@openmembrain/core";
+} from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
 
 class FakeLlmExtractor implements MemoryExtractor {
   async extract() { return []; }
@@ -590,12 +590,12 @@ describe("createExtractor", () => {
 
   it("throws EXTRACTION_CONFIG_ERROR for anthropic without apiKey when enabled", () => {
     const config: ExtractionConfig = { provider: "anthropic", enabled: true };
-    expect(() => createExtractor(config, { providers: fakeProviders })).toThrow(OpenMembrainError);
+    expect(() => createExtractor(config, { providers: fakeProviders })).toThrow(OpenMembraneError);
     try {
       createExtractor(config, { providers: fakeProviders });
     } catch (err) {
-      expect(err).toBeInstanceOf(OpenMembrainError);
-      expect((err as OpenMembrainError).code).toBe("EXTRACTION_CONFIG_ERROR");
+      expect(err).toBeInstanceOf(OpenMembraneError);
+      expect((err as OpenMembraneError).code).toBe("EXTRACTION_CONFIG_ERROR");
     }
   });
 
@@ -616,12 +616,12 @@ describe("createExtractor", () => {
       enabled: true,
       apiKey: "test-key",
     };
-    expect(() => createExtractor(config)).toThrow(OpenMembrainError);
+    expect(() => createExtractor(config)).toThrow(OpenMembraneError);
     try {
       createExtractor(config);
     } catch (err) {
-      expect(err).toBeInstanceOf(OpenMembrainError);
-      expect((err as OpenMembrainError).code).toBe("EXTRACTION_CONFIG_ERROR");
+      expect(err).toBeInstanceOf(OpenMembraneError);
+      expect((err as OpenMembraneError).code).toBe("EXTRACTION_CONFIG_ERROR");
     }
   });
 
@@ -663,8 +663,8 @@ git commit -m "test: update createExtractor tests for llm provider"
 ```ts
 import { describe, it, expect, vi } from "vitest";
 import type OpenAI from "openai";
-import { LlmMemoryExtractor } from "@openmembrain/extractor-llm";
-import type { OnExtractionDiagnostics, ExtractionConfig } from "@openmembrain/core";
+import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
+import type { OnExtractionDiagnostics, ExtractionConfig } from "@openmembrane/core";
 
 function createMockClient(responses: string[]) {
   let callIndex = 0;
@@ -1017,11 +1017,11 @@ git commit -m "chore: remove packages/extractor-openai (replaced by extractor-ll
 ### Task 9: Update `.opencode/INSTALL.md` references
 
 **Files:**
-- Modify: `.opencode/INSTALL.md` (line 70 references `OPENMEMBRAIN_OPENAI_API_KEY`)
+- Modify: `.opencode/INSTALL.md` (line 70 references `OPENMEMBRANE_OPENAI_API_KEY`)
 
 - [ ] **Step 1: Update the env var reference**
 
-Change `OPENMEMBRAIN_OPENAI_API_KEY` to `OPENMEMBRAIN_EXTRACTION_API_KEY` in the install instructions. Update the provider config example to use `"llm"` instead of `"openai"`.
+Change `OPENMEMBRANE_OPENAI_API_KEY` to `OPENMEMBRANE_EXTRACTION_API_KEY` in the install instructions. Update the provider config example to use `"llm"` instead of `"openai"`.
 
 - [ ] **Step 2: Commit**
 
@@ -1058,16 +1058,16 @@ If clean, done. If not, stage and commit remaining changes.
 
 | Before | After |
 |--------|-------|
-| `OPENMEMBRAIN_EXTRACTION_PROVIDER=openai` | `OPENMEMBRAIN_EXTRACTION_PROVIDER=llm` |
-| `OPENMEMBRAIN_OPENAI_API_KEY` | Removed. Use `OPENMEMBRAIN_EXTRACTION_API_KEY` |
-| `OPENMEMBRAIN_OPENAI_MODEL` | Removed. Use `OPENMEMBRAIN_EXTRACTION_MODEL` |
-| `OPENMEMBRAIN_OPENAI_BASE_URL` | Removed. Use `OPENMEMBRAIN_EXTRACTION_BASE_URL` |
-| `@openmembrain/extractor-openai` | `@openmembrain/extractor-llm` |
+| `OPENMEMBRANE_EXTRACTION_PROVIDER=openai` | `OPENMEMBRANE_EXTRACTION_PROVIDER=llm` |
+| `OPENMEMBRANE_OPENAI_API_KEY` | Removed. Use `OPENMEMBRANE_EXTRACTION_API_KEY` |
+| `OPENMEMBRANE_OPENAI_MODEL` | Removed. Use `OPENMEMBRANE_EXTRACTION_MODEL` |
+| `OPENMEMBRANE_OPENAI_BASE_URL` | Removed. Use `OPENMEMBRANE_EXTRACTION_BASE_URL` |
+| `@openmembrane/extractor-openai` | `@openmembrane/extractor-llm` |
 | `OpenAiMemoryExtractor` class | `LlmMemoryExtractor` class |
 | Provider list: `["mock", "openai", "anthropic", "local"]` | `["mock", "llm", "anthropic"]` |
 | `apiKey` required for `openai` provider | `apiKey` optional for `llm` provider |
 
-## New Config: `OPENMEMBRAIN_EXTRACTION_JSON_MODE`
+## New Config: `OPENMEMBRANE_EXTRACTION_JSON_MODE`
 
 - Not set or `"true"` — sends `response_format: { type: "json_object" }` to the API
 - `"false"` — omits `response_format`, extracts JSON from freeform response (needed for models that don't support JSON mode)
@@ -1076,31 +1076,31 @@ If clean, done. If not, stage and commit remaining changes.
 
 ```bash
 # Local Ollama (free, no API key needed)
-OPENMEMBRAIN_EXTRACTION_PROVIDER=llm
-OPENMEMBRAIN_EXTRACTION_ENABLED=true
-OPENMEMBRAIN_EXTRACTION_BASE_URL=http://localhost:11434/v1
-OPENMEMBRAIN_EXTRACTION_MODEL=llama3.1
-OPENMEMBRAIN_EXTRACTION_JSON_MODE=false
+OPENMEMBRANE_EXTRACTION_PROVIDER=llm
+OPENMEMBRANE_EXTRACTION_ENABLED=true
+OPENMEMBRANE_EXTRACTION_BASE_URL=http://localhost:11434/v1
+OPENMEMBRANE_EXTRACTION_MODEL=llama3.1
+OPENMEMBRANE_EXTRACTION_JSON_MODE=false
 
 # Groq (fast, cheap)
-OPENMEMBRAIN_EXTRACTION_PROVIDER=llm
-OPENMEMBRAIN_EXTRACTION_ENABLED=true
-OPENMEMBRAIN_EXTRACTION_API_KEY=gsk_...
-OPENMEMBRAIN_EXTRACTION_BASE_URL=https://api.groq.com/openai/v1
-OPENMEMBRAIN_EXTRACTION_MODEL=llama-3.1-70b-versatile
+OPENMEMBRANE_EXTRACTION_PROVIDER=llm
+OPENMEMBRANE_EXTRACTION_ENABLED=true
+OPENMEMBRANE_EXTRACTION_API_KEY=gsk_...
+OPENMEMBRANE_EXTRACTION_BASE_URL=https://api.groq.com/openai/v1
+OPENMEMBRANE_EXTRACTION_MODEL=llama-3.1-70b-versatile
 
 # OpenAI (still works, just use "llm" provider)
-OPENMEMBRAIN_EXTRACTION_PROVIDER=llm
-OPENMEMBRAIN_EXTRACTION_ENABLED=true
-OPENMEMBRAIN_EXTRACTION_API_KEY=sk-...
-OPENMEMBRAIN_EXTRACTION_MODEL=gpt-4o
+OPENMEMBRANE_EXTRACTION_PROVIDER=llm
+OPENMEMBRANE_EXTRACTION_ENABLED=true
+OPENMEMBRANE_EXTRACTION_API_KEY=sk-...
+OPENMEMBRANE_EXTRACTION_MODEL=gpt-4o
 
 # OpenRouter (access to many models)
-OPENMEMBRAIN_EXTRACTION_PROVIDER=llm
-OPENMEMBRAIN_EXTRACTION_ENABLED=true
-OPENMEMBRAIN_EXTRACTION_API_KEY=sk-or-...
-OPENMEMBRAIN_EXTRACTION_BASE_URL=https://openrouter.ai/api/v1
-OPENMEMBRAIN_EXTRACTION_MODEL=meta-llama/llama-3.1-70b-instruct
+OPENMEMBRANE_EXTRACTION_PROVIDER=llm
+OPENMEMBRANE_EXTRACTION_ENABLED=true
+OPENMEMBRANE_EXTRACTION_API_KEY=sk-or-...
+OPENMEMBRANE_EXTRACTION_BASE_URL=https://openrouter.ai/api/v1
+OPENMEMBRANE_EXTRACTION_MODEL=meta-llama/llama-3.1-70b-instruct
 ```
 
 ## Future Work (Ticket 2)

@@ -1,6 +1,6 @@
-import { createId, nowIso } from "@openmembrain/shared";
+import { createId, nowIso } from "@openmembrane/shared";
 import { Deduplicator } from "../deduplication/Deduplicator";
-import { OpenMembrainError } from "../errors/OpenMembrainError";
+import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import { memoryEntryFromCandidate, type MemoryEntry } from "../types/MemoryEntry";
 import type { AuditLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
@@ -42,7 +42,7 @@ export class MemoryApprovalService {
   async approve(projectId: string, candidateId: string): Promise<MemoryEntry> {
     const candidate = await this.pendingCandidateStore.findById(projectId, candidateId);
     if (!candidate) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "CANDIDATE_NOT_FOUND",
         message: `Pending memory candidate ${candidateId} was not found.`,
         safeMessage: "The pending memory candidate was not found.",
@@ -51,7 +51,7 @@ export class MemoryApprovalService {
     }
 
     if (candidate.sensitivity === "secret" || this.secretDetector.containsSecret(candidate.content)) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "SECRET_CANDIDATE",
         message: "Secret candidates cannot be approved.",
         safeMessage: "This memory candidate contains secret material and cannot be approved.",
@@ -114,7 +114,7 @@ export class MemoryApprovalService {
         const memory = await this.approve(projectId, candidate.id);
         approved.push(memory);
       } catch (error) {
-        if (error instanceof OpenMembrainError && skippableCodes.has(error.code)) {
+        if (error instanceof OpenMembraneError && skippableCodes.has(error.code)) {
           skipped.push({ candidateId: candidate.id, reason: error.safeMessage });
         } else {
           throw error;
@@ -136,7 +136,7 @@ export class MemoryApprovalService {
   async reject(projectId: string, candidateId: string, reason?: string): Promise<void> {
     const candidate = await this.pendingCandidateStore.findById(projectId, candidateId);
     if (!candidate) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "CANDIDATE_NOT_FOUND",
         message: `Pending memory candidate ${candidateId} was not found.`,
         safeMessage: "The pending memory candidate was not found.",

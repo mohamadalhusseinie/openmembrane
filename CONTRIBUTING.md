@@ -1,4 +1,4 @@
-# Contributing to OpenMemBrain
+# Contributing to OpenMembrane
 
 ## Prerequisites
 
@@ -8,8 +8,8 @@
 ## Setup
 
 ```sh
-git clone https://github.com/mohamadalhusseinie/openmembrain.git
-cd openmembrain
+git clone https://github.com/mohamadalhusseinie/openmembrane.git
+cd openmembrane
 npm install
 ```
 

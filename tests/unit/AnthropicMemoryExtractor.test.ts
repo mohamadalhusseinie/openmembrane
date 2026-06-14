@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { AnthropicMemoryExtractor } from "@openmembrain/extractor-anthropic";
-import type { AnthropicClient } from "@openmembrain/extractor-anthropic";
-import type { ExtractionConfig } from "@openmembrain/core";
+import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
+import type { AnthropicClient } from "@openmembrane/extractor-anthropic";
+import type { ExtractionConfig } from "@openmembrane/core";
 
 function createMockClient(responses: string[]) {
   let callIndex = 0;

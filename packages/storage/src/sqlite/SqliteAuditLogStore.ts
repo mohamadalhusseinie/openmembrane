@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { AuditEvent, AuditLogStore } from "@openmembrain/core";
+import type { AuditEvent, AuditLogStore } from "@openmembrane/core";
 
 interface RawAuditRow {
   id: string;

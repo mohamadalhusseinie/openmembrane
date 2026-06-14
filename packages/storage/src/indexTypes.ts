@@ -1,4 +1,4 @@
-import type { Confidence, MemoryScope, MemoryType } from "@openmembrain/core";
+import type { Confidence, MemoryScope, MemoryType } from "@openmembrane/core";
 
 export interface MasterIndex {
   version: number;

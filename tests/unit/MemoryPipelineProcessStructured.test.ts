@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { MemoryPipeline, MockMemoryExtractor } from "@openmembrain/core";
-import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrain/storage";
+import { MemoryPipeline, MockMemoryExtractor } from "@openmembrane/core";
+import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 import { candidate } from "./helpers";
 
 const tempDirs: string[] = [];
@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 async function createPipeline() {
-  const baseDir = await mkdtemp(join(tmpdir(), "openmembrain-test-"));
+  const baseDir = await mkdtemp(join(tmpdir(), "openmembrane-test-"));
   tempDirs.push(baseDir);
 
   const memoryStore = new JsonMemoryStore(baseDir);

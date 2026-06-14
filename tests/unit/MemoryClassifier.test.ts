@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryClassifier } from "@openmembrain/core";
+import { MemoryClassifier } from "@openmembrane/core";
 import { candidate } from "./helpers";
 
 const classifier = new MemoryClassifier();

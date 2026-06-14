@@ -1,9 +1,9 @@
-import type { MemoryEntry, MemoryType } from "@openmembrain/core";
+import type { MemoryEntry, MemoryType } from "@openmembrane/core";
 import type { MemoryExportOptions } from "./types";
 
-const usagePreamble = `## Using OpenMemBrain
+const usagePreamble = `## Using OpenMembrane
 
-If OpenMemBrain MCP tools are available in your environment:
+If OpenMembrane MCP tools are available in your environment:
 
 - **Session start:** Call \`get_project_rules\` and \`get_relevant_context\` to load
   project memory before starting work. Call \`list_memory_candidates\` to surface
@@ -17,7 +17,7 @@ If OpenMemBrain MCP tools are available in your environment:
   or workflow submits a full session transcript or summary and a server-side
   extractor is configured.
 
-The memories below were exported from OpenMemBrain for tools without MCP access.
+The memories below were exported from OpenMembrane for tools without MCP access.
 `;
 
 const typeLabels: Record<MemoryType, string> = {
@@ -62,7 +62,7 @@ export function renderMemoryDocument(
   const lines: string[] = [];
 
   if (options.cursorFrontmatter) {
-    lines.push("---", "description: OpenMembrain project memory", "alwaysApply: true", "---", "");
+    lines.push("---", "description: OpenMembrane project memory", "alwaysApply: true", "---", "");
   }
 
   lines.push(`# ${options.title}`, "");
@@ -76,7 +76,7 @@ export function renderMemoryDocument(
   }
 
   if (exportable.length === 0) {
-    lines.push("No exportable OpenMembrain memory has been saved yet.", "");
+    lines.push("No exportable OpenMembrane memory has been saved yet.", "");
     return lines.join("\n");
   }
 

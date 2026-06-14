@@ -10,45 +10,45 @@ import {
   IngestionService,
   MemoryPipeline,
   MockMemoryExtractor,
-  OpenMembrainError,
+  OpenMembraneError,
   type MemoryPipelineResult
-} from "@openmembrain/core";
-import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrain/storage";
+} from "@openmembrane/core";
+import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 import { candidate, entry } from "./helpers.js";
 
 describe("validateIngestionRequest", () => {
   it("throws VALIDATION_ERROR when projectId is empty", () => {
-    expect(() => validateIngestionRequest({ projectId: "", transcript: "t" })).toThrow(OpenMembrainError);
+    expect(() => validateIngestionRequest({ projectId: "", transcript: "t" })).toThrow(OpenMembraneError);
     try {
       validateIngestionRequest({ projectId: "", transcript: "t" });
     } catch (e) {
-      expect((e as OpenMembrainError).code).toBe("VALIDATION_ERROR");
+      expect((e as OpenMembraneError).code).toBe("VALIDATION_ERROR");
     }
   });
 
   it("throws VALIDATION_ERROR when projectId is whitespace-only", () => {
-    expect(() => validateIngestionRequest({ projectId: "   ", transcript: "t" })).toThrow(OpenMembrainError);
+    expect(() => validateIngestionRequest({ projectId: "   ", transcript: "t" })).toThrow(OpenMembraneError);
   });
 
   it("throws VALIDATION_ERROR when neither transcript nor summary is provided", () => {
-    expect(() => validateIngestionRequest({ projectId: "p1" })).toThrow(OpenMembrainError);
+    expect(() => validateIngestionRequest({ projectId: "p1" })).toThrow(OpenMembraneError);
     try {
       validateIngestionRequest({ projectId: "p1" });
     } catch (e) {
-      expect((e as OpenMembrainError).code).toBe("VALIDATION_ERROR");
+      expect((e as OpenMembraneError).code).toBe("VALIDATION_ERROR");
     }
   });
 
   it("throws when transcript exceeds MAX_TRANSCRIPT_LENGTH", () => {
     expect(() =>
       validateIngestionRequest({ projectId: "p1", transcript: "x".repeat(MAX_TRANSCRIPT_LENGTH + 1) })
-    ).toThrow(OpenMembrainError);
+    ).toThrow(OpenMembraneError);
   });
 
   it("throws when summary exceeds MAX_SUMMARY_LENGTH", () => {
     expect(() =>
       validateIngestionRequest({ projectId: "p1", summary: "x".repeat(MAX_SUMMARY_LENGTH + 1) })
-    ).toThrow(OpenMembrainError);
+    ).toThrow(OpenMembraneError);
   });
 
   it("does not throw when transcript is provided", () => {
@@ -173,14 +173,14 @@ describe("IngestionService", () => {
   it("validates input before processing", async () => {
     const pipeline = {} as MemoryPipeline;
     const service = new IngestionService({ pipeline });
-    await expect(service.ingest({ projectId: "p1" })).rejects.toThrow(OpenMembrainError);
+    await expect(service.ingest({ projectId: "p1" })).rejects.toThrow(OpenMembraneError);
   });
 
   describe("integration with MockMemoryExtractor", () => {
     let tempDir: string;
 
     beforeEach(async () => {
-      tempDir = await mkdtemp(join(tmpdir(), "openmembrain-test-"));
+      tempDir = await mkdtemp(join(tmpdir(), "openmembrane-test-"));
     });
 
     afterEach(async () => {

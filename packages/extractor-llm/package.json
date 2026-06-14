@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/extractor-llm",
+  "name": "@openmembrane/extractor-llm",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/core": "*",
-    "@openmembrain/shared": "*",
+    "@openmembrane/core": "*",
+    "@openmembrane/shared": "*",
     "openai": "^6.37.0"
   }
 }

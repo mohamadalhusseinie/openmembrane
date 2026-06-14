@@ -13,12 +13,12 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@openmembrain/core": ["packages/core/src/index.ts"],
-      "@openmembrain/exporters": ["packages/exporters/src/index.ts"],
-      "@openmembrain/shared": ["packages/shared/src/index.ts"],
-      "@openmembrain/storage": ["packages/storage/src/index.ts"],
-      "@openmembrain/extractor-llm": ["packages/extractor-llm/src/index.ts"],
-      "@openmembrain/extractor-anthropic": ["packages/extractor-anthropic/src/index.ts"]
+      "@openmembrane/core": ["packages/core/src/index.ts"],
+      "@openmembrane/exporters": ["packages/exporters/src/index.ts"],
+      "@openmembrane/shared": ["packages/shared/src/index.ts"],
+      "@openmembrane/storage": ["packages/storage/src/index.ts"],
+      "@openmembrane/extractor-llm": ["packages/extractor-llm/src/index.ts"],
+      "@openmembrane/extractor-anthropic": ["packages/extractor-anthropic/src/index.ts"]
     }
   },
   "include": ["packages/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]

@@ -1,6 +1,6 @@
-# OpenMemBrain Architecture
+# OpenMembrane Architecture
 
-OpenMemBrain Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
+OpenMembrane Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
 
 ## Core Pipeline
 
@@ -34,10 +34,10 @@ packages/
 ## Package Dependency Graph
 
 ```text
-@openmembrain/shared        (no internal dependencies)
+@openmembrane/shared        (no internal dependencies)
        ^
        |
-@openmembrain/core          (depends on shared)
+@openmembrane/core          (depends on shared)
        ^
        |
   +----+----+
@@ -50,7 +50,7 @@ storage   exporters         (both depend on core)
   mcp-server                (imports core, storage, exporters, shared)
 ```
 
-All packages are imported via path aliases: `@openmembrain/core`, `@openmembrain/storage`, `@openmembrain/exporters`, `@openmembrain/shared`.
+All packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/shared`.
 
 ## Package Responsibilities
 
@@ -87,7 +87,7 @@ All packages are imported via path aliases: `@openmembrain/core`, `@openmembrain
 - `AGENTS.md`
 - `CLAUDE.md`
 - `.github/copilot-instructions.md`
-- `.cursor/rules/openmembrain.mdc`
+- `.cursor/rules/openmembrane.mdc`
 - `docs/ai/project-memory.md`
 
 `packages/shared` owns:
@@ -109,7 +109,7 @@ interface MemoryExtractor {
 Implementations:
 
 - `MockMemoryExtractor` — deterministic regex-based extraction for testing
-- `OpenAiMemoryExtractor` — production extractor supporting OpenAI and any compatible API endpoint (via `baseUrl`)
+- `LlmMemoryExtractor` in `packages/extractor-llm/` — production extractor for OpenAI-compatible API endpoints, including configurable `baseUrl` and JSON mode
 
 Future implementations:
 
@@ -338,4 +338,4 @@ Adapters should be thin and tool-specific:
 - Cursor integration
 - Claude Code integration
 
-Adapters should collect session summaries or transcripts and send them to OpenMemBrain Core. They should not contain memory policy logic.
+Adapters should collect session summaries or transcripts and send them to OpenMembrane Core. They should not contain memory policy logic.

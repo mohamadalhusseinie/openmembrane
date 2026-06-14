@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, normalize } from "node:path";
-import type { MemoryEntry } from "@openmembrain/core";
-import { OpenMembrainError } from "@openmembrain/core";
+import type { MemoryEntry } from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
 import { AgentsMdExporter } from "./AgentsMdExporter";
 import { ClaudeMdExporter } from "./ClaudeMdExporter";
 import { CopilotInstructionsExporter } from "./CopilotInstructionsExporter";
@@ -78,10 +78,10 @@ function assertInsideDirectory(rootDir: string, targetPath: string): void {
   const root = normalize(rootDir);
   const target = normalize(targetPath);
   if (target !== root && !target.startsWith(`${root}\\`) && !target.startsWith(`${root}/`)) {
-    throw new OpenMembrainError({
+    throw new OpenMembraneError({
       code: "EXPORT_PATH_OUTSIDE_ROOT",
       message: `Refusing to write outside export directory: ${targetPath}`,
-      safeMessage: "OpenMembrain refused to write static memory files outside the selected export directory."
+      safeMessage: "OpenMembrane refused to write static memory files outside the selected export directory."
     });
   }
 }

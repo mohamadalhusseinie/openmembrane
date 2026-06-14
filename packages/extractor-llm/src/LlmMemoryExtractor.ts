@@ -6,14 +6,14 @@ import type {
   OnExtractionDiagnostics,
   ExtractionChunkError,
   SessionInput,
-} from "@openmembrain/core";
+} from "@openmembrane/core";
 import {
   getSessionText,
   buildSystemPrompt,
   buildUserPrompt,
   chunkTranscript,
   parseExtractionResponse,
-} from "@openmembrain/core";
+} from "@openmembrane/core";
 
 export class LlmMemoryExtractor implements MemoryExtractor {
   private readonly client: OpenAI;

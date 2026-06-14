@@ -2,12 +2,12 @@ import { env } from "node:process";
 import { type ExtractionConfig, type ExtractionProvider } from "./ExtractionConfig";
 
 export function loadExtractionConfig(): ExtractionConfig {
-  const apiKey = env.OPENMEMBRAIN_EXTRACTION_API_KEY;
-  const model = env.OPENMEMBRAIN_EXTRACTION_MODEL;
-  const baseUrl = env.OPENMEMBRAIN_EXTRACTION_BASE_URL;
-  const explicitEnabled = env.OPENMEMBRAIN_EXTRACTION_ENABLED;
-  const explicitProvider = env.OPENMEMBRAIN_EXTRACTION_PROVIDER as ExtractionProvider | undefined;
-  const jsonModeEnv = env.OPENMEMBRAIN_EXTRACTION_JSON_MODE;
+  const apiKey = env.OPENMEMBRANE_EXTRACTION_API_KEY;
+  const model = env.OPENMEMBRANE_EXTRACTION_MODEL;
+  const baseUrl = env.OPENMEMBRANE_EXTRACTION_BASE_URL;
+  const explicitEnabled = env.OPENMEMBRANE_EXTRACTION_ENABLED;
+  const explicitProvider = env.OPENMEMBRANE_EXTRACTION_PROVIDER as ExtractionProvider | undefined;
+  const jsonModeEnv = env.OPENMEMBRANE_EXTRACTION_JSON_MODE;
   const jsonMode = jsonModeEnv === undefined ? undefined : jsonModeEnv !== "false";
 
   // No API key and no explicit provider: fall back to mock

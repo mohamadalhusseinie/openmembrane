@@ -9,9 +9,9 @@ export interface NudgeConfig {
 
 export function loadNudgeConfig(): NudgeConfig {
   return {
-    enabled: env.OPENMEMBRAIN_NUDGE_ENABLED !== "false",
-    threshold: parsePositiveInt(env.OPENMEMBRAIN_NUDGE_THRESHOLD, 3),
-    escalation: parsePositiveInt(env.OPENMEMBRAIN_NUDGE_ESCALATION, 3),
+    enabled: env.OPENMEMBRANE_NUDGE_ENABLED !== "false",
+    threshold: parsePositiveInt(env.OPENMEMBRANE_NUDGE_THRESHOLD, 3),
+    escalation: parsePositiveInt(env.OPENMEMBRANE_NUDGE_ESCALATION, 3),
     reNudgeAfter: 5
   };
 }

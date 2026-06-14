@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { DiagnosticEvent, DiagnosticQuery, DiagnosticsLogStore } from "@openmembrain/core";
+import type { DiagnosticEvent, DiagnosticQuery, DiagnosticsLogStore } from "@openmembrane/core";
 
 interface RawDiagnosticRow {
   id: string;

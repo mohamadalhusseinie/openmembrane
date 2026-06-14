@@ -1,4 +1,4 @@
-import type { MemoryApprovalService, PendingCandidateStore } from "@openmembrain/core";
+import type { MemoryApprovalService, PendingCandidateStore } from "@openmembrane/core";
 import type { RouteContext, RouteResponse } from "../router";
 
 export interface CandidateRouteHandlers {

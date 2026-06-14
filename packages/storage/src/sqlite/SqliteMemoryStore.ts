@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
-import type { MemoryEntry, MemorySearchOptions, MemoryStore } from "@openmembrain/core";
-import { OpenMembrainError } from "@openmembrain/core";
-import { nowIso } from "@openmembrain/shared";
+import type { MemoryEntry, MemorySearchOptions, MemoryStore } from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
+import { nowIso } from "@openmembrane/shared";
 
 interface RawMemoryRow {
   id: string;
@@ -104,7 +104,7 @@ export class SqliteMemoryStore implements MemoryStore {
   async supersede(projectId: string, memoryId: string, supersededBy?: string): Promise<MemoryEntry> {
     const existing = await this.findById(projectId, memoryId);
     if (existing === undefined) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "MEMORY_NOT_FOUND",
         message: `Memory ${memoryId} was not found.`,
         safeMessage: "The memory was not found.",
@@ -113,7 +113,7 @@ export class SqliteMemoryStore implements MemoryStore {
     }
 
     if (existing.status === "superseded") {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "MEMORY_ALREADY_SUPERSEDED",
         message: `Memory ${memoryId} is already superseded.`,
         safeMessage: "The memory is already superseded.",

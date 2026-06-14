@@ -9,11 +9,11 @@ describe("review-ui static file serving", () => {
     expect(result.body).toBeInstanceOf(Buffer);
   });
 
-  it("serves index.html content that includes OpenMemBrain", async () => {
+  it("serves index.html content that includes OpenMembrane", async () => {
     const result = await serveStatic("/");
     expect(result.status).toBe(200);
     const content = (result.body as Buffer).toString("utf-8");
-    expect(content).toContain("OpenMemBrain");
+    expect(content).toContain("OpenMembrane");
   });
 
   it("returns 404 for nonexistent files", async () => {

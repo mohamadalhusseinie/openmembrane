@@ -1,28 +1,28 @@
-# OpenMemBrain Setup: VS Code Copilot
+# OpenMembrane Setup: VS Code Copilot
 
 VS Code with GitHub Copilot supports MCP servers. No adapter code is needed — just configuration.
 
 ## Prerequisites
 
 - Node.js >= 18
-- `openmembrain` installed: `npm install -g openmembrain`
+- `openmembrane` installed: `npm install -g openmembrane`
 - VS Code with GitHub Copilot extension (agent mode)
 
 ## Configuration
 
-Add the OpenMemBrain MCP server to your VS Code settings.
+Add the OpenMembrane MCP server to your VS Code settings.
 
 ### Project-level (`.vscode/mcp.json` in project root)
 
 ```json
 {
   "servers": {
-    "openmembrain": {
+    "openmembrane": {
       "type": "stdio",
-      "command": "openmembrain",
+      "command": "openmembrane",
       "args": ["serve"],
       "env": {
-        "OPENMEMBRAIN_PROJECT_ID": "my-project"
+        "OPENMEMBRANE_PROJECT_ID": "my-project"
       }
     }
   }
@@ -34,12 +34,12 @@ Add the OpenMemBrain MCP server to your VS Code settings.
 ```json
 {
   "github.copilot.chat.mcp.servers": {
-    "openmembrain": {
+    "openmembrane": {
       "type": "stdio",
-      "command": "openmembrain",
+      "command": "openmembrane",
       "args": ["serve"],
       "env": {
-        "OPENMEMBRAIN_HOME": "/path/to/.openmembrain"
+        "OPENMEMBRANE_HOME": "/path/to/.openmembrane"
       }
     }
   }
@@ -50,9 +50,9 @@ Add the OpenMemBrain MCP server to your VS Code settings.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENMEMBRAIN_HOME` | `.openmembrain` (in cwd) | Storage directory |
-| `OPENMEMBRAIN_PROJECT_ID` | basename of cwd | Default project identifier |
-| `OPENMEMBRAIN_STORAGE_BACKEND` | `json` | Storage backend: `json` or `sqlite` |
+| `OPENMEMBRANE_HOME` | `.openmembrane` (in cwd) | Storage directory |
+| `OPENMEMBRANE_PROJECT_ID` | basename of cwd | Default project identifier |
+| `OPENMEMBRANE_STORAGE_BACKEND` | `json` | Storage backend: `json` or `sqlite` |
 
 ## Available Tools
 
@@ -87,22 +87,22 @@ Once configured, Copilot in agent mode can use these tools:
 
 In a Copilot agent mode chat, ask:
 
-> "Use the openmembrain tools to search for any stored project memories."
+> "Use the OpenMembrane tools to search for any stored project memories."
 
 Copilot should invoke `search_memory` and return results (or confirm no memories exist yet).
 
 ## Global Instructions (Recommended)
 
-To ensure Copilot automatically uses OpenMemBrain every session, create a
+To ensure Copilot automatically uses OpenMembrane every session, create a
 user-level instruction file.
 
-Create `~/.copilot/instructions/openmembrain.instructions.md`:
+Create `~/.copilot/instructions/openmembrane.instructions.md`:
 
 ```markdown
 ---
 applyTo: "**"
 ---
-When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+When OpenMembrane MCP tools are available (prefixed with openmembrane_):
 
 At session start:
 - Call get_project_rules to load coding rules and constraints.
@@ -125,7 +125,7 @@ This works globally across all projects without per-project configuration.
 
 ## Troubleshooting
 
-- **"Server not found"**: Ensure `openmembrain` is on your PATH.
+- **"Server not found"**: Ensure `openmembrane` is on your PATH.
 - **No tools appear**: Verify `.vscode/mcp.json` exists, restart VS Code, and ensure Copilot is in agent mode.
 - **Permission errors**: Ensure the storage directory is writable.
 - **MCP not supported**: Ensure you have the latest GitHub Copilot extension version.

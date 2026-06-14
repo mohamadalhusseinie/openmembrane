@@ -1,4 +1,4 @@
-import type { DiagnosticsLogStore } from "@openmembrain/core";
+import type { DiagnosticsLogStore } from "@openmembrane/core";
 import type { RouteContext, RouteResponse } from "../router";
 
 export function createDiagnosticsRoutes(projectId: string, diagnosticsStore: DiagnosticsLogStore) {

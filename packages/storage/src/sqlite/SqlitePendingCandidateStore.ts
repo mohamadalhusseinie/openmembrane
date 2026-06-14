@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { MemoryCandidate, PendingCandidateStore } from "@openmembrain/core";
+import type { MemoryCandidate, PendingCandidateStore } from "@openmembrane/core";
 
 interface RawPendingRow {
   id: string;

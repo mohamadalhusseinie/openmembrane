@@ -1,26 +1,26 @@
-# OpenMemBrain Setup: Claude Code
+# OpenMembrane Setup: Claude Code
 
 Claude Code supports MCP servers natively. No adapter code is needed — just configuration.
 
 ## Prerequisites
 
 - Node.js >= 18
-- `openmembrain` installed: `npm install -g openmembrain`
+- `openmembrane` installed: `npm install -g openmembrane`
 
 ## Configuration
 
-Add the OpenMemBrain MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
+Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
 
 ### Project-level (`.mcp.json` in project root)
 
 ```json
 {
   "mcpServers": {
-    "openmembrain": {
-      "command": "openmembrain",
+    "openmembrane": {
+      "command": "openmembrane",
       "args": ["serve"],
       "env": {
-        "OPENMEMBRAIN_PROJECT_ID": "my-project"
+        "OPENMEMBRANE_PROJECT_ID": "my-project"
       }
     }
   }
@@ -32,11 +32,11 @@ Add the OpenMemBrain MCP server to your project-level `.mcp.json` file (recommen
 ```json
 {
   "mcpServers": {
-    "openmembrain": {
-      "command": "openmembrain",
+    "openmembrane": {
+      "command": "openmembrane",
       "args": ["serve"],
       "env": {
-        "OPENMEMBRAIN_HOME": "/path/to/.openmembrain"
+        "OPENMEMBRANE_HOME": "/path/to/.openmembrane"
       }
     }
   }
@@ -47,9 +47,9 @@ Add the OpenMemBrain MCP server to your project-level `.mcp.json` file (recommen
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENMEMBRAIN_HOME` | `.openmembrain` (in cwd) | Storage directory |
-| `OPENMEMBRAIN_PROJECT_ID` | basename of cwd | Default project identifier |
-| `OPENMEMBRAIN_STORAGE_BACKEND` | `json` | Storage backend: `json` or `sqlite` |
+| `OPENMEMBRANE_HOME` | `.openmembrane` (in cwd) | Storage directory |
+| `OPENMEMBRANE_PROJECT_ID` | basename of cwd | Default project identifier |
+| `OPENMEMBRANE_STORAGE_BACKEND` | `json` | Storage backend: `json` or `sqlite` |
 
 ## Available Tools
 
@@ -84,19 +84,19 @@ Once configured, Claude Code can use these tools:
 
 In a Claude Code session, ask:
 
-> "Use the openmembrain tools to list any stored project memories."
+> "Use the OpenMembrane tools to list any stored project memories."
 
 Claude should invoke `search_memory` or `get_project_rules` and return results (or confirm no memories exist yet).
 
 ## Global Instructions (Recommended)
 
-To ensure Claude automatically uses OpenMemBrain every session, add instructions
+To ensure Claude automatically uses OpenMembrane every session, add instructions
 to your global `~/.claude/CLAUDE.md` file. Create or append to it:
 
 ```
-# OpenMemBrain
+# OpenMembrane
 
-When OpenMemBrain MCP tools are available (prefixed with openmembrain_):
+When OpenMembrane MCP tools are available (prefixed with openmembrane_):
 
 At session start:
 - Call get_project_rules to load coding rules and constraints.
@@ -115,6 +115,6 @@ This works globally across all projects without per-project configuration.
 
 ## Troubleshooting
 
-- **"Server not found"**: Ensure `openmembrain` is on your PATH (`which openmembrain`).
+- **"Server not found"**: Ensure `openmembrane` is on your PATH (`which openmembrane`).
 - **No tools appear**: Check `.mcp.json` is in the project root and restart Claude Code.
 - **Permission errors**: Ensure the storage directory is writable.

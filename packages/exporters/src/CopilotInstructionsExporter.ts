@@ -1,4 +1,4 @@
-import type { MemoryEntry } from "@openmembrain/core";
+import type { MemoryEntry } from "@openmembrane/core";
 import { renderMemoryDocument, selectExportableMemories } from "./render";
 import type { ExportedMemoryFile, MemoryExportOptions, MemoryFileExporter } from "./types";
 
@@ -10,7 +10,7 @@ export class CopilotInstructionsExporter implements MemoryFileExporter {
     const content = renderMemoryDocument(projectId, memories, {
       ...options,
       title: "GitHub Copilot Instructions",
-      intro: "OpenMembrain-generated project memory for GitHub Copilot."
+      intro: "OpenMembrane-generated project memory for GitHub Copilot."
     });
 
     return {

@@ -1,4 +1,4 @@
-# @openmembrain/shared
+# @openmembrane/shared
 
 ## 1.0.2
 

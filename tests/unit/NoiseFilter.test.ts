@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NoiseFilter } from "@openmembrain/core";
+import { NoiseFilter } from "@openmembrane/core";
 
 const filter = new NoiseFilter();
 

@@ -1,4 +1,4 @@
-import { createId, nowIso } from "@openmembrain/shared";
+import { createId, nowIso } from "@openmembrane/shared";
 import { ActionRecommender } from "../classification/ActionRecommender";
 import { MemoryClassifier } from "../classification/MemoryClassifier";
 import { ConflictDetector } from "../deduplication/ConflictDetector";

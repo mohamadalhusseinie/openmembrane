@@ -1,4 +1,4 @@
-import type { MemoryStore } from "@openmembrain/core";
+import type { MemoryStore } from "@openmembrane/core";
 import type { RouteContext, RouteResponse } from "../router";
 
 export interface MemoryRouteHandlers {

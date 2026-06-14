@@ -1,4 +1,4 @@
-import { OpenMembrainError } from "../errors/OpenMembrainError";
+import { OpenMembraneError } from "../errors/OpenMembraneError";
 import type { ExtractionConfig } from "./ExtractionConfig";
 import { validateExtractionConfig } from "./ExtractionConfig";
 import type { OnExtractionDiagnostics } from "./ExtractionDiagnostics";
@@ -30,7 +30,7 @@ export function createExtractor(
 
   const factory = options?.providers?.[config.provider];
   if (!factory) {
-    throw new OpenMembrainError({
+    throw new OpenMembraneError({
       code: "EXTRACTION_CONFIG_ERROR",
       message: `Provider "${config.provider}" is not registered. Pass it via the providers option.`,
       safeMessage: `Provider "${config.provider}" is not available.`,

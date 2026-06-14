@@ -1,5 +1,5 @@
 import { readFile, rename, stat } from "node:fs/promises";
-import { OpenMembrainError } from "@openmembrain/core";
+import { OpenMembraneError } from "@openmembrane/core";
 import type { HasTypeAndScope } from "./directoryStore";
 import { writeEntry, rebuildAllIndexes } from "./directoryStore";
 
@@ -30,20 +30,20 @@ async function migrateFlat(legacyPath: string, targetDir: string): Promise<void>
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "STORAGE_INVALID_JSON",
         message: `Expected JSON array in ${legacyPath}.`,
-        safeMessage: "OpenMembrain could not read one of its local JSON store files.",
+        safeMessage: "OpenMembrane could not read one of its local JSON store files.",
         details: { filePath: legacyPath },
       });
     }
     entries = parsed as HasTypeAndScope[];
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new OpenMembrainError({
+      throw new OpenMembraneError({
         code: "STORAGE_INVALID_JSON",
         message: `Invalid JSON in ${legacyPath}.`,
-        safeMessage: "OpenMembrain could not read one of its local JSON store files.",
+        safeMessage: "OpenMembrane could not read one of its local JSON store files.",
         details: { filePath: legacyPath },
         cause: error,
       });

@@ -47,11 +47,11 @@ import { env } from "node:process";
 import { type ExtractionConfig, type ExtractionProvider } from "./ExtractionConfig";
 
 export function loadExtractionConfig(): ExtractionConfig {
-  const apiKey = env.OPENMEMBRAIN_EXTRACTION_API_KEY ?? env.OPENMEMBRAIN_OPENAI_API_KEY;
-  const model = env.OPENMEMBRAIN_EXTRACTION_MODEL ?? env.OPENMEMBRAIN_OPENAI_MODEL;
-  const baseUrl = env.OPENMEMBRAIN_EXTRACTION_BASE_URL ?? env.OPENMEMBRAIN_OPENAI_BASE_URL;
-  const explicitEnabled = env.OPENMEMBRAIN_EXTRACTION_ENABLED;
-  const explicitProvider = env.OPENMEMBRAIN_EXTRACTION_PROVIDER as ExtractionProvider | undefined;
+  const apiKey = env.OPENMEMBRANE_EXTRACTION_API_KEY ?? env.OPENMEMBRANE_OPENAI_API_KEY;
+  const model = env.OPENMEMBRANE_EXTRACTION_MODEL ?? env.OPENMEMBRANE_OPENAI_MODEL;
+  const baseUrl = env.OPENMEMBRANE_EXTRACTION_BASE_URL ?? env.OPENMEMBRANE_OPENAI_BASE_URL;
+  const explicitEnabled = env.OPENMEMBRANE_EXTRACTION_ENABLED;
+  const explicitProvider = env.OPENMEMBRANE_EXTRACTION_PROVIDER as ExtractionProvider | undefined;
 
   // No API key: always fall back to mock regardless of other settings
   if (!apiKey) {
@@ -146,12 +146,12 @@ Expected: No type errors
 
 - [ ] **Step 1: Fix the "reads provider" test**
 
-The test at line 18-22 sets `OPENMEMBRAIN_EXTRACTION_PROVIDER=openai` but no API key. Under new logic, no API key -> always mock. Update it to also stub an API key:
+The test at line 18-22 sets `OPENMEMBRANE_EXTRACTION_PROVIDER=openai` but no API key. Under new logic, no API key -> always mock. Update it to also stub an API key:
 
 Change:
 ```typescript
-  it("reads provider from OPENMEMBRAIN_EXTRACTION_PROVIDER", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_PROVIDER", "openai");
+  it("reads provider from OPENMEMBRANE_EXTRACTION_PROVIDER", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "openai");
     const config = loadExtractionConfig();
     expect(config.provider).toBe("openai");
   });
@@ -159,9 +159,9 @@ Change:
 
 To:
 ```typescript
-  it("reads provider from OPENMEMBRAIN_EXTRACTION_PROVIDER", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_PROVIDER", "openai");
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test");
+  it("reads provider from OPENMEMBRANE_EXTRACTION_PROVIDER", () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "openai");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "sk-test");
     const config = loadExtractionConfig();
     expect(config.provider).toBe("openai");
   });
@@ -183,7 +183,7 @@ Expected: All existing tests pass
 
 ```typescript
   it("auto-enables when API key is present and ENABLED not set", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-key");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "sk-test-key");
     const config = loadExtractionConfig();
     expect(config.enabled).toBe(true);
   });
@@ -193,7 +193,7 @@ Expected: All existing tests pass
 
 ```typescript
   it("defaults provider to openai when API key is present but no provider specified", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-key");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "sk-test-key");
     const config = loadExtractionConfig();
     expect(config.provider).toBe("openai");
   });
@@ -203,8 +203,8 @@ Expected: All existing tests pass
 
 ```typescript
   it("explicit ENABLED=false overrides auto-enable when API key is present", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-test-key");
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "false");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "sk-test-key");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "false");
     const config = loadExtractionConfig();
     expect(config.enabled).toBe(false);
   });
@@ -214,7 +214,7 @@ Expected: All existing tests pass
 
 ```typescript
   it("forces mock fallback when no API key regardless of ENABLED value", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
     const config = loadExtractionConfig();
     expect(config.provider).toBe("mock");
     expect(config.enabled).toBe(false);
@@ -225,9 +225,9 @@ Expected: All existing tests pass
 
 ```typescript
   it("works unchanged when all three env vars are explicitly set", () => {
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_ENABLED", "true");
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_PROVIDER", "openai");
-    vi.stubEnv("OPENMEMBRAIN_EXTRACTION_API_KEY", "sk-full");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "openai");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "sk-full");
     const config = loadExtractionConfig();
     expect(config.enabled).toBe(true);
     expect(config.provider).toBe("openai");

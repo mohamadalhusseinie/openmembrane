@@ -25,12 +25,12 @@ function parseArgs(args: string[]): ReviewUiOptions & { open: boolean } {
         break;
       case "--help":
       case "-h":
-        console.log(`Usage: openmembrain-review-ui [options]
+        console.log(`Usage: openmembrane-review-ui [options]
 
 Options:
   --port <number>    Port to bind (default: 4800)
   --no-open          Don't auto-open browser
-  --home <path>      Override OPENMEMBRAIN_HOME
+  --home <path>      Override OPENMEMBRANE_HOME
   --project <id>     Override project ID
   -h, --help         Show this help
 `);
@@ -51,8 +51,8 @@ async function main(): Promise<void> {
   const options = parseArgs(argv.slice(2));
   const port = options.port ?? 4800;
 
-  console.log("Starting OpenMemBrain Review UI...");
-  console.log(`  Storage: ${options.home ?? process.env["OPENMEMBRAIN_HOME"] ?? "<cwd>/.openmembrain"}`);
+  console.log("Starting OpenMembrane Review UI...");
+  console.log(`  Storage: ${options.home ?? process.env["OPENMEMBRANE_HOME"] ?? "<cwd>/.openmembrane"}`);
 
   const ctx = await createReviewUiContext(options);
   const server = createReviewServer(ctx);

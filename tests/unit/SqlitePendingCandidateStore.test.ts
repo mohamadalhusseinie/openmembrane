@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { unlinkSync } from "node:fs";
 
 function tmpDbPath(): string {
-  return join(tmpdir(), `openmembrain-test-${randomUUID()}.db`);
+  return join(tmpdir(), `openmembrane-test-${randomUUID()}.db`);
 }
 
 describe("SqlitePendingCandidateStore", () => {

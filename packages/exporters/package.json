@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/exporters",
+  "name": "@openmembrane/exporters",
   "version": "1.0.2",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/core": "*"
+    "@openmembrane/core": "*"
   }
 }

@@ -1,12 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { createStores } from "@openmembrain/storage";
+import { createStores } from "@openmembrane/storage";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { unlinkSync, mkdirSync, rmSync, existsSync } from "node:fs";
 
 function tmpDir(): string {
-  const dir = join(tmpdir(), `openmembrain-test-${randomUUID()}`);
+  const dir = join(tmpdir(), `openmembrane-test-${randomUUID()}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -48,7 +48,7 @@ describe("createStores", () => {
     const dir = tmpDir();
     cleanupDirs.push(dir);
     const stores = await createStores({ backend: "sqlite", baseDir: dir });
-    expect(existsSync(join(dir, "openmembrain.db"))).toBe(true);
+    expect(existsSync(join(dir, "openmembrane.db"))).toBe(true);
     stores.close!();
   });
 });

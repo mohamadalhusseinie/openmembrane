@@ -4,11 +4,11 @@
   "commit": false,
   "fixed": [
     [
-      "@openmembrain/core",
-      "@openmembrain/storage",
-      "@openmembrain/exporters",
-      "@openmembrain/shared",
-      "openmembrain"
+      "@openmembrane/core",
+      "@openmembrane/storage",
+      "@openmembrane/exporters",
+      "@openmembrane/shared",
+      "openmembrane"
     ]
   ],
   "linked": [],

@@ -1,4 +1,4 @@
-import type { MemoryEntry } from "@openmembrain/core";
+import type { MemoryEntry } from "@openmembrane/core";
 import { renderMemoryDocument, selectExportableMemories } from "./render";
 import type { ExportedMemoryFile, MemoryExportOptions, MemoryFileExporter } from "./types";
 
@@ -10,7 +10,7 @@ export class ProjectMemoryMdExporter implements MemoryFileExporter {
     const content = renderMemoryDocument(projectId, memories, {
       ...options,
       title: "Project AI Memory",
-      intro: "Human-readable OpenMembrain project memory export."
+      intro: "Human-readable OpenMembrane project memory export."
     });
 
     return {

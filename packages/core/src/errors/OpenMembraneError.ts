@@ -1,4 +1,4 @@
-export type OpenMembrainErrorCode =
+export type OpenMembraneErrorCode =
   | "VALIDATION_ERROR"
   | "CANDIDATE_NOT_FOUND"
   | "SECRET_CANDIDATE"
@@ -12,8 +12,8 @@ export type OpenMembrainErrorCode =
   | "STORAGE_ERROR"
   | "UNKNOWN_ERROR";
 
-export interface OpenMembrainErrorOptions {
-  code: OpenMembrainErrorCode;
+export interface OpenMembraneErrorOptions {
+  code: OpenMembraneErrorCode;
   message: string;
   safeMessage?: string;
   details?: Record<string, unknown>;
@@ -21,19 +21,19 @@ export interface OpenMembrainErrorOptions {
 }
 
 export interface SafeErrorPayload {
-  code: OpenMembrainErrorCode;
+  code: OpenMembraneErrorCode;
   message: string;
   details?: Record<string, unknown>;
 }
 
-export class OpenMembrainError extends Error {
-  readonly code: OpenMembrainErrorCode;
+export class OpenMembraneError extends Error {
+  readonly code: OpenMembraneErrorCode;
   readonly safeMessage: string;
   readonly details?: Record<string, unknown>;
 
-  constructor(options: OpenMembrainErrorOptions) {
+  constructor(options: OpenMembraneErrorOptions) {
     super(options.message);
-    this.name = "OpenMembrainError";
+    this.name = "OpenMembraneError";
     this.code = options.code;
     this.safeMessage = options.safeMessage ?? options.message;
     if (options.details) {
@@ -59,23 +59,23 @@ export class OpenMembrainError extends Error {
   }
 }
 
-export function normalizeOpenMembrainError(error: unknown): OpenMembrainError {
-  if (error instanceof OpenMembrainError) {
+export function normalizeOpenMembraneError(error: unknown): OpenMembraneError {
+  if (error instanceof OpenMembraneError) {
     return error;
   }
 
   if (error instanceof Error) {
-    return new OpenMembrainError({
+    return new OpenMembraneError({
       code: "UNKNOWN_ERROR",
       message: error.message,
-      safeMessage: "OpenMemBrain hit an unexpected error while handling the request.",
+      safeMessage: "OpenMembrane hit an unexpected error while handling the request.",
       cause: error
     });
   }
 
-  return new OpenMembrainError({
+  return new OpenMembraneError({
     code: "UNKNOWN_ERROR",
     message: String(error),
-    safeMessage: "OpenMemBrain hit an unexpected error while handling the request."
+    safeMessage: "OpenMembrane hit an unexpected error while handling the request."
   });
 }

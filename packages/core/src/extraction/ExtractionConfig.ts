@@ -1,5 +1,5 @@
-import type { Result } from "@openmembrain/shared";
-import { OpenMembrainError } from "../errors/OpenMembrainError";
+import type { Result } from "@openmembrane/shared";
+import { OpenMembraneError } from "../errors/OpenMembraneError";
 
 export const extractionProviders = ["mock", "llm", "anthropic"] as const;
 
@@ -22,11 +22,11 @@ export const defaultExtractionConfig: ExtractionConfig = {
 
 export function validateExtractionConfig(
   config: ExtractionConfig
-): Result<ExtractionConfig, OpenMembrainError> {
+): Result<ExtractionConfig, OpenMembraneError> {
   if (!(extractionProviders as readonly string[]).includes(config.provider)) {
     return {
       ok: false,
-      error: new OpenMembrainError({
+      error: new OpenMembraneError({
         code: "EXTRACTION_CONFIG_ERROR",
         message: `Unknown extraction provider: ${config.provider as string}`,
         safeMessage: "Invalid extraction provider."
@@ -41,7 +41,7 @@ export function validateExtractionConfig(
   ) {
     return {
       ok: false,
-      error: new OpenMembrainError({
+      error: new OpenMembraneError({
         code: "EXTRACTION_CONFIG_ERROR",
         message: `Provider "${config.provider}" requires an apiKey when enabled.`,
         safeMessage: "Missing API key for extraction provider."

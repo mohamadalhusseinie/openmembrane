@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { OpenMembrainError } from "@openmembrain/core";
-import { JsonMemoryStore } from "@openmembrain/storage";
+import { OpenMembraneError } from "@openmembrane/core";
+import { JsonMemoryStore } from "@openmembrane/storage";
 import { entry } from "./helpers";
 
 const tempDirs: string[] = [];
@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 async function createStore(): Promise<JsonMemoryStore> {
-  const dir = await mkdtemp(join(tmpdir(), "openmembrain-supersede-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "openmembrane-supersede-test-"));
   tempDirs.push(dir);
   return new JsonMemoryStore(dir);
 }
@@ -36,11 +36,11 @@ describe("JsonMemoryStore.supersede", () => {
 
   it("throws MEMORY_NOT_FOUND when memory does not exist", async () => {
     const store = await createStore();
-    await expect(store.supersede("project-a", "mem_nonexistent")).rejects.toThrow(OpenMembrainError);
+    await expect(store.supersede("project-a", "mem_nonexistent")).rejects.toThrow(OpenMembraneError);
     try {
       await store.supersede("project-a", "mem_nonexistent");
     } catch (error) {
-      expect((error as OpenMembrainError).code).toBe("MEMORY_NOT_FOUND");
+      expect((error as OpenMembraneError).code).toBe("MEMORY_NOT_FOUND");
     }
   });
 
@@ -48,11 +48,11 @@ describe("JsonMemoryStore.supersede", () => {
     const store = await createStore();
     await store.save(entry({ id: "mem_1" }));
     await store.supersede("project-a", "mem_1");
-    await expect(store.supersede("project-a", "mem_1")).rejects.toThrow(OpenMembrainError);
+    await expect(store.supersede("project-a", "mem_1")).rejects.toThrow(OpenMembraneError);
     try {
       await store.supersede("project-a", "mem_1");
     } catch (error) {
-      expect((error as OpenMembrainError).code).toBe("MEMORY_ALREADY_SUPERSEDED");
+      expect((error as OpenMembraneError).code).toBe("MEMORY_ALREADY_SUPERSEDED");
     }
   });
 

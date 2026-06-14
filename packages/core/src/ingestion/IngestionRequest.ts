@@ -1,4 +1,4 @@
-import { OpenMembrainError } from "../errors/OpenMembrainError";
+import { OpenMembraneError } from "../errors/OpenMembraneError";
 
 export const MAX_TRANSCRIPT_LENGTH = 100_000;
 export const MAX_SUMMARY_LENGTH = 10_000;
@@ -14,7 +14,7 @@ export interface IngestionRequest {
 
 export function validateIngestionRequest(request: IngestionRequest): void {
   if (!request.projectId.trim()) {
-    throw new OpenMembrainError({
+    throw new OpenMembraneError({
       code: "VALIDATION_ERROR",
       message: "projectId must not be empty or whitespace-only.",
       safeMessage: "A valid project ID is required."
@@ -22,7 +22,7 @@ export function validateIngestionRequest(request: IngestionRequest): void {
   }
 
   if (!request.transcript && !request.summary) {
-    throw new OpenMembrainError({
+    throw new OpenMembraneError({
       code: "VALIDATION_ERROR",
       message: "Either transcript or summary is required.",
       safeMessage: "Either a session transcript or summary is required."
@@ -30,7 +30,7 @@ export function validateIngestionRequest(request: IngestionRequest): void {
   }
 
   if (request.transcript && request.transcript.length > MAX_TRANSCRIPT_LENGTH) {
-    throw new OpenMembrainError({
+    throw new OpenMembraneError({
       code: "VALIDATION_ERROR",
       message: `Transcript exceeds maximum length of ${MAX_TRANSCRIPT_LENGTH} characters.`,
       safeMessage: `Transcript exceeds maximum length of ${MAX_TRANSCRIPT_LENGTH} characters.`
@@ -38,7 +38,7 @@ export function validateIngestionRequest(request: IngestionRequest): void {
   }
 
   if (request.summary && request.summary.length > MAX_SUMMARY_LENGTH) {
-    throw new OpenMembrainError({
+    throw new OpenMembraneError({
       code: "VALIDATION_ERROR",
       message: `Summary exceeds maximum length of ${MAX_SUMMARY_LENGTH} characters.`,
       safeMessage: `Summary exceeds maximum length of ${MAX_SUMMARY_LENGTH} characters.`

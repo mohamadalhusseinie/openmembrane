@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "@openmembrain/core";
+import type { AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
 import { JsonMemoryStore } from "./MemoryStore";
 import { JsonPendingCandidateStore } from "./PendingCandidateStore";
 import { JsonAuditLogStore } from "./AuditLogStore";
@@ -28,7 +28,7 @@ export async function createStores(config: StorageBackendConfig): Promise<StoreS
     const { SqliteAuditLogStore } = await import("./sqlite/SqliteAuditLogStore");
     const { SqliteDiagnosticsLogStore } = await import("./sqlite/SqliteDiagnosticsLogStore");
 
-    const dbPath = join(config.baseDir, "openmembrain.db");
+    const dbPath = join(config.baseDir, "openmembrane.db");
     const db = openDatabase(dbPath);
     return {
       memoryStore: new SqliteMemoryStore(db),

@@ -1,4 +1,4 @@
-import type { MemoryCandidate, MemoryEntry } from "@openmembrain/core";
+import type { MemoryCandidate, MemoryEntry } from "@openmembrane/core";
 
 export function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
   return {

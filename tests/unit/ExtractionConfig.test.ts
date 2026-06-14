@@ -3,7 +3,7 @@ import {
   validateExtractionConfig,
   defaultExtractionConfig,
   type ExtractionConfig
-} from "@openmembrain/core";
+} from "@openmembrane/core";
 
 describe("ExtractionConfig", () => {
   it("accepts valid llm config with apiKey when enabled", () => {

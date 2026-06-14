@@ -2,8 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { OpenMembrainError } from "@openmembrain/core";
-import type { MemoryEntry } from "@openmembrain/core";
+import { OpenMembraneError } from "@openmembrane/core";
+import type { MemoryEntry } from "@openmembrane/core";
 import {
   readJsonObject,
   writeJsonObject,
@@ -15,7 +15,7 @@ import {
   rebuildAllIndexes,
   updateIndexesForEntry,
   removeFromIndexes,
-} from "@openmembrain/storage";
+} from "@openmembrane/storage";
 import { entry } from "./helpers";
 
 const tempDirs: string[] = [];
@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 async function tempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "openmembrain-dirstore-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "openmembrane-dirstore-test-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -49,11 +49,11 @@ describe("readJsonObject", () => {
     const dir = await tempDir();
     const filePath = join(dir, "bad.json");
     await writeFile(filePath, '"just a string"', "utf8");
-    await expect(readJsonObject(filePath)).rejects.toThrow(OpenMembrainError);
+    await expect(readJsonObject(filePath)).rejects.toThrow(OpenMembraneError);
     try {
       await readJsonObject(filePath);
     } catch (error) {
-      expect((error as OpenMembrainError).code).toBe("STORAGE_INVALID_JSON");
+      expect((error as OpenMembraneError).code).toBe("STORAGE_INVALID_JSON");
     }
   });
 });

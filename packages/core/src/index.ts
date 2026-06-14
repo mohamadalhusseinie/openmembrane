@@ -3,7 +3,7 @@ export * from "./classification/MemoryClassifier";
 export * from "./deduplication/ConflictDetector";
 export * from "./deduplication/Deduplicator";
 export * from "./diagnostics/Diagnostics";
-export * from "./errors/OpenMembrainError";
+export * from "./errors/OpenMembraneError";
 export * from "./extraction/ExtractionConfig";
 export * from "./extraction/extractionPrompt";
 export * from "./extraction/loadExtractionConfig";

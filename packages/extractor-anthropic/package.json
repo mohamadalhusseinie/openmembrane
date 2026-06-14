@@ -1,5 +1,5 @@
 {
-  "name": "@openmembrain/extractor-anthropic",
+  "name": "@openmembrane/extractor-anthropic",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@openmembrain/core": "*",
-    "@openmembrain/shared": "*",
+    "@openmembrane/core": "*",
+    "@openmembrane/shared": "*",
     "@anthropic-ai/sdk": "^0.39.0"
   }
 }

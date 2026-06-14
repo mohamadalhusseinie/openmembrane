@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { MemoryUpdateService, OpenMembrainError, PolicyEngine, sensitivityRank } from "@openmembrain/core";
-import type { AuditEvent, MemoryEntry, MemoryStore, AuditLogStore } from "@openmembrain/core";
+import { MemoryUpdateService, OpenMembraneError, PolicyEngine, sensitivityRank } from "@openmembrane/core";
+import type { AuditEvent, MemoryEntry, MemoryStore, AuditLogStore } from "@openmembrane/core";
 import { entry } from "./helpers";
 
 describe("SENSITIVITY_DOWNGRADE error code", () => {
-  it("can be used to construct an OpenMembrainError", () => {
-    const error = new OpenMembrainError({
+  it("can be used to construct an OpenMembraneError", () => {
+    const error = new OpenMembraneError({
       code: "SENSITIVITY_DOWNGRADE",
       message: "Cannot lower sensitivity."
     });

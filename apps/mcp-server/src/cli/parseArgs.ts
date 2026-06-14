@@ -116,7 +116,7 @@ export function parseArgs(argv: readonly string[]): ParseResult {
   return { ok: false, error: `Unknown command: "${subcommand}". Use "serve", "ingest", or "context".` };
 }
 
-export const USAGE = `Usage: openmembrain <command> [options]
+export const USAGE = `Usage: openmembrane <command> [options]
 
 Commands:
   serve                     Start MCP server (default)
@@ -138,7 +138,7 @@ Context options:
   --output <format>         Output format: text, json, markdown (default: text)
 
 Environment:
-  OPENMEMBRAIN_HOME         Storage directory (default: .openmembrain)
-  OPENMEMBRAIN_PROJECT_ID   Default project ID (default: cwd basename)
-  OPENMEMBRAIN_STORAGE_BACKEND  Storage backend: json, sqlite (default: json)
+  OPENMEMBRANE_HOME         Storage directory (default: .openmembrane)
+  OPENMEMBRANE_PROJECT_ID   Default project ID (default: cwd basename)
+  OPENMEMBRANE_STORAGE_BACKEND  Storage backend: json, sqlite (default: json)
 `;

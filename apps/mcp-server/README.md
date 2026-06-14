@@ -1,6 +1,6 @@
-# OpenMemBrain
+# OpenMembrane
 
-OpenMemBrain is the intelligent membrane for AI coding memory. It autonomously reads and learns from your coding sessions — you never have to tell it what to save. It selectively absorbs project knowledge, blocks secrets, filters noise, resolves conflicts, and persists only what matters.
+OpenMembrane is the intelligent membrane for AI coding memory. It autonomously reads and learns from your coding sessions — you never have to tell it what to save. It selectively absorbs project knowledge, blocks secrets, filters noise, resolves conflicts, and persists only what matters.
 
 No manual effort. No data leaves your machine unless you choose it. Safe, private, and trustworthy by design.
 
@@ -15,21 +15,21 @@ No manual effort. No data leaves your machine unless you choose it. Safe, privat
 Install and run the MCP server with npx (requires Node.js >= 18):
 
 ```sh
-npx openmembrain
+npx openmembrane
 ```
 
 Or install globally:
 
 ```sh
-npm install -g openmembrain
-openmembrain
+npm install -g openmembrane
+openmembrane
 ```
 
 No cloud accounts required. All memory is stored locally.
 
 ## Configuring Your AI Tool
 
-OpenMemBrain runs as an MCP server over stdio. Add it to your AI tool's MCP configuration:
+OpenMembrane runs as an MCP server over stdio. Add it to your AI tool's MCP configuration:
 
 ### Claude Desktop
 
@@ -38,9 +38,9 @@ Edit `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "openmembrain": {
+    "openmembrane": {
       "command": "npx",
-      "args": ["openmembrain"]
+      "args": ["openmembrane"]
     }
   }
 }
@@ -49,7 +49,7 @@ Edit `claude_desktop_config.json`:
 ### Claude Code
 
 ```sh
-claude mcp add openmembrain -- npx openmembrain
+claude mcp add openmembrane -- npx openmembrane
 ```
 
 ### VS Code / GitHub Copilot
@@ -59,9 +59,9 @@ Add to `.vscode/mcp.json` in your project:
 ```json
 {
   "servers": {
-    "openmembrain": {
+    "openmembrane": {
       "command": "npx",
-      "args": ["openmembrain"]
+      "args": ["openmembrane"]
     }
   }
 }
@@ -74,9 +74,9 @@ Add to `.cursor/mcp.json` in your project:
 ```json
 {
   "mcpServers": {
-    "openmembrain": {
+    "openmembrane": {
       "command": "npx",
-      "args": ["openmembrain"]
+      "args": ["openmembrane"]
     }
   }
 }
@@ -89,9 +89,9 @@ Add to `~/.config/opencode/opencode.json`:
 ```json
 {
   "mcp": {
-    "openmembrain": {
+    "openmembrane": {
       "type": "local",
-      "command": ["npx", "-y", "openmembrain"]
+      "command": ["npx", "-y", "openmembrane"]
     }
   }
 }
@@ -102,10 +102,10 @@ global instructions and development-from-source configuration.
 
 ## Environment Variables
 
-By default, local memory is stored in `.openmembrain` under the current working directory. Override this with:
+By default, local memory is stored in `.openmembrane` under the current working directory. Override this with:
 
-- `OPENMEMBRAIN_HOME`: directory for local JSON memory stores.
-- `OPENMEMBRAIN_PROJECT_ID`: default project id when a tool call does not pass `projectId`.
+- `OPENMEMBRANE_HOME`: directory for local JSON memory stores.
+- `OPENMEMBRANE_PROJECT_ID`: default project id when a tool call does not pass `projectId`.
 
 ## MCP Tools
 
@@ -128,7 +128,7 @@ By default, local memory is stored in `.openmembrain` under the current working 
 
 ## Architecture
 
-OpenMemBrain supports two paths for saving memory:
+OpenMembrane supports two paths for saving memory:
 
 1. **`remember` (primary):** The AI tool calls `remember` directly with structured content and type. No server-side LLM needed. Memories go through the full pipeline (secret detection, policy filtering, deduplication) and are auto-saved.
 
@@ -169,7 +169,7 @@ The `MockMemoryExtractor` is used for deterministic testing. The `OpenAiMemoryEx
 
 ## Diagnostics And Errors
 
-OpenMemBrain distinguishes audit history from diagnostics:
+OpenMembrane distinguishes audit history from diagnostics:
 
 - Audit events describe normal memory activity, such as session ingestion, candidate extraction, saved memory, queued candidates, and rejected candidates.
 - Diagnostics describe operational problems, such as validation errors, missing candidates, invalid local JSON stores, unsafe approval attempts, and export failures.
@@ -183,7 +183,7 @@ Static exporters can generate:
 - `AGENTS.md`
 - `CLAUDE.md`
 - `.github/copilot-instructions.md`
-- `.cursor/rules/openmembrain.mdc`
+- `.cursor/rules/openmembrane.mdc`
 - `docs/ai/project-memory.md`
 
 These files are compatibility fallbacks for tools that cannot retrieve memory through MCP. By default, exporters omit `confidential` memories because these files may be committed to source control. Callers must explicitly opt in to include confidential memory.
@@ -191,8 +191,8 @@ These files are compatibility fallbacks for tools that cannot retrieve memory th
 ## Development
 
 ```sh
-git clone https://github.com/mohamadalhusseinie/openmembrain.git
-cd openmembrain
+git clone https://github.com/mohamadalhusseinie/openmembrane.git
+cd openmembrane
 npm install
 ```
 

@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { MemoryApprovalService, OpenMembrainError } from "@openmembrain/core";
-import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrain/storage";
+import { MemoryApprovalService, OpenMembraneError } from "@openmembrane/core";
+import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 import { candidate, entry } from "./helpers";
 
 const tempDirs: string[] = [];
@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 async function createService() {
-  const dir = await mkdtemp(join(tmpdir(), "openmembrain-approval-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "openmembrane-approval-test-"));
   tempDirs.push(dir);
   const memoryStore = new JsonMemoryStore(dir);
   const pendingCandidateStore = new JsonPendingCandidateStore(dir);
@@ -26,22 +26,22 @@ describe("MemoryApprovalService", () => {
   describe("approve", () => {
     it("throws CANDIDATE_NOT_FOUND when candidate does not exist", async () => {
       const { service } = await createService();
-      await expect(service.approve("project-a", "cand_nonexistent")).rejects.toThrow(OpenMembrainError);
+      await expect(service.approve("project-a", "cand_nonexistent")).rejects.toThrow(OpenMembraneError);
       try {
         await service.approve("project-a", "cand_nonexistent");
       } catch (error) {
-        expect((error as OpenMembrainError).code).toBe("CANDIDATE_NOT_FOUND");
+        expect((error as OpenMembraneError).code).toBe("CANDIDATE_NOT_FOUND");
       }
     });
 
     it("throws SECRET_CANDIDATE when candidate has secret sensitivity", async () => {
       const { service, pendingCandidateStore } = await createService();
       await pendingCandidateStore.save(candidate({ id: "cand_1", sensitivity: "secret" }));
-      await expect(service.approve("project-a", "cand_1")).rejects.toThrow(OpenMembrainError);
+      await expect(service.approve("project-a", "cand_1")).rejects.toThrow(OpenMembraneError);
       try {
         await service.approve("project-a", "cand_1");
       } catch (error) {
-        expect((error as OpenMembrainError).code).toBe("SECRET_CANDIDATE");
+        expect((error as OpenMembraneError).code).toBe("SECRET_CANDIDATE");
       }
     });
 
@@ -50,11 +50,11 @@ describe("MemoryApprovalService", () => {
       await pendingCandidateStore.save(
         candidate({ id: "cand_1", content: "Key: AKIAIOSFODNN7EXAMPLE", sensitivity: "internal" })
       );
-      await expect(service.approve("project-a", "cand_1")).rejects.toThrow(OpenMembrainError);
+      await expect(service.approve("project-a", "cand_1")).rejects.toThrow(OpenMembraneError);
       try {
         await service.approve("project-a", "cand_1");
       } catch (error) {
-        expect((error as OpenMembrainError).code).toBe("SECRET_CANDIDATE");
+        expect((error as OpenMembraneError).code).toBe("SECRET_CANDIDATE");
       }
     });
 
@@ -143,11 +143,11 @@ describe("MemoryApprovalService", () => {
   describe("reject", () => {
     it("throws CANDIDATE_NOT_FOUND when candidate does not exist", async () => {
       const { service } = await createService();
-      await expect(service.reject("project-a", "cand_nonexistent")).rejects.toThrow(OpenMembrainError);
+      await expect(service.reject("project-a", "cand_nonexistent")).rejects.toThrow(OpenMembraneError);
       try {
         await service.reject("project-a", "cand_nonexistent");
       } catch (error) {
-        expect((error as OpenMembrainError).code).toBe("CANDIDATE_NOT_FOUND");
+        expect((error as OpenMembraneError).code).toBe("CANDIDATE_NOT_FOUND");
       }
     });
 

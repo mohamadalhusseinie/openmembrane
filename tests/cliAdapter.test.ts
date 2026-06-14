@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { createOpenMembrainContext } from "../apps/mcp-server/src/context";
+import { createOpenMembraneContext } from "../apps/mcp-server/src/context";
 import type { IngestCommand, ContextCommand } from "../apps/mcp-server/src/cli/parseArgs";
 
 const tempDirs: string[] = [];
@@ -23,9 +23,9 @@ afterEach(async () => {
  */
 describe("CLI adapter integration", () => {
   async function setupContext() {
-    const storageDir = await mkdtemp(join(tmpdir(), "openmembrain-cli-test-"));
+    const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
     tempDirs.push(storageDir);
-    return await createOpenMembrainContext({
+    return await createOpenMembraneContext({
       defaultProjectId: "test-project",
       storageDir
     });
@@ -33,10 +33,10 @@ describe("CLI adapter integration", () => {
 
   describe("ingest -> context round-trip", () => {
     it("ingests a text transcript and retrieves memories via context", async () => {
-      const storageDir = await mkdtemp(join(tmpdir(), "openmembrain-cli-test-"));
+      const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
       tempDirs.push(storageDir);
 
-      const context = await createOpenMembrainContext({
+      const context = await createOpenMembraneContext({
         defaultProjectId: "test-project",
         storageDir
       });
@@ -60,10 +60,10 @@ describe("CLI adapter integration", () => {
     });
 
     it("ingests an OpenAI chat format transcript", async () => {
-      const storageDir = await mkdtemp(join(tmpdir(), "openmembrain-cli-test-"));
+      const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
       tempDirs.push(storageDir);
 
-      const context = await createOpenMembrainContext({
+      const context = await createOpenMembraneContext({
         defaultProjectId: "test-project",
         storageDir
       });
@@ -92,10 +92,10 @@ describe("CLI adapter integration", () => {
     });
 
     it("retrieves memories filtered by scope", async () => {
-      const storageDir = await mkdtemp(join(tmpdir(), "openmembrain-cli-test-"));
+      const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
       tempDirs.push(storageDir);
 
-      const context = await createOpenMembrainContext({
+      const context = await createOpenMembraneContext({
         defaultProjectId: "test-project",
         storageDir
       });

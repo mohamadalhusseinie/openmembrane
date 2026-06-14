@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createOpenMembrainContext, resolveProjectId } from "../context";
+import { createOpenMembraneContext, resolveProjectId } from "../context";
 import type { IngestCommand } from "./parseArgs";
 import { parseSessionContent } from "./parsers/index";
 import { printPendingReminder } from "./pendingReminder";
@@ -40,7 +40,7 @@ export async function runIngest(cmd: IngestCommand): Promise<void> {
     return;
   }
 
-  const context = await createOpenMembrainContext();
+  const context = await createOpenMembraneContext();
   try {
     const projectId = resolveProjectId(context, cmd.project);
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkTranscript } from "@openmembrain/core";
+import { chunkTranscript } from "@openmembrane/core";
 
 describe("chunkTranscript", () => {
   it("returns empty array for empty string", () => {

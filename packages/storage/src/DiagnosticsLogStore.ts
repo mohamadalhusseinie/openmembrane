@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { DiagnosticEvent, DiagnosticQuery, DiagnosticsLogStore } from "@openmembrain/core";
+import type { DiagnosticEvent, DiagnosticQuery, DiagnosticsLogStore } from "@openmembrane/core";
 import { readJsonArray, writeJsonArray } from "./jsonFile";
 
 export class JsonDiagnosticsLogStore implements DiagnosticsLogStore {
