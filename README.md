@@ -195,7 +195,7 @@ interface MemoryExtractor {
 }
 ```
 
-The `MockMemoryExtractor` is used for deterministic testing. Optional LLM extraction lives behind the same `MemoryExtractor` interface via `LlmMemoryExtractor`, which supports OpenAI-compatible API endpoints through extraction environment variables such as `baseUrl`.
+The `MockMemoryExtractor` is used for deterministic testing. The `LlmMemoryExtractor` supports OpenAI and any compatible API endpoint (via `baseUrl`).
 
 ## Diagnostics And Errors
 

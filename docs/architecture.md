@@ -109,7 +109,7 @@ interface MemoryExtractor {
 Implementations:
 
 - `MockMemoryExtractor` — deterministic regex-based extraction for testing
-- `LlmMemoryExtractor` in `packages/extractor-llm/` — production extractor for OpenAI-compatible API endpoints, including configurable `baseUrl` and JSON mode
+- `LlmMemoryExtractor` — production extractor supporting OpenAI and any compatible API endpoint (via `baseUrl`)
 
 Future implementations:
 
