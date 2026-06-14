@@ -9,11 +9,13 @@ If OpenMembrane MCP tools are available in your environment:
   project memory before starting work. Call \`list_memory_candidates\` to surface
   any pending memories for the developer to approve or reject.
 - **During the session:** When you discover durable knowledge (rules, gotchas,
-  architecture decisions), call \`propose_memory_from_session\` right away. Use
-  prefixes like \`rule:\`, \`architecture:\`, \`gotcha:\`, \`testing:\`, \`security:\`,
-  \`forbidden:\`, \`remember:\` to help extraction. Don't wait for the session to
-  end — propose memories at natural pauses and before ending if you haven't
-  already.
+  architecture decisions), call \`remember\` right away with structured \`content\`
+  and \`type\`. Do not wait for the session to end.
+- **Explicit saves:** If the user asks you to save, remember, or store specific
+  information, call \`remember\` immediately with that information.
+- **Transcript ingestion:** Use \`propose_memory_from_session\` only when an adapter
+  or workflow submits a full session transcript or summary and a server-side
+  extractor is configured.
 
 The memories below were exported from OpenMembrane for tools without MCP access.
 `;

@@ -66,7 +66,7 @@ describe("StaticMemoryExportService", () => {
     expect(result.files[0]?.memoryCount).toBe(1);
   });
 
-  it("includes usage preamble with MCP tool instructions in all exported files", () => {
+  it("includes remember-first usage preamble with explicit save guidance in all exported files", () => {
     const service = new StaticMemoryExportService();
     const result = service.preview("project-a", [], { generatedAt: "2026-05-08T00:00:00.000Z" });
 
@@ -74,8 +74,12 @@ describe("StaticMemoryExportService", () => {
       expect(file.content).toContain("## Using OpenMembrane");
       expect(file.content).toContain("get_project_rules");
       expect(file.content).toContain("get_relevant_context");
-      expect(file.content).toContain("propose_memory_from_session");
       expect(file.content).toContain("list_memory_candidates");
+      expect(file.content).toContain("call `remember` right away");
+      expect(file.content).toContain("call `remember` immediately");
+      expect(file.content).toContain("Use `propose_memory_from_session` only");
+      expect(file.content).not.toContain("call `propose_memory_from_session` right away");
+      expect(file.content).not.toContain("prefixes like `rule:`");
     }
   });
 

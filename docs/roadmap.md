@@ -13,7 +13,7 @@ Implemented:
 - `remember` tool (primary path — AI-side extraction, no server LLM needed)
 - `propose_memory_from_session` (secondary path — server-side LLM extraction)
 - deterministic mock extractor (for testing)
-- OpenAI-compatible LLM extractor behind `MemoryExtractor` interface, with configurable `baseUrl` and JSON mode
+- LLM-backed extractor behind `MemoryExtractor` interface
 - extraction prompt design with chunking and response parsing
 - rule-based secret detection
 - noise and safety filters
