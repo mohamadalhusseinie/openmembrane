@@ -1,5 +1,6 @@
 export * from "./classification/ActionRecommender";
 export * from "./classification/MemoryClassifier";
+export * from "./collaboration/Collaboration";
 export * from "./deduplication/ConflictDetector";
 export * from "./deduplication/Deduplicator";
 export * from "./diagnostics/Diagnostics";

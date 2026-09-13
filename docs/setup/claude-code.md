@@ -1,6 +1,11 @@
-# OpenMembrane Setup: Claude Code
+# OpenMembrane Local Private Setup: Claude Code
 
 Claude Code supports MCP servers natively. No adapter code is needed — just configuration.
+
+This guide configures the current [Local Private mode](../deployment-modes.md#local-private).
+Local Private remains the default. [GitHub Team](../deployment-modes.md#github-team)
+is also current; Self-Hosted Team and Managed Team are planned. Static exports
+are separate from team sync.
 
 ## Prerequisites
 

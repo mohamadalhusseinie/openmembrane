@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryApprovalService, OpenMembraneError } from "@openmembrane/core";
+import type { AuditLogStore } from "@openmembrane/core";
 import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 import { candidate, entry } from "./helpers";
 
@@ -85,6 +86,23 @@ describe("MemoryApprovalService", () => {
       expect(events).toHaveLength(1);
       expect(events[0]!.type).toBe("memory_saved");
       expect(events[0]!.details?.approvedManually).toBe(true);
+    });
+
+    it("propagates a memory_saved audit failure by default", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "openmembrane-approval-test-"));
+      tempDirs.push(dir);
+      const memoryStore = new JsonMemoryStore(dir);
+      const pendingCandidateStore = new JsonPendingCandidateStore(dir);
+      const auditLogStore: AuditLogStore = {
+        append: async (event) => {
+          if (event.type === "memory_saved") throw new Error("simulated audit write failure");
+        },
+        list: async () => [],
+      };
+      const service = new MemoryApprovalService({ memoryStore, pendingCandidateStore, auditLogStore });
+      await pendingCandidateStore.save(candidate({ id: "cand_audit_failure", content: "Use standalone components." }));
+
+      await expect(service.approve("project-a", "cand_audit_failure")).rejects.toThrow("simulated audit write failure");
     });
 
     it("supersedes conflicting memories when candidate has conflictWith", async () => {

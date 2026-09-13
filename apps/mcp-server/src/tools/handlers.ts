@@ -1,9 +1,11 @@
 import { resolve } from "node:path";
-import { rankMemories, annotateConflicts, SecretDetector, OpenMembraneError, mapPipelineResult, type Confidence, type DiagnosticSeverity, type IngestionRequest, type MemoryCandidate, type MemoryScope, type MemorySearchOptions, type MemoryType, type SecretFinding } from "@openmembrane/core";
+import { rankMemories, annotateConflicts, SecretDetector, OpenMembraneError, mapPipelineResult, type Confidence, type DiagnosticSeverity, type IngestionRequest, type IngestionResult, type MemoryCandidate, type MemoryScope, type MemorySearchOptions, type MemoryType, type SecretFinding } from "@openmembrane/core";
 import type { ExportTarget } from "@openmembrane/exporters";
 import type { OpenMembraneMcpContext } from "../context";
 import { createId, nowIso } from "@openmembrane/shared";
 import { resolveProjectId } from "../context";
+import type { CollaborationProposal, MemoryEntry } from "@openmembrane/core";
+import type { PublishAcceptedMemoryResult } from "../collaboration/GitHubTeamService";
 
 const ruleTypes: MemoryType[] = [
   "coding_rule",
@@ -45,6 +47,12 @@ export interface SearchMemoryInput extends ProjectScopedInput {
   tags?: string[] | undefined;
   limit?: number | undefined;
 }
+
+export interface ConfigureGitHubTeamModeInput extends ProjectScopedInput {
+  repository: { host: string; owner: string; name: string };
+}
+
+export type GetCollaborationStatusInput = ProjectScopedInput;
 
 export interface ListMemoryCandidatesInput extends ProjectScopedInput {
   limit?: number | undefined;
@@ -137,11 +145,15 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
       if (input.metadata) {
         request.metadata = input.metadata;
       }
-      return context.ingestionService.ingest(request);
+      const result = await context.ingestionService.ingest(request, {
+        preserveExistingConflicts: await isGitHubTeamMode(context, request.projectId),
+      });
+      return publishAcceptedInGitHubMode(context, request.projectId, result);
     },
 
     getProjectRules: async (input: GetProjectRulesInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const options: MemorySearchOptions = {
         limit: input.limit ?? 50,
         types: ruleTypes
@@ -156,6 +168,7 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     getRelevantContext: async (input: GetRelevantContextInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const limit = input.limit ?? 10;
       const options: MemorySearchOptions = {
         limit: limit * 3
@@ -179,6 +192,7 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     searchMemory: async (input: SearchMemoryInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const limit = input.limit ?? 20;
       const options: MemorySearchOptions = {
         limit: limit * 3
@@ -199,6 +213,24 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
         .map((scored) => scored.entry);
     },
 
+    configureGitHubTeamMode: async (input: ConfigureGitHubTeamModeInput) => context.githubTeamService.configure({
+      projectId: resolveProjectId(context, input.projectId),
+      repository: input.repository,
+    }),
+
+    getCollaborationStatus: async (input: GetCollaborationStatusInput) => {
+      const projectId = resolveProjectId(context, input.projectId);
+      const config = await context.collaborationStore.getProjectConfig(projectId);
+      const proposals = await context.collaborationStore.listProposals(projectId);
+      const counts = proposalCounts(proposals);
+      const retries = proposals
+        .filter((proposal) => proposal.state === "sync_failed" && proposal.retry.nextAttemptAt !== undefined)
+        .map((proposal) => ({ memoryId: proposal.memory.id, attempts: proposal.retry.attempts, nextAttemptAt: proposal.retry.nextAttemptAt as string }));
+      return config === undefined
+        ? { mode: "local_private" as const, proposals: counts, retries }
+        : { mode: config.mode, repository: config.repository, proposals: counts, retries };
+    },
+
     listMemoryCandidates: async (input: ListMemoryCandidatesInput) => {
       const projectId = resolveProjectId(context, input.projectId);
       const candidates = await context.pendingCandidateStore.list(projectId);
@@ -209,7 +241,7 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     approveMemoryCandidate: async (input: ApproveMemoryCandidateInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      return context.approvalService.approve(projectId, input.candidateId);
+      return approveCandidateInGitHubMode(context, projectId, input.candidateId);
     },
 
     rejectMemoryCandidate: async (input: RejectMemoryCandidateInput) => {
@@ -224,6 +256,7 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     exportStaticMemoryFiles: async (input: ExportStaticMemoryFilesInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const memories = await context.memoryStore.list(projectId);
       const outputDir = resolve(context.projectRoot, input.outputDir ?? ".");
 
@@ -258,6 +291,26 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     supersedeMemory: async (input: SupersedeMemoryInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      if (await isGitHubTeamMode(context, projectId)) {
+        const existing = await context.memoryStore.findById(projectId, input.memoryId);
+        if (existing === undefined) {
+          throw new OpenMembraneError({
+            code: "MEMORY_NOT_FOUND",
+            message: `Memory ${input.memoryId} was not found.`,
+            safeMessage: "The memory was not found.",
+            details: { memoryId: input.memoryId },
+          });
+        }
+        if (existing.status === "superseded") {
+          throw new OpenMembraneError({
+            code: "MEMORY_ALREADY_SUPERSEDED",
+            message: `Memory ${input.memoryId} is already superseded.`,
+            safeMessage: "The memory is already superseded.",
+            details: { memoryId: input.memoryId },
+          });
+        }
+        return { ...existing, ...await context.githubTeamService.supersedeMemory(existing) };
+      }
       const superseded = await context.memoryStore.supersede(projectId, input.memoryId, input.replacementId);
       await context.auditLogStore.append({
         id: createId("audit"),
@@ -275,6 +328,15 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     updateMemory: async (input: UpdateMemoryInput) => {
       const projectId = resolveProjectId(context, input.projectId);
+      if (await isGitHubTeamMode(context, projectId)) {
+        const { updated } = await context.updateService.preview(projectId, input.memoryId, {
+          content: input.content,
+          type: input.type,
+          scope: input.scope,
+          tags: input.tags,
+        });
+        return { ...updated, ...await context.githubTeamService.updateProposal(input.memoryId, updated) };
+      }
       return context.updateService.update(projectId, input.memoryId, {
         content: input.content,
         type: input.type,
@@ -291,7 +353,22 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
 
     approveAllCandidates: async (input: ApproveAllCandidatesInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      return context.approvalService.approveAll(projectId);
+      if (!await isGitHubTeamMode(context, projectId)) return context.approvalService.approveAll(projectId);
+      const candidates = await context.pendingCandidateStore.list(projectId);
+      const approved: unknown[] = [];
+      const skipped: Array<{ candidateId: string; reason: string }> = [];
+      for (const candidate of candidates) {
+        try {
+          approved.push(await approveCandidateInGitHubMode(context, projectId, candidate.id));
+        } catch (error) {
+          if (error instanceof OpenMembraneError && (error.code === "CANDIDATE_NOT_FOUND" || error.code === "SECRET_CANDIDATE")) {
+            skipped.push({ candidateId: candidate.id, reason: error.safeMessage });
+          } else {
+            throw error;
+          }
+        }
+      }
+      return { projectId, approved, skipped };
     },
 
     rejectAllCandidates: async (input: RejectAllCandidatesInput) => {
@@ -344,8 +421,10 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
         };
       });
 
-      const result = await context.pipeline.processStructured(projectId, candidates);
-      return mapPipelineResult({ ...result, redactions });
+      const result = await context.pipeline.processStructured(projectId, candidates, {
+        preserveExistingConflicts: await isGitHubTeamMode(context, projectId),
+      });
+      return publishAcceptedInGitHubMode(context, projectId, mapPipelineResult({ ...result, redactions }));
     },
 
     reviewStaleMemories: async (input: ReviewStaleMemoriesInput) => {
@@ -355,10 +434,103 @@ export function createToolHandlers(context: OpenMembraneMcpContext) {
       cutoff.setMonth(cutoff.getMonth() - months);
       const cutoffIso = cutoff.toISOString();
 
+      await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const memories = await context.memoryStore.list(projectId);
       return memories
         .filter((memory) => memory.updatedAt < cutoffIso)
         .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
     }
   };
+}
+
+type GitHubModeIngestionResult = IngestionResult & {
+  proposalCount?: number;
+  proposals?: Array<{ memoryId: string; state: string; nextAttemptAt?: string }>;
+};
+
+async function publishAcceptedInGitHubMode(
+  context: OpenMembraneMcpContext,
+  projectId: string,
+  result: IngestionResult,
+): Promise<GitHubModeIngestionResult> {
+  if (!await isGitHubTeamMode(context, projectId) || result.saved.length === 0) return result;
+
+  const proposals: Array<{ memoryId: string; state: string; nextAttemptAt?: string }> = [];
+  for (const saved of result.saved) {
+    const memory = await context.memoryStore.findById(projectId, saved.id);
+    if (memory === undefined) continue;
+    const publication = await context.githubTeamService.publishAcceptedMemory(memory, saved.replaces ?? []);
+    await context.memoryStore.supersede(projectId, memory.id);
+    await recordGitHubProposalStaging(context, projectId, memory.id);
+    proposals.push(publicationSummary(memory.id, publication));
+  }
+  return { ...result, savedCount: 0, saved: [], proposalCount: proposals.length, proposals };
+}
+
+async function approveCandidateInGitHubMode(
+  context: OpenMembraneMcpContext,
+  projectId: string,
+  candidateId: string,
+): Promise<MemoryEntry | (MemoryEntry & PublishAcceptedMemoryResult)> {
+  const candidate = await context.pendingCandidateStore.findById(projectId, candidateId);
+  const memory = await context.approvalService.approve(projectId, candidateId, {
+    preserveExistingConflicts: await isGitHubTeamMode(context, projectId),
+  });
+  if (!await isGitHubTeamMode(context, projectId)) return memory;
+  if (candidate === undefined || memory.id !== candidate.id.replace(/^cand_/, "mem_")) return memory;
+  const publication = await context.githubTeamService.publishAcceptedMemory(memory, candidate.conflictWith ?? []);
+  await context.memoryStore.supersede(projectId, memory.id);
+  await recordGitHubProposalStaging(context, projectId, memory.id);
+  return { ...memory, ...publication };
+}
+
+async function recordGitHubProposalStaging(
+  context: OpenMembraneMcpContext,
+  projectId: string,
+  memoryId: string,
+): Promise<void> {
+  try {
+    await context.auditLogStore.append({
+      id: createId("audit"),
+      projectId,
+      type: "memory_proposed",
+      entityId: memoryId,
+      createdAt: nowIso(),
+      details: { mode: "github_team", staging: "proposal" },
+    });
+  } catch {
+    // Proposal state has already been persisted, so audit failure must not orphan it.
+  }
+}
+
+function publicationSummary(
+  memoryId: string,
+  result: Awaited<ReturnType<OpenMembraneMcpContext["githubTeamService"]["publishAcceptedMemory"]>>,
+): { memoryId: string; state: string; nextAttemptAt?: string } {
+  if (result.kind === "published") return { memoryId, state: result.proposal.state };
+  if (result.kind === "retry_scheduled" || result.kind === "retry_deferred") {
+    return { memoryId, state: result.kind, nextAttemptAt: result.nextAttemptAt };
+  }
+  return { memoryId, state: "rejected" };
+}
+
+async function isGitHubTeamMode(context: OpenMembraneMcpContext, projectId: string): Promise<boolean> {
+  return (await context.collaborationStore.getProjectConfig(projectId))?.mode === "github_team";
+}
+
+function proposalCounts(proposals: readonly CollaborationProposal[]): {
+  proposed: number;
+  active: number;
+  rejected: number;
+  syncFailed: number;
+  conflict: number;
+} {
+  return proposals.reduce((counts, proposal) => {
+    if (proposal.state === "proposed") counts.proposed += 1;
+    if (proposal.state === "active") counts.active += 1;
+    if (proposal.state === "rejected") counts.rejected += 1;
+    if (proposal.state === "sync_failed") counts.syncFailed += 1;
+    if (proposal.state === "conflict") counts.conflict += 1;
+    return counts;
+  }, { proposed: 0, active: 0, rejected: 0, syncFailed: 0, conflict: 0 });
 }

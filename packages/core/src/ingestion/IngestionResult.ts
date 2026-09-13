@@ -6,6 +6,7 @@ export interface IngestionSavedEntry {
   type: MemoryType;
   scope: MemoryScope;
   content: string;
+  replaces?: string[];
 }
 
 export interface IngestionPendingCandidate {
@@ -50,12 +51,16 @@ export function mapPipelineResult(result: MemoryPipelineResult): IngestionResult
     rejectedCount: result.rejected.length,
     supersededCount: result.superseded.length,
     redactionCount: result.redactions.length,
-    saved: result.saved.map((entry) => ({
-      id: entry.id,
-      type: entry.type,
-      scope: entry.scope,
-      content: entry.content
-    })),
+    saved: result.saved.map((entry) => {
+      const candidate = result.candidates.find((item) => item.id.replace(/^cand_/, "mem_") === entry.id);
+      return {
+        id: entry.id,
+        type: entry.type,
+        scope: entry.scope,
+        content: entry.content,
+        ...(candidate?.conflictWith === undefined ? {} : { replaces: candidate.conflictWith }),
+      };
+    }),
     pending: result.pending.map((candidate) => ({
       id: candidate.id,
       type: candidate.type,

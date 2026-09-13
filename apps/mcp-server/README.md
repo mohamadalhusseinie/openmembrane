@@ -7,7 +7,7 @@ No manual effort. No data leaves your machine unless you choose it. Safe, privat
 - **Zero-effort** — learns from sessions automatically, no commands or prompts needed
 - **Secure by default** — secrets are detected and rejected before they ever reach storage
 - **Self-managing** — deduplicates, resolves conflicts, and filters noise on its own
-- **Local-first** — all memory stays on your machine; optional EU/CH-hosted cloud sync
+- **Local Private by default** — memory is stored locally in git-ignored `.openmembrane/`
 - **Tool-agnostic** — works with any AI coding tool via MCP (Claude, Copilot, Cursor, OpenCode, and more)
 
 ## Installation
@@ -25,7 +25,17 @@ npm install -g openmembrane
 openmembrane
 ```
 
-No cloud accounts required. All memory is stored locally.
+No cloud account is required for the default Local Private mode, which stores
+memory locally in git-ignored `.openmembrane/`.
+
+## Deployment Modes
+
+OpenMembrane ships [Local Private mode](../../docs/deployment-modes.md#local-private)
+by default and [GitHub Team mode](../../docs/deployment-modes.md#github-team)
+for shared memory through a dedicated private repository. Self-Hosted Team and
+Managed Team are planned. Static exported files are separate from team sync;
+see [Deployment Modes](../../docs/deployment-modes.md) for the approved-memory
+boundary and GitHub pull-request workflow.
 
 ## Configuring Your AI Tool
 
@@ -165,7 +175,7 @@ interface MemoryExtractor {
 }
 ```
 
-The `MockMemoryExtractor` is used for deterministic testing. The `OpenAiMemoryExtractor` supports OpenAI and any compatible API endpoint (via `baseUrl`).
+The `MockMemoryExtractor` is used for deterministic testing. The `LlmMemoryExtractor` supports OpenAI and any compatible API endpoint (via `baseUrl`).
 
 ## Diagnostics And Errors
 
@@ -221,5 +231,6 @@ npm run build
 - [Architecture](docs/architecture.md) — pipeline design, type schemas, MCP tool surface, package dependencies
 - [Security and Privacy](docs/security-and-privacy.md) — secret handling, data storage rules, LLM usage policy
 - [Product Vision](docs/product-vision.md) — product thesis, UX workflow, memory quality criteria
-- [Roadmap](docs/roadmap.md) — phased delivery plan from local MVP to hosted mode
+- [Deployment Modes](../../docs/deployment-modes.md) — current Local Private and GitHub Team modes, plus planned team modes
+- [Roadmap](../../docs/roadmap.md) — phased delivery plan for Local Private, GitHub Team, and planned team modes
 - [Contributing](CONTRIBUTING.md) — setup, development workflow, PR guidelines

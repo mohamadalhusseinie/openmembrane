@@ -76,31 +76,37 @@ Initial relevance scoring (multi-signal `RelevanceScorer`) is implemented. Possi
 
 ## Phase 6: Local Developer UX
 
-Add inspectability without turning the product into a CLI-first tool.
+Status: complete (local review UI is available).
 
-Possible features:
+Implemented:
 
-- simple local review UI
-- pending candidate approval view
+- local review UI for inspecting memories and pending candidates
+- pending candidate approval and rejection view
 - memory search view
 - audit and diagnostics view
-- static export preview
 
-## Phase 7: CH/EU Sync Mode
+## Phase 7: GitHub Team
 
-Future mode, not MVP.
+Status: current initial release. GitHub.com is tested; the host-agnostic `gh`
+integration does not formally support GitHub Enterprise Server yet.
 
-Goals:
+Implemented:
 
-- encrypted memory sync
-- CH/EU-hosted infrastructure
-- explicit user/team opt-in
-- clear policy for external LLM usage
-- no raw full conversation sync by default
+- manually selected dedicated private repository per project
+- user-owned `gh` authentication
+- one pull request per accepted memory
+- accepted-memory-only sync
+- no pending candidates, raw transcripts, source excerpts, diagnostics, or credentials in the repository
 
-## Phase 8: Self-Hosted Mode
+Shared memory becomes retrievable only after its pull request merges to the
+repository's default branch, which is authoritative.
 
-Future enterprise mode.
+See [Deployment Modes](deployment-modes.md#github-team) for the canonical
+ownership and boundary description.
+
+## Phase 8: Self-Hosted Team
+
+Planned mode.
 
 Goals:
 
@@ -111,20 +117,22 @@ Goals:
 - audit logs
 - tenant isolation for internal teams
 
-## Phase 9: Hosted Team Mode
+## Phase 9: Managed Team
 
-Future managed mode.
+Planned mode.
 
 Goals:
 
 - accounts
 - teams
 - billing
-- hosted sync
+- managed shared memory
 - organization policies
 - admin controls
 - audit exports
 - tenant isolation
 - encryption controls
 
-Hosted mode must not undermine the local-first positioning. Local-only mode remains a first-class mode.
+Managed Team must not undermine Local Private's default behavior. See
+[Deployment Modes](deployment-modes.md) for the canonical product-mode
+definitions and residency language.

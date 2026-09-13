@@ -2,6 +2,11 @@
 
 OpenMembrane Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
 
+The current release runs in [Local Private mode](deployment-modes.md#local-private)
+by default and also supports [GitHub Team mode](deployment-modes.md#github-team).
+Self-Hosted Team and Managed Team are planned; their storage and sync mechanisms
+are not part of the current architecture.
+
 ## Core Pipeline
 
 ```text
@@ -50,7 +55,7 @@ storage   exporters         (both depend on core)
   mcp-server                (imports core, storage, exporters, shared)
 ```
 
-All packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/shared`.
+All packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/shared`, `@openmembrane/extractor-llm`, and `@openmembrane/extractor-anthropic`.
 
 ## Package Responsibilities
 
@@ -110,10 +115,10 @@ Implementations:
 
 - `MockMemoryExtractor` — deterministic regex-based extraction for testing
 - `LlmMemoryExtractor` — production extractor supporting OpenAI and any compatible API endpoint (via `baseUrl`)
+- `AnthropicMemoryExtractor` — extractor for Anthropic's Messages API
 
 Future implementations:
 
-- Anthropic extractor
 - local model extractor
 - enterprise/self-hosted extractor
 
@@ -327,6 +332,9 @@ MCP is the main tool-facing access layer for the MVP, but it is not the entire p
 Static files exist for compatibility with tools that cannot use MCP. They are fallback outputs, not the main workflow.
 
 Exporters exclude `confidential` memory by default because generated instruction files may be committed to source control.
+
+Static exports are distinct from GitHub Team sync. They create local
+files and do not implement the team mode's approved-memory-only, one-pull-request-per-memory workflow. See [Deployment Modes](deployment-modes.md).
 
 ## Future Adapters
 

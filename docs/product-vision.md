@@ -14,13 +14,13 @@ OpenMembrane is not primarily a CLI, not primarily an OpenCode plugin, and not o
 - Zero maintenance. OpenMembrane learns autonomously from your normal workflow — no manual tagging, no bookmarking, no effort.
 
 **For teams:**
-- Shared project intelligence. New team members inherit the team's accumulated knowledge from day one.
-- Consistent AI behavior. Every developer's AI tools operate with the same understanding of your project's constraints and conventions.
-- Compliance-ready. Full audit trails, policy controls, and EU/CH data residency options.
+- GitHub Team provides shared project intelligence so new team members can inherit approved project knowledge.
+- GitHub Team helps AI tools operate with a shared understanding of project constraints and conventions.
+- GitHub Team uses a manually selected dedicated private repository and one pull request per accepted memory.
 
 **For companies:**
-- Self-hosted or managed. Run on your infrastructure or use OpenMembrane's hosted option.
-- Organization-level policies. Control what AI tools can remember, who approves knowledge, and where data lives.
+- Planned Self-Hosted Team will run in organization-controlled infrastructure; Managed Team will be an OpenMembrane-operated service.
+- Future organization-level policies can control what AI tools can remember and who approves shared knowledge.
 - No vendor lock-in. Tool-agnostic by design — works with any AI coding tool that speaks MCP or reads instruction files.
 
 ## Product Thesis
@@ -89,20 +89,22 @@ Bad memory examples:
 
 ## Product Modes
 
-The product should eventually support multiple operating modes:
+See [Deployment Modes](deployment-modes.md) for the canonical mode definitions,
+ownership model, approved-memory boundary, and residency language.
 
-- Local-only mode: all memory stays on the developer machine.
-- CH/EU sync mode: encrypted memory can be synced to CH/EU-hosted infrastructure.
-- Self-hosted mode: companies can run OpenMembrane inside their own infrastructure.
-- Hosted mode: OpenMembrane may provide managed sync, teams, policy, audit logs, and administration.
-
-The MVP implements local-only mode.
+- **Local Private** is the current default and stores data in git-ignored
+  `.openmembrane/`.
+- **GitHub Team** is current with initial limitations and shares accepted memory
+  through one pull request per memory in a manually selected dedicated private
+  repository. The merged default branch is the shared-memory authority.
+- **Self-Hosted Team** and **Managed Team** are planned.
 
 ## Positioning Guardrails
 
-See [Security and Privacy](security-and-privacy.md#cheu-security-positioning) for the full positioning rules. Key points:
+See [Security and Privacy](security-and-privacy.md) and
+[Deployment Modes](deployment-modes.md) for the full positioning rules. Key points:
 
-- Local-only mode keeps memory on the developer machine.
+- Local Private is the current release and keeps its store local and git-ignored.
 - External LLM usage must be explicit and policy-controlled.
 - Stored memory should not be sent to external model providers unless explicitly configured.
 
@@ -110,7 +112,7 @@ See [Security and Privacy](security-and-privacy.md#cheu-security-positioning) fo
 
 The MVP should not build:
 
-- cloud sync
+- Self-Hosted Team, Managed Team, and other future team modes
 - SaaS backend
 - user accounts
 - billing

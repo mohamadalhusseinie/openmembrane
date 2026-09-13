@@ -36,6 +36,10 @@ export interface MemoryPipelineResult {
   redactions: SecretFinding[];
 }
 
+export interface MemoryProcessingOptions {
+  preserveExistingConflicts?: boolean;
+}
+
 export class MemoryPipeline {
   private readonly extractor: MemoryExtractor;
   private readonly memoryStore: MemoryStore;
@@ -61,12 +65,16 @@ export class MemoryPipeline {
     this.actionRecommender = options.actionRecommender ?? new ActionRecommender();
   }
 
-  async processStructured(projectId: string, candidates: MemoryCandidate[]): Promise<MemoryPipelineResult> {
+  async processStructured(
+    projectId: string,
+    candidates: MemoryCandidate[],
+    options: MemoryProcessingOptions = {},
+  ): Promise<MemoryPipelineResult> {
     const normalized = candidates.map((c) => c.projectId === projectId ? c : { ...c, projectId });
     const existing = await this.memoryStore.list(projectId);
     const pendingCandidates: MemoryCandidate[] = await this.pendingCandidateStore.list(projectId);
 
-    const result = await this.processCandidates(projectId, normalized, existing, pendingCandidates, undefined);
+    const result = await this.processCandidates(projectId, normalized, existing, pendingCandidates, undefined, options);
 
     return {
       projectId,
@@ -75,7 +83,7 @@ export class MemoryPipeline {
     };
   }
 
-  async process(input: SessionInput): Promise<MemoryPipelineResult> {
+  async process(input: SessionInput, options: MemoryProcessingOptions = {}): Promise<MemoryPipelineResult> {
     const ingested = this.ingestor.ingest(input);
     const extracted = await this.extractor.extract(ingested.input);
     const existing = await this.memoryStore.list(input.projectId);
@@ -97,7 +105,8 @@ export class MemoryPipeline {
       extracted,
       existing,
       pendingCandidates,
-      ingested.transcriptHash
+      ingested.transcriptHash,
+      options,
     );
 
     return {
@@ -112,7 +121,8 @@ export class MemoryPipeline {
     extracted: MemoryCandidate[],
     existing: MemoryEntry[],
     pendingCandidates: MemoryCandidate[],
-    transcriptHash: string | undefined
+    transcriptHash: string | undefined,
+    options: MemoryProcessingOptions,
   ): Promise<{ saved: MemoryEntry[]; pending: MemoryCandidate[]; rejected: MemoryCandidate[]; candidates: MemoryCandidate[]; superseded: MemoryEntry[] }> {
     const saved: MemoryEntry[] = [];
     const pending: MemoryCandidate[] = [];
@@ -167,7 +177,7 @@ export class MemoryPipeline {
         candidate.confidence === "high" &&
         conflicts.every((c) => c.kind === "version_mismatch" || c.kind === "alternative");
 
-      if (canAutoSupersede) {
+      if (canAutoSupersede && !options.preserveExistingConflicts) {
         for (const conflict of conflicts) {
           const superseded = await this.memoryStore.supersede(projectId, conflict.memory.id);
           supersededEntries.push(superseded);
@@ -186,7 +196,7 @@ export class MemoryPipeline {
         }
       }
 
-      if (!canAutoSupersede && conflicts.length > 0) {
+      if (conflicts.length > 0 && (!canAutoSupersede || options.preserveExistingConflicts)) {
         candidate = {
           ...candidate,
           conflictWith: conflicts.map((c) => c.memory.id)
@@ -210,14 +220,14 @@ export class MemoryPipeline {
         const stored = await this.memoryStore.save(entry);
         saved.push(stored);
         existing.push(stored);
-        await this.auditLogStore.append({
+        await this.auditMemorySaved({
           id: createId("audit"),
           projectId,
           type: "memory_saved",
           entityId: stored.id,
           createdAt: nowIso(),
           details: { candidateId: candidate.id }
-        });
+        }, options.preserveExistingConflicts === true);
         continue;
       }
 
@@ -285,5 +295,17 @@ export class MemoryPipeline {
         duplicateOf: candidate.duplicateOf
       }
     });
+  }
+
+  private async auditMemorySaved(event: Parameters<AuditLogStore["append"]>[0], allowHandoffOnFailure: boolean): Promise<void> {
+    if (!allowHandoffOnFailure) {
+      await this.auditLogStore.append(event);
+      return;
+    }
+    try {
+      await this.auditLogStore.append(event);
+    } catch {
+      // GitHub handlers persist the resulting proposal after this processing step.
+    }
   }
 }

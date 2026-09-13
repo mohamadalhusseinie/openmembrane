@@ -1,4 +1,9 @@
-# OpenMembrane — OpenCode Installation
+# OpenMembrane Local Private Setup: OpenCode
+
+This guide configures the current [Local Private mode](../docs/deployment-modes.md#local-private).
+Local Private remains the default. [GitHub Team](../docs/deployment-modes.md#github-team)
+is also current; Self-Hosted Team and Managed Team are planned. Static exports
+are separate from team sync.
 
 ## Prerequisites
 

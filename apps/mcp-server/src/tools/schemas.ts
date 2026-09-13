@@ -45,6 +45,19 @@ export const searchMemorySchema = {
   limit: z.number().int().positive().max(200).optional()
 };
 
+export const configureGitHubTeamModeSchema = {
+  ...projectIdSchema,
+  repository: z.object({
+    host: z.string().min(1).describe("GitHub host, such as github.com."),
+    owner: z.string().min(1).describe("Private repository owner or organization."),
+    name: z.string().min(1).describe("Dedicated private repository name."),
+  }),
+};
+
+export const getCollaborationStatusSchema = {
+  ...projectIdSchema,
+};
+
 export const listMemoryCandidatesSchema = {
   ...projectIdSchema,
   limit: z.number().int().positive().max(200).optional()
