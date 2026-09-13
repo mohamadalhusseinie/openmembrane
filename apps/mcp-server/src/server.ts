@@ -8,7 +8,9 @@ import { SessionNudgeTracker, loadNudgeConfig } from "./nudge";
 import {
   approveAllCandidatesSchema,
   approveMemoryCandidateSchema,
+  configureGitHubTeamModeSchema,
   exportStaticMemoryFilesSchema,
+  getCollaborationStatusSchema,
   getDiagnosticsSchema,
   getProjectRulesSchema,
   getRelevantContextSchema,
@@ -31,6 +33,26 @@ export function createOpenMembraneMcpServer(context: OpenMembraneMcpContext): Mc
   });
   const handlers = createToolHandlers(context);
   const tracker = new SessionNudgeTracker(loadNudgeConfig());
+
+  server.registerTool(
+    "configure_github_team_mode",
+    {
+      title: "Configure GitHub Team Mode",
+      description: "Configure a dedicated private GitHub repository for proposal-based shared memory.",
+      inputSchema: configureGitHubTeamModeSchema,
+    },
+    async (input) => safeJsonResult(context, "configure_github_team_mode", input, () => handlers.configureGitHubTeamMode(input), tracker),
+  );
+
+  server.registerTool(
+    "get_collaboration_status",
+    {
+      title: "Get Collaboration Status",
+      description: "Return safe GitHub Team configuration, proposal lifecycle counts, and scheduled retry state.",
+      inputSchema: getCollaborationStatusSchema,
+    },
+    async (input) => safeJsonResult(context, "get_collaboration_status", input, () => handlers.getCollaborationStatus(input), tracker),
+  );
 
   server.registerTool(
     "propose_memory_from_session",
@@ -251,7 +273,9 @@ export async function safeJsonResult(
       tracker.recordMemorySaved();
     }
 
-    return jsonResult(value, reminder);
+    const result = jsonResult(value, reminder);
+    schedulePostResponseRetry(context, operation, input);
+    return result;
   } catch (error) {
     const normalized = normalizeOpenMembraneError(error);
     const diagnosticId = createId("diag");
@@ -295,6 +319,17 @@ export async function safeJsonResult(
       ]
     };
   }
+}
+
+function schedulePostResponseRetry(context: OpenMembraneMcpContext, operation: string, input: unknown): void {
+  if (!isRetrievalOperation(operation)) return;
+  void context.githubTeamService.retryEligiblePublications(projectIdFromInput(context, input)).catch(() => {
+    // Retry failure is recorded by the collaboration service and must not alter an MCP response.
+  });
+}
+
+function isRetrievalOperation(operation: string): boolean {
+  return operation === "get_project_rules" || operation === "get_relevant_context" || operation === "search_memory";
 }
 
 function projectIdFromInput(context: OpenMembraneMcpContext, input: unknown): string {

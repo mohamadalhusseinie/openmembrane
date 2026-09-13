@@ -19,6 +19,10 @@ export interface BatchApproveResult {
   skipped: Array<{ candidateId: string; reason: string }>;
 }
 
+export interface MemoryApprovalOptions {
+  preserveExistingConflicts?: boolean;
+}
+
 export interface BatchRejectResult {
   projectId: string;
   rejectedCount: number;
@@ -39,7 +43,11 @@ export class MemoryApprovalService {
     this.deduplicator = options.deduplicator ?? new Deduplicator();
   }
 
-  async approve(projectId: string, candidateId: string): Promise<MemoryEntry> {
+  async approve(
+    projectId: string,
+    candidateId: string,
+    options: MemoryApprovalOptions = {},
+  ): Promise<MemoryEntry> {
     const candidate = await this.pendingCandidateStore.findById(projectId, candidateId);
     if (!candidate) {
       throw new OpenMembraneError({
@@ -69,7 +77,7 @@ export class MemoryApprovalService {
     const approvedAt = nowIso();
     const memory = await this.memoryStore.save(memoryEntryFromCandidate(candidate, approvedAt));
     await this.pendingCandidateStore.remove(projectId, candidateId);
-    await this.auditLogStore.append({
+    await this.auditMemorySaved({
       id: createId("audit"),
       projectId,
       type: "memory_saved",
@@ -81,7 +89,7 @@ export class MemoryApprovalService {
       }
     });
 
-    if (candidate.conflictWith && candidate.conflictWith.length > 0) {
+    if (!options.preserveExistingConflicts && candidate.conflictWith && candidate.conflictWith.length > 0) {
       for (const conflictId of candidate.conflictWith) {
         try {
           await this.memoryStore.supersede(projectId, conflictId, memory.id);
@@ -102,7 +110,7 @@ export class MemoryApprovalService {
     return memory;
   }
 
-  async approveAll(projectId: string): Promise<BatchApproveResult> {
+  async approveAll(projectId: string, options: MemoryApprovalOptions = {}): Promise<BatchApproveResult> {
     const candidates = await this.pendingCandidateStore.list(projectId);
     const approved: MemoryEntry[] = [];
     const skipped: Array<{ candidateId: string; reason: string }> = [];
@@ -111,7 +119,7 @@ export class MemoryApprovalService {
 
     for (const candidate of candidates) {
       try {
-        const memory = await this.approve(projectId, candidate.id);
+        const memory = await this.approve(projectId, candidate.id, options);
         approved.push(memory);
       } catch (error) {
         if (error instanceof OpenMembraneError && skippableCodes.has(error.code)) {
@@ -155,5 +163,13 @@ export class MemoryApprovalService {
         reason: reason ?? "Rejected by user."
       }
     });
+  }
+
+  private async auditMemorySaved(event: Parameters<AuditLogStore["append"]>[0]): Promise<void> {
+    try {
+      await this.auditLogStore.append(event);
+    } catch {
+      // Accepted memory must reach its collaboration handoff if audit storage is unavailable.
+    }
   }
 }

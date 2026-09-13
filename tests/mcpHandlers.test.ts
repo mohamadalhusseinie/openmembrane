@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -6,6 +7,8 @@ import { createOpenMembraneContext } from "../apps/mcp-server/src/context";
 import { safeJsonResult } from "../apps/mcp-server/src/server";
 import { createToolHandlers } from "../apps/mcp-server/src/tools/handlers";
 import { SessionNudgeTracker } from "../apps/mcp-server/src/nudge";
+import type { Command, CommandResult, CommandRunner } from "../apps/mcp-server/src/collaboration/GitHubCli";
+import { candidate, entry } from "./unit/helpers";
 
 const tempDirs: string[] = [];
 
@@ -13,7 +16,117 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function createHandlers() {
+class GitHubModeRunner implements CommandRunner {
+  readonly commands: Command[] = [];
+  readonly observedPublicationResponseStates: boolean[] = [];
+  responseConstructed = false;
+
+  async run(command: Command): Promise<CommandResult> {
+    this.commands.push(command);
+    if (command.executable === "gh" && command.args[0] === "--version") {
+      return { exitCode: 0, stdout: "gh version 2.0.0", stderr: "" };
+    }
+    if (command.executable === "gh" && command.args[0] === "auth") {
+      return { exitCode: 0, stdout: "", stderr: "authenticated token=super-secret" };
+    }
+    if (command.executable === "gh" && command.args[0] === "repo") {
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          nameWithOwner: "team/project-memory",
+          isPrivate: true,
+          defaultBranch: { name: "main" },
+          url: "https://github.example.test/team/project-memory",
+        }),
+        stderr: "",
+      };
+    }
+    if (command.executable === "gh" && command.args[0] === "pr" && command.args[1] === "list") {
+      return { exitCode: 0, stdout: "[]", stderr: "" };
+    }
+    if (command.executable === "gh" && command.args[0] === "pr" && command.args[1] === "create") {
+      return { exitCode: 0, stdout: "https://github.example.test/team/project-memory/pull/42\n", stderr: "" };
+    }
+    if (command.executable === "git" && command.args.includes("rev-parse")) {
+      return { exitCode: 0, stdout: "abcdef0\n", stderr: "" };
+    }
+    if (command.executable === "git" && command.args.includes("fetch")) {
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+    if (command.executable === "git" && command.args.includes("show")) {
+      if (command.args.some((arg) => arg.endsWith(":.openmembrane/project.json"))) {
+        return {
+          exitCode: 0,
+          stdout: `${JSON.stringify({ schemaVersion: 1, projectId: "project-a", defaultBranch: "main" })}\n`,
+          stderr: "",
+        };
+      }
+      return { exitCode: 1, stdout: "", stderr: "remote output token=super-secret" };
+    }
+    if (command.executable === "git") {
+      if (command.args.includes("checkout")) this.observedPublicationResponseStates.push(this.responseConstructed);
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+    throw new Error(`Unexpected command: ${command.executable} ${command.args.join(" ")}`);
+  }
+}
+
+class MergedProposalRunner extends GitHubModeRunner {
+  override async run(command: Command): Promise<CommandResult> {
+    if (command.executable === "gh" && command.args[0] === "pr" && command.args[1] === "view") {
+      this.commands.push(command);
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          number: 42,
+          url: "https://github.example.test/team/project-memory/pull/42",
+          state: "MERGED",
+          mergedAt: "2026-09-12T12:05:00.000Z",
+          mergeCommit: { oid: "merge-sha" },
+          closedAt: null,
+          closedBy: null,
+          reviewDecision: null,
+        }),
+        stderr: "",
+      };
+    }
+    return super.run(command);
+  }
+}
+
+class RefreshingGitHubModeRunner extends GitHubModeRunner {
+  constructor(private readonly remoteMemories: readonly Record<string, unknown>[]) {
+    super();
+  }
+
+  override async run(command: Command): Promise<CommandResult> {
+    if (command.executable === "git" && command.args.includes("show")) {
+      const remotePath = command.args.find((arg) => arg.startsWith("origin/main:"))?.slice("origin/main:".length);
+      if (remotePath === ".openmembrane/manifest.json") {
+        const files = this.remoteMemories.map((memory) => `${JSON.stringify(memory, null, 2)}\n`);
+        return {
+          exitCode: 0,
+          stdout: `${JSON.stringify({
+            schemaVersion: 1,
+            projectId: "project-a",
+            defaultBranch: "main",
+            generatedAt: "2026-09-12T12:00:00.000Z",
+            memories: this.remoteMemories.map((memory, index) => ({
+              id: memory.id,
+              contentHash: createHash("sha256").update(files[index] ?? "").digest("hex"),
+            })),
+          }, null, 2)}\n`,
+          stderr: "",
+        };
+      }
+      const memory = this.remoteMemories.find((item) => `.openmembrane/memories/${item.id}.json` === remotePath);
+      if (memory !== undefined) return { exitCode: 0, stdout: `${JSON.stringify(memory, null, 2)}\n`, stderr: "" };
+    }
+    return super.run(command);
+  }
+}
+
+async function createHandlers(options: { githubRunner?: CommandRunner } = {}) {
   const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-mcp-test-"));
   const projectRoot = await mkdtemp(join(tmpdir(), "openmembrane-project-test-"));
   tempDirs.push(storageDir, projectRoot);
@@ -21,7 +134,8 @@ async function createHandlers() {
   const context = await createOpenMembraneContext({
     defaultProjectId: "project-a",
     projectRoot,
-    storageDir
+    storageDir,
+    ...options,
   });
 
   return {
@@ -31,7 +145,429 @@ async function createHandlers() {
   };
 }
 
+async function configureGitHubMode(handlers: ReturnType<typeof createToolHandlers>): Promise<void> {
+  await handlers.configureGitHubTeamMode({
+    repository: { host: "github.example.test", owner: "team", name: "project-memory" },
+  });
+}
+
+async function saveStaleMergedProposal(
+  context: Awaited<ReturnType<typeof createHandlers>>["context"],
+  memoryId: string,
+): Promise<void> {
+  const memory = entry({
+    id: memoryId,
+    content: "Use pnpm for package management.",
+    source: { kind: "import", tool: "github" },
+  });
+  await context.memoryStore.save(memory);
+  await context.collaborationStore.saveProposal({
+    projectId: "project-a",
+    memory: { ...memory, source: undefined } as never,
+    state: "proposed",
+    review: {
+      provider: "github",
+      id: "42",
+      url: "https://github.example.test/team/project-memory/pull/42",
+      branch: `openmembrane/memory/${memoryId}`,
+    },
+    retry: { status: "not_scheduled", attempts: 0 },
+    createdAt: "2026-09-12T12:00:00.000Z",
+    updatedAt: "2026-09-12T12:00:00.000Z",
+  });
+}
+
+function rejectMemorySavedAuditWrites(
+  context: Awaited<ReturnType<typeof createHandlers>>["context"],
+): void {
+  const append = context.auditLogStore.append.bind(context.auditLogStore);
+  context.auditLogStore.append = async (event) => {
+    if (event.type === "memory_saved") throw new Error("simulated audit write failure");
+    await append(event);
+  };
+}
+
 describe("MCP tool handlers", () => {
+  it("configures GitHub Team mode with a validated private repository", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+
+    const result = await handlers.configureGitHubTeamMode({
+      repository: { host: "github.example.test", owner: "team", name: "project-memory" },
+    });
+
+    expect(result).toMatchObject({
+      kind: "configured",
+      config: {
+        projectId: "project-a",
+        mode: "github_team",
+        repository: { host: "github.example.test", owner: "team", name: "project-memory", defaultBranch: "main" },
+      },
+    });
+    await expect(context.collaborationStore.getProjectConfig("project-a")).resolves.toMatchObject({
+      mode: "github_team",
+      repository: { name: "project-memory" },
+    });
+  });
+
+  it("publishes an automatically accepted memory as a non-retrievable GitHub proposal", async () => {
+    const { handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await handlers.configureGitHubTeamMode({
+      repository: { host: "github.example.test", owner: "team", name: "project-memory" },
+    });
+
+    const result = await handlers.proposeMemoryFromSession({
+      transcript: "rule: This project uses Angular standalone components. Do not introduce NgModules.",
+    });
+
+    expect(result.savedCount).toBe(0);
+    expect(result.proposalCount).toBe(1);
+    await expect(handlers.searchMemory({ query: "Angular standalone" })).resolves.toEqual([]);
+    await expect(handlers.getCollaborationStatus({})).resolves.toMatchObject({
+      mode: "github_team",
+      proposals: { proposed: 1, active: 0 },
+    });
+  });
+
+  it("publishes an automatically accepted GitHub proposal when its memory_saved audit write fails", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    rejectMemorySavedAuditWrites(context);
+
+    const result = await handlers.remember({
+      content: "Use standalone route components.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+
+    expect(result).toMatchObject({ proposalCount: 1, proposals: [expect.objectContaining({ state: "proposed" })] });
+    await expect(context.collaborationStore.listProposals("project-a")).resolves.toEqual([
+      expect.objectContaining({ state: "proposed" }),
+    ]);
+  });
+
+  it("audits GitHub proposal staging instead of presenting it as a shared supersession", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+
+    await handlers.remember({ content: "Use standalone route components.", type: "coding_rule", confidence: "high" });
+
+    await expect(context.auditLogStore.list("project-a")).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "memory_proposed", details: { mode: "github_team", staging: "proposal" } }),
+    ]));
+  });
+
+  it("audits manually approved GitHub proposal staging", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.pendingCandidateStore.save(candidate({ id: "cand_manual", projectId: "project-a", content: "Use standalone route components." }));
+
+    await handlers.approveMemoryCandidate({ candidateId: "cand_manual" });
+
+    await expect(context.auditLogStore.list("project-a")).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "memory_proposed", entityId: "mem_manual", details: { mode: "github_team", staging: "proposal" } }),
+    ]));
+  });
+
+  it("publishes a manually approved candidate as a non-retrievable GitHub proposal", async () => {
+    const { handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await handlers.configureGitHubTeamMode({
+      repository: { host: "github.example.test", owner: "team", name: "project-memory" },
+    });
+    await handlers.proposeMemoryFromSession({
+      summary: "architecture: Runtime environment config is preferred over compile-time environment replacement.",
+    });
+    const pending = await handlers.listMemoryCandidates({});
+
+    const result = await handlers.approveMemoryCandidate({ candidateId: pending[0]?.id ?? "" });
+
+    expect(result).toMatchObject({ kind: "published", proposal: { state: "proposed" } });
+    await expect(handlers.listMemoryCandidates({})).resolves.toEqual([]);
+    await expect(handlers.searchMemory({ query: "Runtime environment config" })).resolves.toEqual([]);
+  });
+
+  it("publishes a manually approved GitHub proposal when its memory_saved audit write fails", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.pendingCandidateStore.save(candidate({
+      id: "cand_manual_audit_failure",
+      projectId: "project-a",
+      content: "Use standalone route components.",
+    }));
+    rejectMemorySavedAuditWrites(context);
+
+    const result = await handlers.approveMemoryCandidate({ candidateId: "cand_manual_audit_failure" });
+
+    expect(result).toMatchObject({ kind: "published", proposal: { state: "proposed" } });
+    await expect(context.collaborationStore.getProposal("project-a", "mem_manual_audit_failure")).resolves.toMatchObject({
+      state: "proposed",
+    });
+  });
+
+  it("starts eligible retry publication only after safeJsonResult constructs the retrieval response", async () => {
+    const runner = new GitHubModeRunner();
+    const { context, handlers } = await createHandlers({ githubRunner: runner });
+    await handlers.configureGitHubTeamMode({
+      repository: { host: "github.example.test", owner: "team", name: "project-memory" },
+    });
+    await context.collaborationStore.saveProposal({
+      projectId: "project-a",
+      memory: {
+        id: "mem_retry",
+        projectId: "project-a",
+        type: "coding_rule",
+        content: "A failed proposal remains non-retrievable.",
+        scope: "unknown",
+        confidence: "high",
+        sensitivity: "internal",
+        reason: "Test retry timing.",
+        tags: [],
+        status: "active",
+        createdAt: "2026-09-12T12:00:00.000Z",
+        updatedAt: "2026-09-12T12:00:00.000Z",
+      },
+      state: "sync_failed",
+      retry: { status: "scheduled", attempts: 1, nextAttemptAt: "2000-01-01T00:00:00.000Z" },
+      createdAt: "2026-09-12T12:00:00.000Z",
+      updatedAt: "2026-09-12T12:00:00.000Z",
+    });
+
+    const result = await safeJsonResult(context, "search_memory", {}, async () => ({
+      toJSON: () => {
+        runner.responseConstructed = true;
+        return { memories: [] };
+      },
+    }));
+
+    expect(result.content[0]?.type === "text" ? JSON.parse(result.content[0].text) : undefined).toEqual({ memories: [] });
+    await waitFor(async () => (await context.collaborationStore.getProposal("project-a", "mem_retry"))?.state === "proposed");
+    expect(runner.observedPublicationResponseStates).toEqual([true]);
+    await expect(context.collaborationStore.getProposal("project-a", "mem_retry")).resolves.toMatchObject({ state: "proposed" });
+  });
+
+  it("removes a duplicate approved candidate without publishing or superseding the active GitHub memory", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    const existing = entry({ id: "mem_existing", content: "Use pnpm for package management.", source: { kind: "import", tool: "github" } });
+    await context.memoryStore.save(existing);
+    await context.pendingCandidateStore.save(candidate({
+      id: "cand_duplicate",
+      content: existing.content,
+      recommendedAction: "ask_user",
+    }));
+
+    const result = await handlers.approveMemoryCandidate({ candidateId: "cand_duplicate" });
+
+    expect(result).toMatchObject({ id: "mem_existing", status: "active" });
+    await expect(context.pendingCandidateStore.list("project-a")).resolves.toEqual([]);
+    await expect(context.memoryStore.findById("project-a", "mem_existing")).resolves.toMatchObject({ status: "active" });
+    await expect(handlers.getCollaborationStatus({})).resolves.toMatchObject({ proposals: { proposed: 0 } });
+  });
+
+  it("batch duplicate approval preserves active GitHub memories and creates no proposals", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    const existing = entry({ id: "mem_existing", content: "Use pnpm for package management.", source: { kind: "import", tool: "github" } });
+    await context.memoryStore.save(existing);
+    await context.pendingCandidateStore.save(candidate({ id: "cand_duplicate", content: existing.content, recommendedAction: "ask_user" }));
+
+    const result = await handlers.approveAllCandidates({});
+
+    expect(result.approved).toHaveLength(1);
+    await expect(context.pendingCandidateStore.list("project-a")).resolves.toEqual([]);
+    await expect(context.memoryStore.findById("project-a", "mem_existing")).resolves.toMatchObject({ status: "active" });
+    await expect(handlers.getCollaborationStatus({})).resolves.toMatchObject({ proposals: { proposed: 0 } });
+  });
+
+  it("keeps an active GitHub memory retrievable while an automatic conflicting replacement is proposed", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.memoryStore.save(entry({
+      id: "mem_pnpm",
+      content: "Use pnpm for package management.",
+      source: { kind: "import", tool: "github" },
+    }));
+
+    const result = await handlers.remember({
+      content: "Use yarn for package management.",
+      type: "coding_rule",
+      confidence: "high",
+      scope: "frontend",
+    });
+
+    expect(result).toMatchObject({ savedCount: 0, proposalCount: 1 });
+    await expect(context.memoryStore.findById("project-a", "mem_pnpm")).resolves.toMatchObject({ status: "active" });
+    await expect(handlers.searchMemory({ query: "pnpm package management" })).resolves.toMatchObject([
+      expect.objectContaining({ id: "mem_pnpm" }),
+    ]);
+    await expect(context.collaborationStore.getProposal("project-a", result.proposals?.[0]?.memoryId ?? "")).resolves.toMatchObject({
+      removalMemoryIds: ["mem_pnpm"],
+    });
+  });
+
+  it("retains an automatic GitHub proposal when proposal-stage audit persistence fails", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    const append = context.auditLogStore.append.bind(context.auditLogStore);
+    context.auditLogStore.append = async (event) => {
+      if (event.type === "memory_proposed") throw new Error("simulated audit failure");
+      await append(event);
+    };
+
+    await expect(handlers.remember({ content: "Use standalone route components.", type: "coding_rule", confidence: "high" }))
+      .resolves.toMatchObject({ proposalCount: 1 });
+    await expect(context.collaborationStore.listProposals("project-a")).resolves.toEqual([
+      expect.objectContaining({ memory: expect.objectContaining({ id: expect.any(String) }) }),
+    ]);
+  });
+
+  it("retains a manually approved GitHub proposal when proposal-stage audit persistence fails", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.pendingCandidateStore.save(candidate({ id: "cand_audit_failure", projectId: "project-a", content: "Use standalone route components." }));
+    const append = context.auditLogStore.append.bind(context.auditLogStore);
+    context.auditLogStore.append = async (event) => {
+      if (event.type === "memory_proposed") throw new Error("simulated audit failure");
+      await append(event);
+    };
+
+    await expect(handlers.approveMemoryCandidate({ candidateId: "cand_audit_failure" }))
+      .resolves.toMatchObject({ kind: "published", proposal: { memory: { id: "mem_audit_failure" } } });
+    await expect(context.collaborationStore.getProposal("project-a", "mem_audit_failure")).resolves.toMatchObject({ state: "proposed" });
+  });
+
+  it("refreshes GitHub memories before exporting static files", async () => {
+    const remoteMemory = {
+      id: "mem_fresh",
+      projectId: "project-a",
+      type: "coding_rule",
+      content: "Use fresh imported rules.",
+      scope: "unknown",
+      confidence: "high",
+      sensitivity: "internal",
+      reason: "Remote snapshot.",
+      tags: [],
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const { context, handlers, projectRoot } = await createHandlers({ githubRunner: new RefreshingGitHubModeRunner([remoteMemory]) });
+    await configureGitHubMode(handlers);
+    await context.memoryStore.save(entry({ id: "mem_stale", content: "Use stale local rules.", source: { kind: "import", tool: "github" } }));
+
+    await handlers.exportStaticMemoryFiles({ targets: ["agents"] });
+
+    const exported = await readFile(join(projectRoot, "AGENTS.md"), "utf8");
+    expect(exported).toContain("Use fresh imported rules.");
+    expect(exported).not.toContain("Use stale local rules.");
+  });
+
+  it("refreshes GitHub memories before reviewing stale memories", async () => {
+    const remoteMemory = {
+      id: "mem_fresh_stale",
+      projectId: "project-a",
+      type: "coding_rule",
+      content: "Use fresh stale rules.",
+      scope: "unknown",
+      confidence: "high",
+      sensitivity: "internal",
+      reason: "Remote snapshot.",
+      tags: [],
+      status: "active",
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    };
+    const { context, handlers } = await createHandlers({ githubRunner: new RefreshingGitHubModeRunner([remoteMemory]) });
+    await configureGitHubMode(handlers);
+    await context.memoryStore.save(entry({
+      id: "mem_stale_removed",
+      content: "Removed stale local rules.",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+      source: { kind: "import", tool: "github" },
+    }));
+
+    await expect(handlers.reviewStaleMemories({ staleAfterMonths: 1 })).resolves.toMatchObject([
+      expect.objectContaining({ id: "mem_fresh_stale" }),
+    ]);
+  });
+
+  it("keeps an active GitHub memory retrievable while an approved conflicting replacement is proposed", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.memoryStore.save(entry({
+      id: "mem_runtime",
+      type: "architecture_decision",
+      content: "Runtime environment config is preferred over compile-time environment replacement.",
+      source: { kind: "import", tool: "github" },
+    }));
+    await handlers.proposeMemoryFromSession({ summary: "architecture: Compile-time environment config is preferred over runtime environment config." });
+    const pending = await handlers.listMemoryCandidates({});
+
+    const result = await handlers.approveMemoryCandidate({ candidateId: pending[0]?.id ?? "" });
+
+    expect(result).toMatchObject({ kind: "published", proposal: { state: "proposed" } });
+    await expect(context.memoryStore.findById("project-a", "mem_runtime")).resolves.toMatchObject({ status: "active" });
+  });
+
+  it("routes GitHub remember saves into non-retrievable proposals", async () => {
+    const { handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+
+    const result = await handlers.remember({ content: "Use ESM imports in all TypeScript files.", type: "coding_rule", confidence: "high" });
+
+    expect(result).toMatchObject({ savedCount: 0, proposalCount: 1 });
+    await expect(handlers.searchMemory({ query: "ESM imports" })).resolves.toEqual([]);
+  });
+
+  it("routes GitHub batch approval into non-retrievable proposals", async () => {
+    const { handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await handlers.proposeMemoryFromSession({ summary: "architecture: Runtime config is preferred over compile-time.\ndeployment: Deploy to staging first." });
+
+    const result = await handlers.approveAllCandidates({});
+
+    expect(result.approved).toHaveLength(2);
+    expect(result.approved).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "published", proposal: expect.objectContaining({ state: "proposed" }) }),
+    ]));
+    await expect(handlers.searchMemory({ query: "runtime config staging" })).resolves.toEqual([]);
+  });
+
+  it("returns credential-free collaboration status without subprocess output", async () => {
+    const { handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await handlers.configureGitHubTeamMode({
+      repository: { host: "github.example.test", owner: "team", name: "project-memory" },
+    });
+
+    const status = await handlers.getCollaborationStatus({});
+    const serialized = JSON.stringify(status);
+
+    expect(status).toEqual({
+      mode: "github_team",
+      repository: { host: "github.example.test", owner: "team", name: "project-memory", defaultBranch: "main" },
+      proposals: { proposed: 0, active: 0, rejected: 0, syncFailed: 0, conflict: 0 },
+      retries: [],
+    });
+    expect(serialized).not.toContain("super-secret");
+    expect(serialized).not.toContain("remote output");
+    expect(serialized).not.toContain("checkoutPath");
+  });
+
+  it("keeps Local Private automatic acceptance active and retrievable without GitHub configuration", async () => {
+    const { handlers } = await createHandlers();
+
+    const result = await handlers.proposeMemoryFromSession({
+      transcript: "rule: This project uses Angular standalone components. Do not introduce NgModules.",
+    });
+
+    expect(result.savedCount).toBe(1);
+    await expect(handlers.searchMemory({ query: "Angular standalone" })).resolves.toHaveLength(1);
+    await expect(handlers.getCollaborationStatus({})).resolves.toEqual({
+      mode: "local_private",
+      proposals: { proposed: 0, active: 0, rejected: 0, syncFailed: 0, conflict: 0 },
+      retries: [],
+    });
+  });
+
   it("proposes memory from a session and retrieves auto-saved project rules", async () => {
     const { handlers } = await createHandlers();
 
@@ -175,6 +711,62 @@ describe("MCP tool handlers", () => {
 
     const auditLog = await handlers.listAuditLog({});
     expect(auditLog.map((event) => event.type)).toContain("memory_updated");
+  });
+
+  it("routes GitHub memory updates through a proposal without changing the active imported memory", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.memoryStore.save(entry({
+      id: "mem_active",
+      content: "Use pnpm for package management.",
+      source: { kind: "import", tool: "github" },
+    }));
+
+    const updated = await handlers.updateMemory({ memoryId: "mem_active", content: "Use yarn for package management." });
+
+    expect(updated).toMatchObject({ kind: "published", proposal: { memory: { id: "mem_active", content: "Use yarn for package management." } } });
+    await expect(context.memoryStore.findById("project-a", "mem_active")).resolves.toMatchObject({ content: "Use pnpm for package management.", status: "active" });
+  });
+
+  it("routes GitHub memory supersession through a proposal without changing the active imported memory", async () => {
+    const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
+    await configureGitHubMode(handlers);
+    await context.memoryStore.save(entry({
+      id: "mem_active",
+      content: "Use pnpm for package management.",
+      source: { kind: "import", tool: "github" },
+    }));
+
+    const superseded = await handlers.supersedeMemory({ memoryId: "mem_active", replacementId: "mem_replacement" });
+
+    expect(superseded).toMatchObject({ kind: "published", proposal: { operation: "remove", memory: { id: "mem_active", status: "active" } } });
+    await expect(context.memoryStore.findById("project-a", "mem_active")).resolves.toMatchObject({ status: "active" });
+  });
+
+  it("creates a new proposal after GitHub reports a locally proposed update PR has merged", async () => {
+    const runner = new MergedProposalRunner();
+    const { context, handlers } = await createHandlers({ githubRunner: runner });
+    await configureGitHubMode(handlers);
+    await saveStaleMergedProposal(context, "mem_active");
+
+    const updated = await handlers.updateMemory({ memoryId: "mem_active", content: "Use yarn for package management." });
+
+    expect(updated).toMatchObject({ kind: "published", proposal: { review: { branch: expect.stringMatching(/^openmembrane\/memory\/mem_active\/2026-/) } } });
+    expect(runner.commands.map((command) => command.args.slice(0, 2))).toContainEqual(["pr", "view"]);
+    expect(runner.commands.map((command) => command.args.slice(0, 2))).not.toContainEqual(["pr", "edit"]);
+  });
+
+  it("creates a new proposal after GitHub reports a locally proposed supersede PR has merged", async () => {
+    const runner = new MergedProposalRunner();
+    const { context, handlers } = await createHandlers({ githubRunner: runner });
+    await configureGitHubMode(handlers);
+    await saveStaleMergedProposal(context, "mem_active");
+
+    const superseded = await handlers.supersedeMemory({ memoryId: "mem_active", replacementId: "mem_replacement" });
+
+    expect(superseded).toMatchObject({ kind: "published", proposal: { review: { branch: expect.stringMatching(/^openmembrane\/memory\/mem_active\/2026-/) } } });
+    expect(runner.commands.map((command) => command.args.slice(0, 2))).toContainEqual(["pr", "view"]);
+    expect(runner.commands.map((command) => command.args.slice(0, 2))).not.toContainEqual(["pr", "edit"]);
   });
 
   it("returns error when updating memory with secret content", async () => {
@@ -494,6 +1086,15 @@ describe("MCP tool handlers", () => {
     expect(search[0]!.scope).toBe("unknown");
   });
 });
+
+async function waitFor(condition: () => Promise<boolean>, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the expected asynchronous result.");
+}
 
 describe("Session nudge reminders (integration)", () => {
   function parseJsonContent(result: Awaited<ReturnType<typeof safeJsonResult>>): unknown {

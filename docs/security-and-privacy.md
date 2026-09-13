@@ -15,9 +15,10 @@ OpenMembrane is a protective memory layer. It should persist durable project kno
 - external LLM usage must be explicit and policy-controlled
 - stored memory should not be sent to external model providers unless explicitly configured
 
-## Local-Only MVP
+## Local Private
 
-The current MVP stores data locally in JSON files under `.openmembrane` by default.
+The current release ships Local Private mode. It stores data locally in JSON
+files under `.openmembrane` by default, and that directory is git-ignored.
 
 The local store may contain:
 
@@ -86,21 +87,29 @@ The secondary path (`propose_memory_from_session`) uses an external LLM when a p
 - keep provider implementations behind `MemoryExtractor`
 - support local model extractors where possible
 
-## CH/EU Security Positioning
+## Deployment-Mode Positioning
 
 Do not claim "everything is 100% secure" or "no data is ever shared" in vague terms.
 
-Correct future positioning:
+Correct positioning:
 
-- Local-only mode: all memory stays on the developer machine.
-- CH/EU sync mode: encrypted memory can be synced to CH/EU-hosted infrastructure.
-- Self-hosted mode: companies can run OpenMembrane inside their own infrastructure.
+- Local Private is the current default and keeps the local store in git-ignored
+  `.openmembrane/`.
+- GitHub Team, Self-Hosted Team, and Managed Team are planned, not current
+  product features.
+- GitHub Team will sync only accepted memory through the selected dedicated
+  private repository; pending candidates, raw transcripts, source excerpts,
+  diagnostics, and credentials will not sync.
 - External LLM usage must be explicit and policy-controlled.
 - Stored memory should not be sent to external model providers unless explicitly configured.
 
+See [Deployment Modes](deployment-modes.md) for the canonical description of
+ownership, GitHub authentication and pull-request lifecycle, static exports,
+and residency language.
+
 ## Future Hosted Requirements
 
-Hosted and enterprise modes should support:
+Planned Self-Hosted Team and Managed Team modes should support:
 
 - encryption
 - tenant isolation

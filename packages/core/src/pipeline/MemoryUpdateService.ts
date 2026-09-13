@@ -35,6 +35,25 @@ export class MemoryUpdateService {
   }
 
   async update(projectId: string, memoryId: string, fields: MemoryUpdateFields): Promise<MemoryEntry> {
+    const { updated, previousSnapshot } = await this.preview(projectId, memoryId, fields);
+    const now = updated.updatedAt;
+    await this.memoryStore.save(updated);
+    await this.auditLogStore.append({
+      id: createId("audit"),
+      projectId,
+      type: "memory_updated",
+      entityId: memoryId,
+      createdAt: now,
+      details: previousSnapshot
+    });
+
+    return updated;
+  }
+
+  async preview(projectId: string, memoryId: string, fields: MemoryUpdateFields): Promise<{
+    updated: MemoryEntry;
+    previousSnapshot: Record<string, unknown>;
+  }> {
     const existing = await this.memoryStore.findById(projectId, memoryId);
     if (!existing) {
       throw new OpenMembraneError({
@@ -137,16 +156,6 @@ export class MemoryUpdateService {
       updatedAt: now
     };
 
-    await this.memoryStore.save(updated);
-    await this.auditLogStore.append({
-      id: createId("audit"),
-      projectId,
-      type: "memory_updated",
-      entityId: memoryId,
-      createdAt: now,
-      details: previousSnapshot
-    });
-
-    return updated;
+    return { updated, previousSnapshot };
   }
 }

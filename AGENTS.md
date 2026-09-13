@@ -6,6 +6,14 @@ Project context for AI coding tools working on the OpenMembrane codebase.
 
 OpenMembrane is a local-first, private, tool-agnostic memory membrane for AI coding tools. It autonomously extracts durable project knowledge from session transcripts, filters out secrets and noise, and persists approved memories — without any manual effort from the user.
 
+## Deployment Modes
+
+The current release ships [Local Private mode](docs/deployment-modes.md#local-private):
+`.openmembrane/` is local and git-ignored. GitHub Team, Self-Hosted Team, and
+Managed Team are planned. Static exports are distinct from GitHub Team sync;
+use [Deployment Modes](docs/deployment-modes.md) as the canonical product and
+residency reference.
+
 ## Architecture
 
 ### Pipeline

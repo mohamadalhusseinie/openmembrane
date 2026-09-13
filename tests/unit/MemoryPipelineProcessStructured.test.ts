@@ -90,6 +90,21 @@ describe("MemoryPipeline.processStructured", () => {
     expect(active[0]?.content).toContain("Angular");
   });
 
+  it("retains clear-cut replacement IDs when GitHub mode preserves existing conflicts", async () => {
+    const { pipeline, memoryStore } = await createPipeline();
+    await pipeline.processStructured("project-a", [
+      candidate({ id: "cand_old", content: "Use React for the frontend UI framework.", scope: "frontend" })
+    ]);
+
+    const result = await pipeline.processStructured("project-a", [
+      candidate({ id: "cand_replacement", content: "Use Angular for the frontend UI framework.", scope: "frontend" })
+    ], { preserveExistingConflicts: true });
+
+    expect(result.saved).toHaveLength(1);
+    expect(result.candidates[0]?.conflictWith).toEqual(["mem_old"]);
+    await expect(memoryStore.findById("project-a", "mem_old")).resolves.toMatchObject({ status: "active" });
+  });
+
   it("queues ask_user candidates for architecture decisions", async () => {
     const { pipeline } = await createPipeline();
 

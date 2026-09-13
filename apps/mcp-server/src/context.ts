@@ -1,13 +1,15 @@
 import { basename, join, resolve } from "node:path";
 import { cwd, env } from "node:process";
 import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrane/core";
-import type { AuditLogStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
+import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
 import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
 import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
 import { StaticMemoryExportService } from "@openmembrane/exporters";
 import { createId, nowIso } from "@openmembrane/shared";
-import { createStores } from "@openmembrane/storage";
+import { createStores, JsonCollaborationStore } from "@openmembrane/storage";
 import type { StorageBackend, StoreSet } from "@openmembrane/storage";
+import { GitHubCli, type CommandRunner } from "./collaboration/GitHubCli";
+import { GitHubTeamService } from "./collaboration/GitHubTeamService";
 
 export interface OpenMembraneMcpContext {
   defaultProjectId: string;
@@ -22,11 +24,18 @@ export interface OpenMembraneMcpContext {
   updateService: MemoryUpdateService;
   ingestionService: IngestionService;
   exportService: StaticMemoryExportService;
+  collaborationStore: CollaborationStore;
+  githubTeamService: GitHubTeamService;
   close?: () => void;
 }
 
+interface CreateOpenMembraneContextOptions extends Partial<Pick<OpenMembraneMcpContext, "defaultProjectId" | "projectRoot" | "storageDir">> {
+  /** Internal test seam. This is never persisted or exposed through MCP. */
+  githubRunner?: CommandRunner;
+}
+
 export async function createOpenMembraneContext(
-  options: Partial<Pick<OpenMembraneMcpContext, "defaultProjectId" | "projectRoot" | "storageDir">> = {}
+  options: CreateOpenMembraneContextOptions = {}
 ): Promise<OpenMembraneMcpContext> {
   const workingDirectory = cwd();
   const projectRoot = resolve(options.projectRoot ?? workingDirectory);
@@ -96,6 +105,14 @@ export async function createOpenMembraneContext(
   });
   const ingestionService = new IngestionService({ pipeline });
   const exportService = new StaticMemoryExportService();
+  const collaborationStore = new JsonCollaborationStore(storageDir);
+  const githubTeamService = new GitHubTeamService({
+    collaborationStore,
+    memoryStore,
+    diagnosticsLogStore,
+    github: new GitHubCli(options.githubRunner),
+    storageDir,
+  });
 
   return {
     defaultProjectId,
@@ -110,6 +127,8 @@ export async function createOpenMembraneContext(
     updateService,
     ingestionService,
     exportService,
+    collaborationStore,
+    githubTeamService,
     ...(stores.close !== undefined ? { close: stores.close } : {}),
   };
 }
