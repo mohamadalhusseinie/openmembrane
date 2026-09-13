@@ -666,6 +666,47 @@ describe("GitHubTeamService.configure", () => {
     });
     expect(diagnostics.events).toEqual([]);
   });
+
+  it("reuses a matching checkout when configuration is retried after checkout setup fails", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    runner.respondSequence("gh", ["--version"], [success(), success()]);
+    runner.respondSequence("gh", ["auth", "status", "--hostname", "github.example.test"], [success(), success()]);
+    runner.respondSequence(
+      "gh",
+      ["repo", "view", "github.example.test/team/project-memory", "--json", "nameWithOwner,isPrivate,defaultBranch,url"],
+      [repositoryView({ isPrivate: true }), repositoryView({ isPrivate: true })],
+    );
+    const checkoutPath = join(storageDir, "collaboration", "repos", "project-a");
+    runner.respond(
+      "git",
+      ["clone", "--origin", "origin", "--no-recurse-submodules", "https://github.example.test/team/project-memory", checkoutPath],
+      success(),
+    );
+    runner.respondSequence(
+      "git",
+      ["-C", checkoutPath, "ls-remote", "--refs", "origin"],
+      [
+        { exitCode: 1, stdout: "", stderr: "temporary remote failure" },
+        { exitCode: 0, stdout: "", stderr: "" },
+      ],
+    );
+    runner.respond(
+      "git",
+      ["-C", checkoutPath, "remote", "get-url", "origin"],
+      { exitCode: 0, stdout: "https://github.example.test/team/project-memory\n", stderr: "" },
+    );
+    const { service } = createService(storageDir, runner);
+
+    await expect(service.configure(configureInput())).resolves.toMatchObject({
+      kind: "rejected",
+      code: "GITHUB_CHECKOUT_FAILED",
+    });
+    await mkdir(checkoutPath, { recursive: true });
+
+    await expect(service.configure(configureInput())).resolves.toMatchObject({ kind: "configured" });
+    expect(runner.commands.filter((command) => command.executable === "git" && command.args[0] === "clone")).toHaveLength(1);
+  });
 });
 
 describe("GitHubTeamService proposal publication", () => {
@@ -1053,8 +1094,13 @@ describe("GitHubTeamService proposal publication", () => {
   });
 });
 
-function mergedPullRequest(): CommandResult {
-  return pullRequestView({ state: "MERGED", mergedAt: "2026-09-12T12:05:00.000Z", mergeCommit: "merge-sha" });
+function mergedPullRequest(reviewDecision?: string | null): CommandResult {
+  return pullRequestView({
+    state: "MERGED",
+    mergedAt: "2026-09-12T12:05:00.000Z",
+    mergeCommit: "merge-sha",
+    ...(reviewDecision === undefined ? {} : { reviewDecision }),
+  });
 }
 
 function closedPullRequest(): CommandResult {
@@ -1075,7 +1121,7 @@ function pullRequestView(input: {
   mergeCommit?: string;
   closedAt?: string;
   closedBy?: string;
-  reviewDecision?: "CHANGES_REQUESTED";
+  reviewDecision?: string | null;
 }): CommandResult {
   return {
     exitCode: 0,
@@ -1308,6 +1354,24 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
       expect.objectContaining({ type: "review_merged", memoryId: "mem_1" }),
       expect.objectContaining({ type: "memory_imported", memoryId: "mem_1" }),
     ]));
+  });
+
+  it("activates a merged approved proposal after importing its validated default-branch entry", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    const remoteMemory = sharedMemory();
+    addPullRequestInspection(runner, mergedPullRequest("APPROVED"));
+    addFullRefreshCommands(runner, storageDir, [remoteMemory]);
+    const { service, collaborationStore } = createService(storageDir, runner);
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+    await collaborationStore.saveProposal(existingOpenProposal());
+
+    await service.refreshBeforeRetrieval("project-a");
+
+    await expect(collaborationStore.getProposal("project-a", "mem_1")).resolves.toMatchObject({
+      state: "active",
+      review: { mergedAt: "2026-09-12T12:05:00.000Z", mergedCommit: "merge-sha" },
+    });
   });
 
   it("does not activate a merged proposal when its default-branch entry is absent", async () => {

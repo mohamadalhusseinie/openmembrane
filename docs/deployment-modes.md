@@ -2,7 +2,7 @@
 
 OpenMembrane is designed around distinct deployment modes. They define where
 memory is stored, who owns the storage, and what may leave a developer's local
-project. The current release ships **Local Private** only.
+project. The current release ships **Local Private** and **GitHub Team**.
 
 ## Local Private
 
@@ -18,20 +18,25 @@ are redacted before a configured provider is called.
 
 ## GitHub Team
 
-**Status:** Planned.
+**Status:** Current. Initial release limitations apply.
 
-GitHub Team will let a team manually select one dedicated private GitHub
+GitHub Team lets a team manually select one dedicated private GitHub
 repository for each OpenMembrane project. The repository is owned and accessed
-through the user's own `gh` authentication; OpenMembrane will not manage GitHub
-credentials.
+through the user's own installed and authenticated `gh` CLI; OpenMembrane does
+not manage GitHub credentials.
 
-Only accepted memory will sync. Each accepted memory will be proposed in its
-own pull request, so the repository's normal review and merge controls govern
-what becomes shared project knowledge.
+Only accepted memory syncs. Each accepted memory is proposed in its own pull
+request. Only memories merged to the repository's default branch become shared
+project knowledge; the merged default branch is authoritative.
 
-GitHub Team will not sync pending candidates, raw transcripts, source
-excerpts, diagnostics, or credentials. It is not a replacement for the local
-store and does not change Local Private's default behavior.
+GitHub Team is initially tested with GitHub.com. Its `gh` integration accepts a
+repository host, but GitHub Enterprise Server is not formally supported. The
+selected repository must be dedicated, private, and either empty or already
+initialized by OpenMembrane.
+
+GitHub Team does not sync pending candidates, raw transcripts, source excerpts,
+diagnostics, or credentials. It is not a replacement for the local store and
+does not change Local Private's default behavior.
 
 ## Self-Hosted Team
 
@@ -53,13 +58,13 @@ will be specified when the mode is designed and released.
 ## Residency Language
 
 Local Private data remains on the developer's machine unless the developer
-explicitly configures an external LLM provider. GitHub Team data will be stored
+explicitly configures an external LLM provider. GitHub Team data is stored
 in the manually selected GitHub repository and is subject to GitHub's service
 and the repository owner's configuration. Self-Hosted Team location is chosen
 by the deploying organization.
 
-Do not describe a planned mode as Swiss-, EU-, or otherwise region-hosted, and
-do not make compliance or data-residency claims, until a released mode has
+Do not describe GitHub Team or a planned mode as Swiss-, EU-, or otherwise
+region-hosted, and do not make compliance or data-residency claims without
 documented guarantees that support those claims.
 
 ## Static Exports

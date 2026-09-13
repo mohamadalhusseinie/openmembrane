@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type {
   CollaborationProjectConfig,
@@ -124,9 +124,11 @@ export class GitHubTeamService {
     const defaultBranch = view.defaultBranch?.name ?? "main";
     const checkoutPath = collaborationCheckoutPath(this.storageDir, input.projectId);
     await mkdir(resolve(checkoutPath, ".."), { recursive: true });
-    const clone = await this.github.clone(repositoryUrl(input.repository), checkoutPath);
-    if (!succeeded(clone)) {
-      return this.reject(input.projectId, "GITHUB_CHECKOUT_FAILED", "OpenMembrane could not create the repository checkout.");
+    if (!await this.hasMatchingCheckout(checkoutPath, repositoryUrl(input.repository))) {
+      const clone = await this.github.clone(repositoryUrl(input.repository), checkoutPath);
+      if (!succeeded(clone)) {
+        return this.reject(input.projectId, "GITHUB_CHECKOUT_FAILED", "OpenMembrane could not create the repository checkout.");
+      }
     }
 
     const remoteRefs = await this.github.remoteRefs(checkoutPath);
@@ -163,6 +165,16 @@ export class GitHubTeamService {
     };
     await this.collaborationStore.saveProjectConfig(config);
     return { kind: "configured", config };
+  }
+
+  private async hasMatchingCheckout(checkoutPath: string, repositoryUrl: string): Promise<boolean> {
+    try {
+      if (!(await stat(checkoutPath)).isDirectory()) return false;
+    } catch {
+      return false;
+    }
+    const remoteUrl = await this.github.remoteUrl(checkoutPath);
+    return succeeded(remoteUrl) && remoteUrl.stdout.trim() === repositoryUrl;
   }
 
   async publishAcceptedMemory(entry: MemoryEntry, removalMemoryIds: string[] = []): Promise<PublishAcceptedMemoryResult> {
@@ -811,7 +823,7 @@ function parsePullRequestView(result: CommandResult): PullRequestRefreshView | u
       !optionalString(pullRequest.closedAt) ||
       (mergeCommit !== null && !isOidObject(mergeCommit)) ||
       (closedBy !== null && !isLoginObject(closedBy)) ||
-      (pullRequest.reviewDecision !== null && pullRequest.reviewDecision !== "CHANGES_REQUESTED")) {
+      !optionalString(pullRequest.reviewDecision)) {
       return undefined;
     }
     return {

@@ -87,7 +87,7 @@ export class MemoryApprovalService {
         candidateId,
         approvedManually: true
       }
-    });
+    }, options.preserveExistingConflicts === true);
 
     if (!options.preserveExistingConflicts && candidate.conflictWith && candidate.conflictWith.length > 0) {
       for (const conflictId of candidate.conflictWith) {
@@ -165,11 +165,15 @@ export class MemoryApprovalService {
     });
   }
 
-  private async auditMemorySaved(event: Parameters<AuditLogStore["append"]>[0]): Promise<void> {
+  private async auditMemorySaved(event: Parameters<AuditLogStore["append"]>[0], allowHandoffOnFailure: boolean): Promise<void> {
+    if (!allowHandoffOnFailure) {
+      await this.auditLogStore.append(event);
+      return;
+    }
     try {
       await this.auditLogStore.append(event);
     } catch {
-      // Accepted memory must reach its collaboration handoff if audit storage is unavailable.
+      // GitHub handlers persist the resulting proposal after this approval step.
     }
   }
 }

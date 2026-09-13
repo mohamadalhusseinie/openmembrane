@@ -8,8 +8,9 @@ OpenMembrane is a local-first, private, tool-agnostic memory membrane for AI cod
 
 ## Deployment Modes
 
-The current release ships [Local Private mode](docs/deployment-modes.md#local-private):
-`.openmembrane/` is local and git-ignored. GitHub Team, Self-Hosted Team, and
+The current release ships [Local Private mode](docs/deployment-modes.md#local-private)
+as the default and [GitHub Team mode](docs/deployment-modes.md#github-team) for
+shared memory through a dedicated private repository. Self-Hosted Team and
 Managed Team are planned. Static exports are distinct from GitHub Team sync;
 use [Deployment Modes](docs/deployment-modes.md) as the canonical product and
 residency reference.

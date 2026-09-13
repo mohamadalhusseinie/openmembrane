@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryPipeline, MockMemoryExtractor } from "@openmembrane/core";
+import type { AuditLogStore } from "@openmembrane/core";
 import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 import { candidate } from "./helpers";
 
@@ -146,5 +147,28 @@ describe("MemoryPipeline.processStructured", () => {
     expect(result.rejected[0]?.sensitivity).toBe("secret");
     expect(result.saved).toHaveLength(0);
     expect(result.pending).toHaveLength(0);
+  });
+
+  it("propagates a memory_saved audit failure by default", async () => {
+    const baseDir = await mkdtemp(join(tmpdir(), "openmembrane-test-"));
+    tempDirs.push(baseDir);
+    const memoryStore = new JsonMemoryStore(baseDir);
+    const pendingCandidateStore = new JsonPendingCandidateStore(baseDir);
+    const auditLogStore: AuditLogStore = {
+      append: async (event) => {
+        if (event.type === "memory_saved") throw new Error("simulated audit write failure");
+      },
+      list: async () => [],
+    };
+    const pipeline = new MemoryPipeline({
+      extractor: new MockMemoryExtractor(),
+      memoryStore,
+      pendingCandidateStore,
+      auditLogStore,
+    });
+
+    await expect(pipeline.processStructured("project-a", [
+      candidate({ id: "cand_audit_failure", content: "Use standalone components." }),
+    ])).rejects.toThrow("simulated audit write failure");
   });
 });

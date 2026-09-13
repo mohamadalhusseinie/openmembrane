@@ -14,9 +14,9 @@ OpenMembrane is not primarily a CLI, not primarily an OpenCode plugin, and not o
 - Zero maintenance. OpenMembrane learns autonomously from your normal workflow — no manual tagging, no bookmarking, no effort.
 
 **For teams:**
-- Planned team modes will provide shared project intelligence so new team members can inherit approved project knowledge.
-- Planned team modes will help AI tools operate with a shared understanding of project constraints and conventions.
-- GitHub Team will use a manually selected dedicated private repository and one pull request per accepted memory.
+- GitHub Team provides shared project intelligence so new team members can inherit approved project knowledge.
+- GitHub Team helps AI tools operate with a shared understanding of project constraints and conventions.
+- GitHub Team uses a manually selected dedicated private repository and one pull request per accepted memory.
 
 **For companies:**
 - Planned Self-Hosted Team will run in organization-controlled infrastructure; Managed Team will be an OpenMembrane-operated service.
@@ -94,8 +94,9 @@ ownership model, approved-memory boundary, and residency language.
 
 - **Local Private** is the current default and stores data in git-ignored
   `.openmembrane/`.
-- **GitHub Team** is planned and will share accepted memory through one pull
-  request per memory in a manually selected dedicated private repository.
+- **GitHub Team** is current with initial limitations and shares accepted memory
+  through one pull request per memory in a manually selected dedicated private
+  repository. The merged default branch is the shared-memory authority.
 - **Self-Hosted Team** and **Managed Team** are planned.
 
 ## Positioning Guardrails
@@ -111,7 +112,7 @@ See [Security and Privacy](security-and-privacy.md) and
 
 The MVP should not build:
 
-- GitHub Team sync and all other team modes
+- Self-Hosted Team, Managed Team, and other future team modes
 - SaaS backend
 - user accounts
 - billing

@@ -87,15 +87,19 @@ Implemented:
 
 ## Phase 7: GitHub Team
 
-Planned mode, not part of the current release.
+Status: current initial release. GitHub.com is tested; the host-agnostic `gh`
+integration does not formally support GitHub Enterprise Server yet.
 
-Goals:
+Implemented:
 
 - manually selected dedicated private repository per project
 - user-owned `gh` authentication
 - one pull request per accepted memory
 - accepted-memory-only sync
 - no pending candidates, raw transcripts, source excerpts, diagnostics, or credentials in the repository
+
+Shared memory becomes retrievable only after its pull request merges to the
+repository's default branch, which is authoritative.
 
 See [Deployment Modes](deployment-modes.md#github-team) for the canonical
 ownership and boundary description.

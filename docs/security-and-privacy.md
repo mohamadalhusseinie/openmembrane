@@ -95,11 +95,10 @@ Correct positioning:
 
 - Local Private is the current default and keeps the local store in git-ignored
   `.openmembrane/`.
-- GitHub Team, Self-Hosted Team, and Managed Team are planned, not current
-  product features.
-- GitHub Team will sync only accepted memory through the selected dedicated
-  private repository; pending candidates, raw transcripts, source excerpts,
-  diagnostics, and credentials will not sync.
+- GitHub Team is a current mode with initial limitations. It syncs only accepted
+  memory through the selected dedicated private repository; pending candidates,
+  raw transcripts, source excerpts, diagnostics, and credentials do not sync.
+- Self-Hosted Team and Managed Team are planned, not current product features.
 - External LLM usage must be explicit and policy-controlled.
 - Stored memory should not be sent to external model providers unless explicitly configured.
 

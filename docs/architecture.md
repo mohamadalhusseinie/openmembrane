@@ -2,9 +2,10 @@
 
 OpenMembrane Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
 
-The current release runs in [Local Private mode](deployment-modes.md#local-private).
-GitHub Team, Self-Hosted Team, and Managed Team are planned; their storage and
-sync mechanisms are not part of the current architecture.
+The current release runs in [Local Private mode](deployment-modes.md#local-private)
+by default and also supports [GitHub Team mode](deployment-modes.md#github-team).
+Self-Hosted Team and Managed Team are planned; their storage and sync mechanisms
+are not part of the current architecture.
 
 ## Core Pipeline
 
@@ -332,7 +333,7 @@ Static files exist for compatibility with tools that cannot use MCP. They are fa
 
 Exporters exclude `confidential` memory by default because generated instruction files may be committed to source control.
 
-Static exports are distinct from planned GitHub Team sync. They create local
+Static exports are distinct from GitHub Team sync. They create local
 files and do not implement the team mode's approved-memory-only, one-pull-request-per-memory workflow. See [Deployment Modes](deployment-modes.md).
 
 ## Future Adapters

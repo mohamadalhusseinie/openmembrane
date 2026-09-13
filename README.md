@@ -44,8 +44,8 @@ npm install -g openmembrane
 openmembrane
 ```
 
-No cloud accounts required. The current release ships Local Private mode, with
-memory stored locally in git-ignored `.openmembrane/`.
+No cloud account is required for the default Local Private mode, which stores
+memory locally in git-ignored `.openmembrane/`.
 
 ## Configuring Your AI Tool
 
@@ -152,10 +152,12 @@ usage instructions and stored memories.
 
 ## Deployment Modes
 
-OpenMembrane currently ships [Local Private mode](docs/deployment-modes.md#local-private).
-GitHub Team, Self-Hosted Team, and Managed Team are planned. Static exported
-files are separate from team sync; see [Deployment Modes](docs/deployment-modes.md)
-for the approved-memory boundary and planned GitHub pull-request workflow.
+OpenMembrane ships [Local Private mode](docs/deployment-modes.md#local-private)
+by default and [GitHub Team mode](docs/deployment-modes.md#github-team) for
+shared memory through a dedicated private repository. Self-Hosted Team and
+Managed Team are planned. Static exported files are separate from team sync;
+see [Deployment Modes](docs/deployment-modes.md) for the approved-memory
+boundary and GitHub pull-request workflow.
 
 ## Environment Variables
 
@@ -278,6 +280,6 @@ npm run build
 - [Architecture](docs/architecture.md) — pipeline design, type schemas, MCP tool surface, package dependencies
 - [Security and Privacy](docs/security-and-privacy.md) — secret handling, data storage rules, LLM usage policy
 - [Product Vision](docs/product-vision.md) — product thesis, UX workflow, memory quality criteria
-- [Deployment Modes](docs/deployment-modes.md) — current Local Private mode and planned team modes
-- [Roadmap](docs/roadmap.md) — phased delivery plan for Local Private and planned team modes
+- [Deployment Modes](docs/deployment-modes.md) — current Local Private and GitHub Team modes, plus planned team modes
+- [Roadmap](docs/roadmap.md) — phased delivery plan for Local Private, GitHub Team, and planned team modes
 - [Contributing](CONTRIBUTING.md) — setup, development workflow, PR guidelines

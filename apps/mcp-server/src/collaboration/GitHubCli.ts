@@ -88,6 +88,10 @@ export class GitHubCli {
     return this.runGit(["clone", "--origin", "origin", "--no-recurse-submodules", repositoryUrl, checkoutPath]);
   }
 
+  remoteUrl(checkoutPath: string): Promise<CommandResult> {
+    return this.runGit(["-C", checkoutPath, "remote", "get-url", "origin"]);
+  }
+
   remoteRefs(checkoutPath: string): Promise<CommandResult> {
     return this.runGit(["-C", checkoutPath, "ls-remote", "--refs", "origin"]);
   }
