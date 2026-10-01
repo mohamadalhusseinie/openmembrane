@@ -16,6 +16,7 @@ describe("review UI context", () => {
     vi.mocked(createOpenMembraneService).mockReturnValue({ forProject, close } as unknown as OpenMembraneService);
 
     const context = await createReviewUiContext({ home: "custom-home", project: "custom" });
+    expect(createOpenMembraneService).toHaveBeenCalledWith({ deferExtractionInitialization: true });
     expect(forProject).toHaveBeenCalledWith({ projectRoot: cwd(), projectId: "custom", storageDir: "custom-home" });
     expect(context).toMatchObject({ project, projectId: "custom", storageDir: "custom-home" });
     await context.close();

@@ -1,7 +1,7 @@
 import { basename, join, resolve } from "node:path";
 import { env } from "node:process";
 import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrane/core";
-import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
+import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryExtractor, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
 import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
 import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
 import { StaticMemoryExportService } from "@openmembrane/exporters";
@@ -36,6 +36,7 @@ export interface ProjectState {
 
 export interface CreateServiceOptions {
   githubRunner?: CommandRunner;
+  deferExtractionInitialization?: boolean;
 }
 
 export function resolveProjectRef(ref: ProjectRef): { projectRoot: string; storageDir: string; projectId: string } {
@@ -91,14 +92,21 @@ export async function createProjectState(
     });
   }
 
+  const buildExtractor = (): MemoryExtractor => createExtractor(extractionConfig, {
+    onDiagnostics,
+    providers: {
+      llm: (config, opts) => new LlmMemoryExtractor(config, opts),
+      anthropic: (config, opts) => new AnthropicMemoryExtractor(config, opts),
+    },
+  });
+  let extractor = options.deferExtractionInitialization ? undefined : buildExtractor();
   const pipeline = new MemoryPipeline({
-    extractor: createExtractor(extractionConfig, {
-      onDiagnostics,
-      providers: {
-        llm: (config, opts) => new LlmMemoryExtractor(config, opts),
-        anthropic: (config, opts) => new AnthropicMemoryExtractor(config, opts),
+    extractor: extractor ?? {
+      extract(input) {
+        extractor ??= buildExtractor();
+        return extractor.extract(input);
       },
-    }),
+    },
     memoryStore,
     pendingCandidateStore,
     auditLogStore

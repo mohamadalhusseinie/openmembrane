@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOpenMembraneService, resolveProjectRef } from "@openmembrane/service";
 
 const directories: string[] = [];
@@ -16,11 +16,34 @@ async function tempDir(): Promise<string> {
 afterEach(async () => {
   await Promise.all(services.map((service) => service.close()));
   await Promise.all(directories.map((path) => rm(path, { recursive: true, force: true })));
+  vi.unstubAllEnvs();
   services.length = 0;
   directories.length = 0;
 });
 
 describe("OpenMembraneService", () => {
+  it("defers invalid extractor configuration for review without masking extraction errors", async () => {
+    const root = await tempDir();
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "anthropic");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", undefined);
+    const ref = { projectRoot: root, projectId: "review-project" };
+
+    const eager = createOpenMembraneService();
+    services.push(eager);
+    await expect(eager.forProject(ref)).rejects.toThrow("requires an apiKey");
+
+    const deferred = createOpenMembraneService({ deferExtractionInitialization: true });
+    services.push(deferred);
+    const project = await deferred.forProject(ref);
+    await project.remember({ content: "Review existing project knowledge", type: "testing_rule", confidence: "high" });
+    expect((await project.listMemories()).map((memory) => memory.content)).toContain("Review existing project knowledge");
+    expect(await project.listCandidates()).toEqual([]);
+    expect(await (await deferred.projectState(ref)).diagnosticsLogStore.list(ref.projectId)).toEqual([]);
+    await expect(project.proposeMemoryFromSession({ summary: "testing_rule: Review existing project knowledge." }))
+      .rejects.toThrow("requires an apiKey");
+  });
+
   it("uses the project root and environment overrides with explicit reference precedence", async () => {
     const root = await tempDir();
     const envStorage = await tempDir();

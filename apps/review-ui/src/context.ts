@@ -17,7 +17,7 @@ export interface ReviewUiOptions {
 }
 
 export async function createReviewUiContext(options: ReviewUiOptions = {}): Promise<ReviewUiContext> {
-  const service = createOpenMembraneService();
+  const service = createOpenMembraneService({ deferExtractionInitialization: true });
   try {
     const project = await service.forProject({
       projectRoot: cwd(),
