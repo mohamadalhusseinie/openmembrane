@@ -7,7 +7,7 @@ import { createOpenMembraneContext } from "../apps/mcp-server/src/context";
 import { safeJsonResult } from "../apps/mcp-server/src/server";
 import { createToolHandlers } from "../apps/mcp-server/src/tools/handlers";
 import { SessionNudgeTracker } from "../apps/mcp-server/src/nudge";
-import type { Command, CommandResult, CommandRunner } from "../apps/mcp-server/src/collaboration/GitHubCli";
+import type { Command, CommandResult, CommandRunner } from "../packages/service/src/collaboration/GitHubCli";
 import { candidate, entry } from "./unit/helpers";
 
 const tempDirs: string[] = [];

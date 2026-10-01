@@ -47,6 +47,7 @@
     "@openmembrane/extractor-anthropic": "*",
     "@openmembrane/extractor-llm": "*",
     "@openmembrane/shared": "*",
+    "@openmembrane/service": "*",
     "@openmembrane/storage": "*"
   }
 }

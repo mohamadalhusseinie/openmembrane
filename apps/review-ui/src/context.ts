@@ -1,19 +1,12 @@
-import { basename, join, resolve } from "node:path";
-import { cwd, env } from "node:process";
-import { MemoryApprovalService } from "@openmembrane/core";
-import type { AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
-import { createStores } from "@openmembrane/storage";
-import type { StorageBackend, StoreSet } from "@openmembrane/storage";
+import { cwd } from "node:process";
+import { createOpenMembraneService } from "@openmembrane/service";
+import type { ProjectService } from "@openmembrane/service";
 
 export interface ReviewUiContext {
   projectId: string;
   storageDir: string;
-  memoryStore: MemoryStore;
-  pendingCandidateStore: PendingCandidateStore;
-  auditLogStore: AuditLogStore;
-  diagnosticsLogStore: DiagnosticsLogStore;
-  approvalService: MemoryApprovalService;
-  close?: () => void;
+  project: ProjectService;
+  close: () => Promise<void>;
 }
 
 export interface ReviewUiOptions {
@@ -24,28 +17,16 @@ export interface ReviewUiOptions {
 }
 
 export async function createReviewUiContext(options: ReviewUiOptions = {}): Promise<ReviewUiContext> {
-  const workingDirectory = cwd();
-  const storageDir = resolve(options.home ?? env.OPENMEMBRANE_HOME ?? join(workingDirectory, ".openmembrane"));
-  const projectId = options.project ?? env.OPENMEMBRANE_PROJECT_ID ?? basename(workingDirectory);
-
-  const backend: StorageBackend = env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
-  const stores: StoreSet = await createStores({ backend, baseDir: storageDir });
-  const { memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore } = stores;
-
-  const approvalService = new MemoryApprovalService({
-    memoryStore,
-    pendingCandidateStore,
-    auditLogStore,
-  });
-
-  return {
-    projectId,
-    storageDir,
-    memoryStore,
-    pendingCandidateStore,
-    auditLogStore,
-    diagnosticsLogStore,
-    approvalService,
-    ...(stores.close !== undefined ? { close: stores.close } : {}),
-  };
+  const service = createOpenMembraneService();
+  try {
+    const project = await service.forProject({
+      projectRoot: cwd(),
+      ...(options.project !== undefined ? { projectId: options.project } : {}),
+      ...(options.home !== undefined ? { storageDir: options.home } : {}),
+    });
+    return { projectId: project.projectId, storageDir: project.storageDir, project, close: () => service.close() };
+  } catch (error) {
+    await service.close();
+    throw error;
+  }
 }

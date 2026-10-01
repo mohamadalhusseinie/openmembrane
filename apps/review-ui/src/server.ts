@@ -25,10 +25,10 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
   const router = new Router();
 
   // Register routes
-  const memoryRoutes = createMemoryRoutes(ctx.projectId, ctx.memoryStore);
-  const candidateRoutes = createCandidateRoutes(ctx.projectId, ctx.pendingCandidateStore, ctx.approvalService);
-  const auditRoutes = createAuditRoutes(ctx.projectId, ctx.auditLogStore);
-  const diagnosticsRoutes = createDiagnosticsRoutes(ctx.projectId, ctx.diagnosticsLogStore);
+  const memoryRoutes = createMemoryRoutes(ctx.project);
+  const candidateRoutes = createCandidateRoutes(ctx.project);
+  const auditRoutes = createAuditRoutes(ctx.project);
+  const diagnosticsRoutes = createDiagnosticsRoutes(ctx.project);
 
   router.get("/api/memories", memoryRoutes.listMemories);
   router.get("/api/memories/:id", memoryRoutes.getMemory);
