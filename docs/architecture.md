@@ -343,6 +343,17 @@ Current tools:
 
 The `remember` tool uses `processStructured()` to bypass the extraction step and feed pre-structured candidates directly into the classification/policy/dedup/conflict pipeline.
 
+Retrieval refreshes GitHub Team state when configured, then searches only active,
+approved memories for the current project. Scope, type, and tag eligibility is
+applied before relevance ranking; the requested limit is applied afterward.
+`get_relevant_context` returns ranked grounding with conflict annotations and
+the pending-candidate count, while `search_memory` returns a matching memory
+array. Pending and superseded entries are never part of the retrieval set.
+The connected AI client decides how to use this grounding when generating its
+answer; stored memories cannot override system or user instructions. Retrieval
+is local and deterministic without external model calls. Lexical misses are
+measured separately; opt-in semantic/hybrid retrieval is deferred to #97.
+
 MCP is the main tool-facing access layer for the MVP, but it is not the entire product.
 
 ## Static Fallback Files

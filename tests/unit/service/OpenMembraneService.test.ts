@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOpenMembraneService, resolveProjectRef } from "@openmembrane/service";
+import { entry } from "../helpers";
 
 const directories: string[] = [];
 const services: ReturnType<typeof createOpenMembraneService>[] = [];
@@ -106,6 +107,35 @@ describe("OpenMembraneService", () => {
     await first.remember({ content: "Store alpha knowledge for future tests", type: "testing_rule", confidence: "high" });
     expect((await first.searchMemory({ query: "alpha" })).length).toBeGreaterThan(0);
     expect(await second.searchMemory({ query: "alpha" })).toEqual([]);
+  });
+
+  it.each(["json", "sqlite"])("ranks all eligible %s memories before limiting either retrieval tool", async (backend) => {
+    vi.stubEnv("OPENMEMBRANE_STORAGE_BACKEND", backend);
+    const root = await tempDir();
+    const service = createOpenMembraneService();
+    services.push(service);
+    const ref = { projectRoot: root, projectId: "project-a" };
+    const project = await service.forProject(ref);
+    const store = (await service.projectState(ref)).memoryStore;
+    await store.save(entry({
+      id: "old-rule",
+      content: "Use pnpm workspace protocol for internal dependencies.",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    }));
+    for (let i = 0; i < 36; i++) {
+      await store.save(entry({
+        id: `new-note-${i}`,
+        content: `Workspace note ${i} for project setup.`,
+        updatedAt: `2026-06-${String(i % 28 + 1).padStart(2, "0")}T00:00:00.000Z`,
+      }));
+    }
+    await store.save(entry({ id: "superseded-rule", content: "Use pnpm workspace protocol.", status: "superseded" }));
+    await store.save(entry({ id: "other-project", projectId: "project-b", content: "Use pnpm workspace protocol." }));
+
+    const context = await project.getRelevantContext({ query: "pnpm workspace protocol", limit: 1 });
+    const search = await project.searchMemory({ query: "pnpm workspace protocol", limit: 1 });
+    expect(context).toMatchObject({ memories: [{ id: "old-rule" }], pendingCandidateCount: 0 });
+    expect(search.map((memory) => memory.id)).toEqual(["old-rule"]);
   });
 
   it("keeps review audit ordering independent of MCP audit sorting", async () => {

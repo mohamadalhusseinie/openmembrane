@@ -61,6 +61,7 @@ describe("JsonMemoryStore.search", () => {
     }
     const results = await store.search("project-a", "");
     expect(results).toHaveLength(20);
+    expect(await store.search("project-a", "", { limit: null })).toHaveLength(25);
   });
 
   it("respects custom limit", async () => {

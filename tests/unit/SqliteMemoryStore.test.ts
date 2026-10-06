@@ -105,5 +105,6 @@ describe("SqliteMemoryStore", () => {
     }
     const results = await store.search("project-a", "common", { limit: 2 });
     expect(results).toHaveLength(2);
+    expect(await store.search("project-a", "common", { limit: null })).toHaveLength(5);
   });
 });
