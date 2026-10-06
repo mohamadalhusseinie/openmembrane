@@ -163,6 +163,7 @@ Package responsibilities:
 
 - `packages/core`: domain types, extraction interface, policy checks, classification, deduplication, conflict detection, and pipeline orchestration.
 - `packages/storage`: local JSON persistence for saved memory, pending approvals, and audit events.
+- `packages/service`: in-process project-scoped operations, storage lifecycle, and GitHub Team synchronization shared by MCP, CLI, and Review UI.
 - `packages/exporters`: static fallback file generation for AI tools that read project instruction files.
 - `packages/shared`: small runtime helpers for IDs, time, and result types.
 - `apps/mcp-server`: local MCP server exposing saved memory and approval workflows to AI tools.

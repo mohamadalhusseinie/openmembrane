@@ -8,7 +8,7 @@ import {
   validateMemoryFiles,
   validateManifestFile,
   validateProjectFile,
-} from "../../apps/mcp-server/src/collaboration/GitHubRepository";
+} from "../../packages/service/src/collaboration/GitHubRepository";
 
 function memory(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
   return {

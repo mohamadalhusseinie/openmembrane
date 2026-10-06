@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { createOpenMembraneContext, resolveProjectId } from "../context";
+import { cwd } from "node:process";
+import { createOpenMembraneService } from "@openmembrane/service";
 import type { IngestCommand } from "./parseArgs";
 import { parseSessionContent } from "./parsers/index";
-import { printPendingReminder } from "./pendingReminder";
+import { printProjectPendingReminder } from "./pendingReminder";
 
 export async function runIngest(cmd: IngestCommand): Promise<void> {
   let content: string;
@@ -40,20 +41,18 @@ export async function runIngest(cmd: IngestCommand): Promise<void> {
     return;
   }
 
-  const context = await createOpenMembraneContext();
+  const service = createOpenMembraneService();
   try {
-    const projectId = resolveProjectId(context, cmd.project);
-
-    const result = await context.ingestionService.ingest({
-      projectId,
+    const project = await service.forProject({ projectRoot: cwd(), ...(cmd.project ? { projectId: cmd.project } : {}) });
+    const result = await project.proposeMemoryFromSession({
       transcript,
       tool: cmd.tool
     });
 
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-    await printPendingReminder(context.pendingCandidateStore, projectId);
+    await printProjectPendingReminder(project);
   } finally {
-    context.close?.();
+    await service.close();
   }
 }
 

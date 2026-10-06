@@ -1,7 +1,7 @@
-import type { DiagnosticsLogStore } from "@openmembrane/core";
+import type { ProjectService } from "@openmembrane/service";
 import type { RouteContext, RouteResponse } from "../router";
 
-export function createDiagnosticsRoutes(projectId: string, diagnosticsStore: DiagnosticsLogStore) {
+export function createDiagnosticsRoutes(project: ProjectService) {
   return {
     async listDiagnostics(ctx: RouteContext): Promise<RouteResponse> {
       const severity = ctx.query.get("severity") ?? undefined;
@@ -9,7 +9,7 @@ export function createDiagnosticsRoutes(projectId: string, diagnosticsStore: Dia
       const limitStr = ctx.query.get("limit");
       const limit = limitStr ? parseInt(limitStr, 10) : 100;
 
-      const events = await diagnosticsStore.list(projectId, {
+      const events = await project.getDiagnostics({
         ...(severity ? { severity: severity as "debug" | "info" | "warning" | "error" } : {}),
         ...(code ? { code } : {}),
         ...(limit ? { limit } : {}),

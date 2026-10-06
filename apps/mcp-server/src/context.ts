@@ -1,139 +1,45 @@
-import { basename, join, resolve } from "node:path";
-import { cwd, env } from "node:process";
-import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrane/core";
-import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
-import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
-import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
-import { StaticMemoryExportService } from "@openmembrane/exporters";
-import { createId, nowIso } from "@openmembrane/shared";
-import { createStores, JsonCollaborationStore } from "@openmembrane/storage";
-import type { StorageBackend, StoreSet } from "@openmembrane/storage";
-import { GitHubCli, type CommandRunner } from "./collaboration/GitHubCli";
-import { GitHubTeamService } from "./collaboration/GitHubTeamService";
+import { resolve } from "node:path";
+import { cwd } from "node:process";
+import { createOpenMembraneService } from "@openmembrane/service";
+import type { CommandRunner, ProjectRef, ProjectService, ProjectState } from "@openmembrane/service";
 
-export interface OpenMembraneMcpContext {
-  defaultProjectId: string;
-  projectRoot: string;
-  storageDir: string;
-  memoryStore: MemoryStore;
-  pendingCandidateStore: PendingCandidateStore;
-  auditLogStore: AuditLogStore;
-  diagnosticsLogStore: DiagnosticsLogStore;
-  pipeline: MemoryPipeline;
-  approvalService: MemoryApprovalService;
-  updateService: MemoryUpdateService;
-  ingestionService: IngestionService;
-  exportService: StaticMemoryExportService;
-  collaborationStore: CollaborationStore;
-  githubTeamService: GitHubTeamService;
-  close?: () => void;
+export interface OpenMembraneMcpContext extends ProjectState {
+  service: ReturnType<typeof createOpenMembraneService>;
+  projectRef: ProjectRef;
+  close: () => Promise<void>;
 }
 
-interface CreateOpenMembraneContextOptions extends Partial<Pick<OpenMembraneMcpContext, "defaultProjectId" | "projectRoot" | "storageDir">> {
-  /** Internal test seam. This is never persisted or exposed through MCP. */
+interface CreateOpenMembraneContextOptions {
+  defaultProjectId?: string;
+  projectRoot?: string;
+  storageDir?: string;
   githubRunner?: CommandRunner;
 }
 
 export async function createOpenMembraneContext(
-  options: CreateOpenMembraneContextOptions = {}
+  options: CreateOpenMembraneContextOptions = {},
 ): Promise<OpenMembraneMcpContext> {
-  const workingDirectory = cwd();
-  const projectRoot = resolve(options.projectRoot ?? workingDirectory);
-  const storageDir = resolve(options.storageDir ?? env.OPENMEMBRANE_HOME ?? join(workingDirectory, ".openmembrane"));
-  const defaultProjectId = options.defaultProjectId ?? env.OPENMEMBRANE_PROJECT_ID ?? basename(workingDirectory);
-
-  const backend: StorageBackend = env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
-  const stores: StoreSet = await createStores({ backend, baseDir: storageDir });
-  const { memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore } = stores;
-
-  const onDiagnostics = (diagnostics: ExtractionDiagnostics): void => {
-    const severity = diagnostics.errors.length > 0 ? "warning" as const : "info" as const;
-    void diagnosticsLogStore.append({
-      id: createId("diag"),
-      projectId: defaultProjectId,
-      severity,
-      code: diagnostics.errors.length > 0 ? "EXTRACTION_PROVIDER_ERROR" : "EXTRACTION_COMPLETE",
-      message: `Extraction processed ${diagnostics.chunks} chunk(s): ${diagnostics.candidatesExtracted} candidate(s) extracted, ${diagnostics.errors.length} error(s).`,
-      operation: "extraction",
-      source: "core",
-      createdAt: nowIso(),
-      details: {
-        chunks: diagnostics.chunks,
-        totalPromptTokens: diagnostics.totalPromptTokens,
-        totalCompletionTokens: diagnostics.totalCompletionTokens,
-        candidatesExtracted: diagnostics.candidatesExtracted,
-        errors: diagnostics.errors,
-      },
-    });
+  const service = createOpenMembraneService(
+    options.githubRunner ? { githubRunner: options.githubRunner } : {},
+  );
+  const projectRef: ProjectRef = {
+    projectRoot: resolve(options.projectRoot ?? cwd()),
+    ...(options.defaultProjectId ? { projectId: options.defaultProjectId } : {}),
+    ...(options.storageDir ? { storageDir: options.storageDir } : {}),
   };
-
-  const extractionConfig = loadExtractionConfig();
-
-  if (!extractionConfig.enabled || extractionConfig.provider === "mock") {
-    await diagnosticsLogStore.append({
-      id: createId("diag"),
-      projectId: defaultProjectId,
-      severity: "info",
-      code: "EXTRACTION_MOCK_FALLBACK",
-      message: "No extraction API key configured — using MockMemoryExtractor. Only explicitly prefixed text will be extracted.",
-      operation: "startup",
-      source: "core",
-      createdAt: nowIso(),
-    });
+  try {
+    const state = await service.projectState(projectRef);
+    return { ...state, service, projectRef, close: () => service.close() };
+  } catch (error) {
+    await service.close();
+    throw error;
   }
-
-  const pipeline = new MemoryPipeline({
-    extractor: createExtractor(extractionConfig, {
-      onDiagnostics,
-      providers: {
-        llm: (config, opts) => new LlmMemoryExtractor(config, opts),
-        anthropic: (config, opts) => new AnthropicMemoryExtractor(config, opts),
-      },
-    }),
-    memoryStore,
-    pendingCandidateStore,
-    auditLogStore
-  });
-  const approvalService = new MemoryApprovalService({
-    memoryStore,
-    pendingCandidateStore,
-    auditLogStore
-  });
-  const updateService = new MemoryUpdateService({
-    memoryStore,
-    auditLogStore
-  });
-  const ingestionService = new IngestionService({ pipeline });
-  const exportService = new StaticMemoryExportService();
-  const collaborationStore = new JsonCollaborationStore(storageDir);
-  const githubTeamService = new GitHubTeamService({
-    collaborationStore,
-    memoryStore,
-    diagnosticsLogStore,
-    github: new GitHubCli(options.githubRunner),
-    storageDir,
-  });
-
-  return {
-    defaultProjectId,
-    projectRoot,
-    storageDir,
-    memoryStore,
-    pendingCandidateStore,
-    auditLogStore,
-    diagnosticsLogStore,
-    pipeline,
-    approvalService,
-    updateService,
-    ingestionService,
-    exportService,
-    collaborationStore,
-    githubTeamService,
-    ...(stores.close !== undefined ? { close: stores.close } : {}),
-  };
 }
 
 export function resolveProjectId(context: Pick<OpenMembraneMcpContext, "defaultProjectId">, projectId?: string): string {
-  const normalized = projectId?.trim();
-  return normalized || context.defaultProjectId;
+  return projectId?.trim() || context.defaultProjectId;
+}
+
+export function projectService(context: OpenMembraneMcpContext, projectId?: string): Promise<ProjectService> {
+  return context.service.forProject({ ...context.projectRef, projectId: resolveProjectId(context, projectId) });
 }

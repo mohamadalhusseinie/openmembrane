@@ -1,6 +1,7 @@
 # OpenMembrane Architecture
 
-OpenMembrane Core is the product. Integrations, MCP, and static files are access layers around the core memory engine.
+OpenMembrane Core owns the memory engine. The in-process service owns project-scoped
+operations and storage lifecycle; MCP, CLI, and the Review UI are access layers.
 
 The current release runs in [Local Private mode](deployment-modes.md#local-private)
 by default and also supports [GitHub Team mode](deployment-modes.md#github-team).
@@ -28,11 +29,13 @@ session transcript or summary
 ```text
 apps/
   mcp-server/
+  review-ui/
 
 packages/
   core/
   storage/
   exporters/
+  service/
   shared/
 ```
 
@@ -52,10 +55,19 @@ storage   exporters         (both depend on core)
   |         |
   +----+----+
        |
-  mcp-server                (imports core, storage, exporters, shared)
+    service                 (owns project stores, operations and GitHub Team sync)
+       |
+  MCP / CLI / Review UI     (delegate business operations to service)
 ```
 
-All packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/shared`, `@openmembrane/extractor-llm`, and `@openmembrane/extractor-anthropic`.
+All packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/service`, `@openmembrane/shared`, `@openmembrane/extractor-llm`, and `@openmembrane/extractor-anthropic`.
+
+`createOpenMembraneService()` provides `forProject({ projectRoot, projectId?, storageDir? })`
+and `close()`. Project references use an explicit storage directory and ID first,
+then `OPENMEMBRANE_HOME` / `OPENMEMBRANE_PROJECT_ID`, then
+`<projectRoot>/.openmembrane` / the project directory name. Store sets are reused
+by resolved storage directory and closed at shutdown. The service runs in-process;
+it does not start a daemon or network listener.
 
 ## Package Responsibilities
 
@@ -80,12 +92,18 @@ All packages are imported via path aliases: `@openmembrane/core`, `@openmembrane
 - diagnostics log persistence
 - JSON storage for the MVP
 
+`packages/service` owns:
+
+- project-scoped store construction and lifecycle
+- memory ingestion, retrieval, review, approval, updates and exports
+- GitHub Team collaboration and publication retries
+
 `apps/mcp-server` owns:
 
 - MCP tool registration
 - tool input validation
 - safe user-facing error responses
-- local composition of core, storage, exporters, and diagnostics
+- delegation to the in-process service (including CLI commands)
 
 `packages/exporters` owns:
 

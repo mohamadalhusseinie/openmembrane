@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createId, nowIso } from "@openmembrane/shared";
 import { normalizeOpenMembraneError } from "@openmembrane/core";
-import { resolveProjectId, type OpenMembraneMcpContext } from "./context";
+import { projectService, resolveProjectId, type OpenMembraneMcpContext } from "./context";
 import { createToolHandlers } from "./tools/handlers";
 import { SessionNudgeTracker, loadNudgeConfig } from "./nudge";
 import {
@@ -323,7 +323,7 @@ export async function safeJsonResult(
 
 function schedulePostResponseRetry(context: OpenMembraneMcpContext, operation: string, input: unknown): void {
   if (!isRetrievalOperation(operation)) return;
-  void context.githubTeamService.retryEligiblePublications(projectIdFromInput(context, input)).catch(() => {
+  void projectService(context, projectIdFromInput(context, input)).then((project) => project.retryEligiblePublications()).catch(() => {
     // Retry failure is recorded by the collaboration service and must not alter an MCP response.
   });
 }

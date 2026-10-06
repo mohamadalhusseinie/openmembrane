@@ -1,4 +1,6 @@
-import type { MemoryStore } from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
+import type { MemoryScope, MemoryType } from "@openmembrane/core";
+import type { ProjectService } from "@openmembrane/service";
 import type { RouteContext, RouteResponse } from "../router";
 
 export interface MemoryRouteHandlers {
@@ -7,7 +9,7 @@ export interface MemoryRouteHandlers {
   supersedeMemory: (ctx: RouteContext) => Promise<RouteResponse>;
 }
 
-export function createMemoryRoutes(projectId: string, memoryStore: MemoryStore): MemoryRouteHandlers {
+export function createMemoryRoutes(project: ProjectService): MemoryRouteHandlers {
   return {
     async listMemories(ctx) {
       const type = ctx.query.get("type") ?? undefined;
@@ -16,25 +18,17 @@ export function createMemoryRoutes(projectId: string, memoryStore: MemoryStore):
       const limitStr = ctx.query.get("limit");
       const limit = limitStr ? parseInt(limitStr, 10) : undefined;
 
-      if (q) {
-        const results = await memoryStore.search(projectId, q, {
-          ...(type ? { types: [type as never] } : {}),
-          ...(scope ? { scopes: [scope as never] } : {}),
-          ...(limit ? { limit } : {}),
-        });
-        return { status: 200, body: results };
-      }
-
-      const all = await memoryStore.list(projectId);
-      let filtered = all.filter((m) => m.status === "active");
-      if (type) filtered = filtered.filter((m) => m.type === type);
-      if (scope) filtered = filtered.filter((m) => m.scope === scope);
-      if (limit) filtered = filtered.slice(0, limit);
-      return { status: 200, body: filtered };
+      const memories = await project.listMemories({
+        ...(q ? { query: q } : {}),
+        ...(type ? { types: [type as MemoryType] } : {}),
+        ...(scope ? { scopes: [scope as MemoryScope] } : {}),
+        ...(limit ? { limit } : {}),
+      });
+      return { status: 200, body: memories.filter((memory) => memory.status === "active") };
     },
 
     async getMemory(ctx) {
-      const memory = await memoryStore.findById(projectId, ctx.params["id"]!);
+      const memory = await project.getMemory(ctx.params["id"]!);
       if (!memory) {
         return { status: 404, body: { error: "Memory not found" } };
       }
@@ -43,10 +37,13 @@ export function createMemoryRoutes(projectId: string, memoryStore: MemoryStore):
 
     async supersedeMemory(ctx) {
       try {
-        const entry = await memoryStore.supersede(projectId, ctx.params["id"]!);
+        const entry = await project.supersedeMemory({ memoryId: ctx.params["id"]! });
         return { status: 200, body: entry };
-      } catch {
-        return { status: 404, body: { error: "Memory not found" } };
+      } catch (error) {
+        if (error instanceof OpenMembraneError && error.code === "MEMORY_NOT_FOUND") {
+          return { status: 404, body: { error: "Memory not found" } };
+        }
+        throw error;
       }
     },
   };
