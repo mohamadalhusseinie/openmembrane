@@ -1,12 +1,13 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryEntry, MemorySearchOptions, MemoryScope, MemoryStore, MemoryType } from "@openmembrane/core";
+import type { MemoryEntry, MemorySearchOptions, MemoryStore, MemoryType } from "@openmembrane/core";
 import { OpenMembraneError } from "@openmembrane/core";
 import { nowIso } from "@openmembrane/shared";
 import type { TypeIndex } from "./indexTypes";
 import { readJsonObject } from "./jsonFile";
 import { listEntries, readEntry, removeEntry, removeFromIndexes, updateIndexesForEntry, writeEntry } from "./directoryStore";
 import { migrateMemories } from "./migrate";
+import { searchEntries } from "./searchEntries";
 
 export class JsonMemoryStore implements MemoryStore {
   private readonly baseDir: string;
@@ -103,27 +104,9 @@ export class JsonMemoryStore implements MemoryStore {
 
   async search(projectId: string, query: string, options: MemorySearchOptions = {}): Promise<MemoryEntry[]> {
     await this.ensureMigrated();
-    const queryTokens = tokenize(query);
     const rows = await this.list(projectId);
-    const filtered = rows.filter((memory) => {
-      if (options.scopes && !options.scopes.includes(memory.scope)) return false;
-      if (options.types && !options.types.includes(memory.type)) return false;
-      if (options.tags && !options.tags.some((tag) => memory.tags.includes(tag))) return false;
-      if (queryTokens.length === 0) return true;
-      const haystack = tokenize([memory.content, memory.type, memory.scope, ...memory.tags].join(" "));
-      return queryTokens.some((token) => haystack.includes(token));
-    });
-
-    return filtered
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, options.limit ?? 20);
+    return searchEntries(rows, query, options)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+      .slice(0, options.limit === null ? undefined : options.limit ?? 20);
   }
-}
-
-function tokenize(value: string): string[] {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9_ -]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
 }

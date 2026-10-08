@@ -240,7 +240,7 @@ export function scoreEntry(
  * Rank memory entries by relevance to a query using the specified strategy.
  *
  * Returns entries sorted by descending relevance score. Ties are broken by
- * `updatedAt` descending to keep ordering deterministic.
+ * `updatedAt` descending, then ID ascending, to keep ordering deterministic.
  *
  * @param entries        Entries to rank (already filtered by the store).
  * @param query          Raw query string.
@@ -268,8 +268,8 @@ export function rankMemories(
     .sort((a, b) => {
       const diff = b.score - a.score;
       if (Math.abs(diff) > 1e-9) return diff;
-      // Tie-break: most recently updated first.
-      return b.entry.updatedAt.localeCompare(a.entry.updatedAt);
+      // Tie-break by recency, then ID for entries updated at the same time.
+      return b.entry.updatedAt.localeCompare(a.entry.updatedAt) || a.entry.id.localeCompare(b.entry.id);
     });
 }
 

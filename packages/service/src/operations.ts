@@ -176,7 +176,7 @@ export function createProjectOperations(context: ProjectState) {
       await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const limit = input.limit ?? 10;
       const options: MemorySearchOptions = {
-        limit: limit * 3
+        limit: null
       };
       if (input.scope) {
         options.scopes = [input.scope];
@@ -200,7 +200,7 @@ export function createProjectOperations(context: ProjectState) {
       await context.githubTeamService.refreshBeforeRetrieval(projectId);
       const limit = input.limit ?? 20;
       const options: MemorySearchOptions = {
-        limit: limit * 3
+        limit: null
       };
       if (input.scopes) {
         options.scopes = input.scopes;

@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { MemoryEntry, MemorySearchOptions, MemoryStore } from "@openmembrane/core";
 import { OpenMembraneError } from "@openmembrane/core";
 import { nowIso } from "@openmembrane/shared";
+import { searchEntries } from "../searchEntries";
 
 interface RawMemoryRow {
   id: string;
@@ -41,14 +42,6 @@ function deserializeMemory(row: RawMemoryRow): MemoryEntry {
     ...(row.supersededBy !== null ? { supersededBy: row.supersededBy } : {}),
     ...(row.supersededAt !== null ? { supersededAt: row.supersededAt } : {}),
   } as MemoryEntry;
-}
-
-function tokenize(value: string): string[] {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9_ -]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
 }
 
 export class SqliteMemoryStore implements MemoryStore {
@@ -132,19 +125,9 @@ export class SqliteMemoryStore implements MemoryStore {
   }
 
   async search(projectId: string, query: string, options: MemorySearchOptions = {}): Promise<MemoryEntry[]> {
-    const queryTokens = tokenize(query);
     const rows = await this.list(projectId);
-    const filtered = rows.filter((memory) => {
-      if (options.scopes !== undefined && !options.scopes.includes(memory.scope)) return false;
-      if (options.types !== undefined && !options.types.includes(memory.type)) return false;
-      if (options.tags !== undefined && !options.tags.some((tag) => memory.tags.includes(tag))) return false;
-      if (queryTokens.length === 0) return true;
-      const haystack = tokenize([memory.content, memory.type, memory.scope, ...memory.tags].join(" "));
-      return queryTokens.some((token) => haystack.includes(token));
-    });
-
-    return filtered
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, options.limit ?? 20);
+    return searchEntries(rows, query, options)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))
+      .slice(0, options.limit === null ? undefined : options.limit ?? 20);
   }
 }
