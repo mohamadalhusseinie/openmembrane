@@ -8,9 +8,10 @@ and privacy-safe provenance relate to one another. The initial experience is a
 2D graph and list fallback; an optional 3D view follows after the model and
 interaction patterns are validated.
 
-The feature is delivered as a sequence of small issues rather than one large
-change. The first release target is smooth interaction with up to 500 entities
-on a typical developer machine.
+The feature is delivered as a sequence of small issues under parent epic
+[#142](https://github.com/mohamadalhusseinie/openmembrane/issues/142) rather
+than one large change. The first release target is smooth interaction with up
+to 500 entities on a typical developer machine.
 
 ## Goals
 
@@ -39,8 +40,10 @@ The graph is scoped to a project and can represent these node categories:
 - Metadata groupings for tags, scopes, and memory types.
 
 Session nodes expose only data that OpenMembrane already stores on a memory
-source: tool, session identifier, date, and a saved short excerpt where one is
-available. A missing session identifier is represented by a privacy-safe
+source: tool, session identifier, and a saved short excerpt where one is
+available. Any displayed time is labeled as the memory or candidate extraction
+or persistence time; current storage does not provide the actual source-session
+date. A missing session identifier is represented by a privacy-safe
 unknown-source grouping. The feature must not introduce complete transcript
 storage.
 
@@ -56,16 +59,17 @@ Add a durable local relationship record with:
 - Stable identifier and project identifier.
 - Source and target entity references, each with entity kind and identifier.
 - Relationship type: `related_to`, `supports`, `depends_on`, `conflicts_with`,
-  `supersedes`, `derived_from`, or `tagged_with`.
+  `duplicate_of`, `supersedes`, `derived_from`, or `tagged_with`.
 - Origin: `inferred` or `manual`.
 - Confidence and human-readable rationale.
 - Created, updated, and removed lifecycle timestamps/status.
 
-Existing conflict, duplicate, supersession, source-session, tag, scope, type,
-audit, and diagnostic data are represented as relationships or graph nodes as
-appropriate. Persisted manual relationships must remain separate from inferred
-relationships. A manual relationship or removal overrides a conflicting
-inference without deleting the underlying inferred evidence.
+Existing duplicate metadata is projected as `duplicate_of`. Conflict,
+supersession, source-session, tag, scope, type, audit, and diagnostic data are
+represented as relationships or graph nodes as appropriate. Persisted manual
+relationships must remain separate from inferred relationships. A manual
+relationship or removal overrides a conflicting inference without deleting the
+underlying inferred evidence.
 
 Creating, removing, or overriding a manual relationship writes an audit event.
 Graph relationships are informative only and never trigger destructive memory
@@ -121,11 +125,15 @@ remain available for accessibility and devices unsuitable for 3D rendering.
 
 ## Delivery Issues
 
+These delivery issues are tracked by parent epic
+[#142](https://github.com/mohamadalhusseinie/openmembrane/issues/142).
+
 ### 1. Define And Persist Typed Memory-Graph Relationships
 
 - Add relationship domain types, local storage, migration support, core APIs,
   lifecycle behavior, and audit events.
-- Cover all initial relationship types and entity references.
+- Cover all initial relationship types, including `duplicate_of`, and entity
+  references.
 - Verify secret content cannot enter relationship records.
 
 ### 2. Build Deterministic Relationship Inference
