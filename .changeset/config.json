@@ -8,6 +8,8 @@
       "@openmembrane/storage",
       "@openmembrane/exporters",
       "@openmembrane/shared",
+      "@openmembrane/protocol",
+      "@openmembrane/client",
       "openmembrane"
     ]
   ],
