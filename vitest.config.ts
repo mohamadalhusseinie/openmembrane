@@ -11,6 +11,8 @@ export default defineConfig({
       "@openmembrane/shared": fromRoot("./packages/shared/src/index.ts"),
       "@openmembrane/storage": fromRoot("./packages/storage/src/index.ts"),
       "@openmembrane/service": fromRoot("./packages/service/src/index.ts"),
+      "@openmembrane/protocol": fromRoot("./packages/protocol/src/index.ts"),
+      "@openmembrane/client": fromRoot("./packages/client/src/index.ts"),
       "@openmembrane/extractor-llm": fromRoot("./packages/extractor-llm/src/index.ts"),
       "@openmembrane/extractor-anthropic": fromRoot("./packages/extractor-anthropic/src/index.ts")
     }
