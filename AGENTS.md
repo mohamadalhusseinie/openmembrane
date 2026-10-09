@@ -39,11 +39,15 @@ packages/core/       — Domain types, extraction interface, pipeline orchestrat
 packages/storage/    — Local JSON persistence (memories, pending candidates, audit, diagnostics)
 packages/exporters/  — Static fallback file generation (AGENTS.md, CLAUDE.md, etc.)
 packages/shared/     — IDs, time helpers, generic result types
+packages/protocol/   — Versioned local-daemon HTTP schemas and shared endpoint resolution
+packages/client/     — Authenticated local-daemon client (not yet used by production surfaces)
 apps/mcp-server/     — MCP server (tool registration, validation, error responses)
 tests/               — All test files (unit and integration)
 ```
 
 Packages are imported via path aliases: `@openmembrane/core`, `@openmembrane/storage`, `@openmembrane/exporters`, `@openmembrane/shared`.
+
+The additive daemon wire contract is documented in [Daemon Protocol](docs/daemon-protocol.md).
 
 ### Extractor Boundary
 
