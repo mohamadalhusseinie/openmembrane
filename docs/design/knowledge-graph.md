@@ -61,14 +61,15 @@ Add a durable local relationship record with:
 - Source and target entity references, each with entity kind and identifier.
 - Relationship type: `related_to`, `supports`, `depends_on`, `conflicts_with`,
   `duplicate_of`, `supersedes`, `derived_from`, or `tagged_with`.
-- Origin: `inferred` or `manual`.
+- Origin: `inferred`, `manual`, or `derived`.
 - Confidence and human-readable rationale.
 - Created, updated, and removed lifecycle timestamps/status.
 
-Existing duplicate metadata is projected as `duplicate_of`. Conflict,
-supersession, source-session, tag, scope, type, audit, and diagnostic data are
-represented as relationships or graph nodes as appropriate. Persisted manual
-relationships must remain separate from inferred relationships. A manual
+Existing duplicate metadata is projected as a `duplicate_of` relationship with
+`derived` origin. Other conflict, supersession, source-session, tag, scope,
+type, audit, and diagnostic metadata are represented as `derived`
+relationships or graph nodes as appropriate. Persisted manual relationships
+must remain separate from inferred and derived relationships. A manual
 relationship or removal overrides a conflicting inference without deleting the
 underlying inferred evidence.
 
@@ -108,8 +109,8 @@ The initial 2D view supports:
   neighborhood.
 - A node inspector showing details, relationship rationale, confidence, origin,
   and existing review actions where applicable.
-- A legend that distinguishes entity categories and inferred versus manual
-  relationships.
+- A legend that distinguishes entity categories and inferred, manual, and
+  derived relationships.
 - A list/table fallback for non-spatial navigation.
 - Clear empty, loading, validation-error, and server-failure states.
 
@@ -140,6 +141,8 @@ These delivery issues are tracked by parent epic
   lifecycle behavior, and audit events.
 - Cover all initial relationship types, including `duplicate_of`, and entity
   references.
+- Support `inferred`, `manual`, and `derived` relationship origins, with
+  projected existing metadata marked as `derived`.
 - Verify secret content cannot enter relationship records.
 
 ### 2. Build Deterministic Relationship Inference
@@ -192,6 +195,8 @@ These delivery issues are tracked by parent epic
 
 - Unit tests for relationship persistence, lifecycle, validation, and audit
   logging.
+- Tests for all relationship origins and projection of existing metadata as
+  `derived`.
 - Deterministic inference tests covering evidence, confidence, deduplication,
   limits, and excluded low-confidence matches.
 - Tests proving manual edits override inferred links without destroying evidence.
