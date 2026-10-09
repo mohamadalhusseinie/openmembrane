@@ -125,8 +125,9 @@ that consumes the same daemon-backed graph API and filters. It provides camera
 controls, hover and selection, focus mode, and a direct return to 2D. It is an
 optional exploration mode, not the only supported interface.
 
-The 3D mode respects reduced-motion preferences. The 2D and list workflows
-remain available for accessibility and devices unsuitable for 3D rendering.
+The 3D mode also respects the reduced-motion preferences already supported by
+the 2D/list workflow. The 2D and list workflows remain available for
+accessibility and devices unsuitable for 3D rendering.
 
 ## Delivery Issues
 
@@ -177,8 +178,8 @@ These delivery issues are tracked by parent epic
 ### 7. Harden Performance, Privacy, And Accessibility
 
 - Verify smooth interaction with a representative 500-entity fixture.
-- Add bounded expansion behavior, keyboard controls, export exclusions, and
-  accessible fallback coverage.
+- Add bounded expansion and pagination behavior, keyboard controls,
+  reduced-motion behavior, export exclusions, and accessible fallback coverage.
 - Verify no raw transcript retention or secret exposure.
 
 ### 8. Add Optional 3D Knowledge Graph Mode
