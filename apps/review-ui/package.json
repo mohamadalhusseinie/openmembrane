@@ -10,6 +10,7 @@
   "devDependencies": {
     "@openmembrane/core": "*",
     "@openmembrane/shared": "*",
+    "@openmembrane/service": "*",
     "@openmembrane/storage": "*"
   }
 }

@@ -174,6 +174,16 @@ describe("rankMemories", () => {
     expect(ranked[1]!.entry.id).toBe("mem_old");
   });
 
+  it("breaks equal-score, equal-timestamp ties by memory id", () => {
+    const entries = [
+      entry({ id: "mem_z", content: "Use strict mode." }),
+      entry({ id: "mem_a", content: "Use strict mode." }),
+    ];
+
+    expect(rankMemories(entries, "strict mode", "search", REF_TIME).map((result) => result.entry.id))
+      .toEqual(["mem_a", "mem_z"]);
+  });
+
   it("context strategy ranks gotchas above session summaries for same content", () => {
     const entries = [
       entry({ id: "mem_summary", type: "session_summary", content: "Watch out for circular imports." }),

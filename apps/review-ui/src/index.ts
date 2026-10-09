@@ -70,9 +70,12 @@ async function main(): Promise<void> {
 
   const shutdown = (): void => {
     console.log("\nShutting down...");
-    server.close();
-    ctx.close?.();
-    exit(0);
+    server.close(() => {
+      void ctx.close().then(() => exit(0), (error: unknown) => {
+        console.error("Failed to close:", error);
+        exit(1);
+      });
+    });
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

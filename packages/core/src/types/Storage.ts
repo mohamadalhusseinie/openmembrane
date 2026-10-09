@@ -3,7 +3,8 @@ import type { MemoryEntry } from "./MemoryEntry";
 export type { DiagnosticEvent, DiagnosticQuery, DiagnosticsLogStore } from "../diagnostics/Diagnostics";
 
 export interface MemorySearchOptions {
-  limit?: number;
+  /** null returns every eligible match for callers that rank before limiting. */
+  limit?: number | null;
   scopes?: MemoryScope[];
   types?: MemoryType[];
   tags?: string[];

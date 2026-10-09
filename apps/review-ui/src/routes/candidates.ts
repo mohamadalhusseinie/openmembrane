@@ -1,4 +1,4 @@
-import type { MemoryApprovalService, PendingCandidateStore } from "@openmembrane/core";
+import type { ProjectService } from "@openmembrane/service";
 import type { RouteContext, RouteResponse } from "../router";
 
 export interface CandidateRouteHandlers {
@@ -9,20 +9,16 @@ export interface CandidateRouteHandlers {
   rejectAll: (ctx: RouteContext) => Promise<RouteResponse>;
 }
 
-export function createCandidateRoutes(
-  projectId: string,
-  pendingStore: PendingCandidateStore,
-  approvalService: MemoryApprovalService,
-): CandidateRouteHandlers {
+export function createCandidateRoutes(project: ProjectService): CandidateRouteHandlers {
   return {
     async listCandidates(_ctx) {
-      const candidates = await pendingStore.list(projectId);
+      const candidates = await project.listCandidates({ limit: Number.MAX_SAFE_INTEGER });
       return { status: 200, body: candidates };
     },
 
     async approveCandidate(ctx) {
       try {
-        const result = await approvalService.approve(projectId, ctx.params["id"]!);
+        const result = await project.approveCandidate({ candidateId: ctx.params["id"]! });
         return { status: 200, body: { ok: true, memory: result } };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Approval failed";
@@ -33,7 +29,7 @@ export function createCandidateRoutes(
     async rejectCandidate(ctx) {
       const reason = (ctx.body as { reason?: string } | undefined)?.reason;
       try {
-        await approvalService.reject(projectId, ctx.params["id"]!, reason);
+        await project.rejectCandidate({ candidateId: ctx.params["id"]!, ...(reason !== undefined ? { reason } : {}) });
         return { status: 200, body: { ok: true } };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Rejection failed";
@@ -42,13 +38,13 @@ export function createCandidateRoutes(
     },
 
     async approveAll(_ctx) {
-      const result = await approvalService.approveAll(projectId);
+      const result = await project.approveAllCandidates({});
       return { status: 200, body: { approved: result.approved.length, skipped: result.skipped } };
     },
 
     async rejectAll(ctx) {
       const reason = (ctx.body as { reason?: string } | undefined)?.reason;
-      const result = await approvalService.rejectAll(projectId, reason);
+      const result = await project.rejectAllCandidates(reason !== undefined ? { reason } : {});
       return { status: 200, body: { rejected: result.rejectedCount } };
     },
   };

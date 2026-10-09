@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CollaborationProposal, CollaborationStore, DiagnosticEvent, DiagnosticsLogStore } from "@openmembrane/core";
 import type { CollaborationProjectConfig, MemoryEntry } from "@openmembrane/core";
 import { JsonCollaborationStore, JsonMemoryStore } from "@openmembrane/storage";
-import { GitHubCli, type CommandRunner } from "../../apps/mcp-server/src/collaboration/GitHubCli";
-import { GitHubTeamService } from "../../apps/mcp-server/src/collaboration/GitHubTeamService";
+import { GitHubCli, type CommandRunner } from "../../packages/service/src/collaboration/GitHubCli";
+import { GitHubTeamService } from "../../packages/service/src/collaboration/GitHubTeamService";
 import { entry } from "./helpers";
 
 const tempDirs: string[] = [];
