@@ -5,7 +5,7 @@ import { resolveDaemonPaths } from "@openmembrane/protocol";
 import type { DaemonPathOptions } from "@openmembrane/protocol";
 import { ZodError } from "zod";
 import { sendRequest } from "../../../packages/client/src/transport";
-import { processAlive, readLock } from "./lock";
+import { daemonOwnsLock, processAlive, readLock } from "./lock";
 import { startDaemon } from "./server";
 import { createLogger } from "./logging";
 import { DaemonLifecycleError } from "./errors";
@@ -21,6 +21,7 @@ async function running(paths: DaemonPathOptions = {}): Promise<boolean> {
     return false;
   }
   if (!lock?.endpoint || !processAlive(lock.pid)) return false;
+  if (!await daemonOwnsLock(resolveDaemonPaths(paths).runDir, lock)) return false;
   try {
     const health = await sendRequest({ endpoint: lock.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000 });
     return health.status === 200;
@@ -54,7 +55,7 @@ export async function runDaemonCommand(command: "serve" | "start" | "stop" | "st
   if (command === "stop") {
     const paths = resolveDaemonPaths();
     const lock = await readLock(paths.runDir);
-    if (!lock?.endpoint || !processAlive(lock.pid)) {
+    if (!lock?.endpoint || !await daemonOwnsLock(paths.runDir, lock)) {
       process.stdout.write("OpenMembrane daemon is not running.\n");
       return;
     }

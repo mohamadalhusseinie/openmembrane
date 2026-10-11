@@ -11,6 +11,7 @@ import { resolveDaemonPaths } from "@openmembrane/protocol";
 import { readLock } from "../../../apps/daemon/src/lock";
 import { sendRequest } from "../../../packages/client/src/transport";
 import { setTimeout as delay } from "node:timers/promises";
+import { randomUUID } from "node:crypto";
 
 const exec = promisify(execFile);
 const entry = resolve("apps", "mcp-server", "dist", "index.js");
@@ -88,6 +89,23 @@ describe("packaged openmembrane lifecycle", () => {
     } finally {
       if (child.exitCode === null) child.kill();
     }
+  }, 30_000);
+
+  it("recovers a recycled live PID through detached start without stopping that process", async () => {
+    const { cli, home } = await setup();
+    await cli("start");
+    const paths = resolveDaemonPaths({ homeDir: home, runtimeDir: home });
+    const previous = (await readLock(paths.runDir))!;
+    await cli("stop");
+    await writeFile(join(paths.runDir, "daemon.lock"), JSON.stringify({
+      ...previous, pid: process.pid, instanceId: randomUUID(),
+    }));
+    await expect(cli("status")).rejects.toMatchObject({ code: 1 });
+    expect((await cli("stop")).stdout).toContain("not running");
+    expect((await cli("start")).stdout).toContain("started");
+    expect((await cli("status")).stdout).toContain("is running");
+    expect((await readLock(paths.runDir))?.instanceId).not.toBe(previous.instanceId);
+    expect((await cli("stop")).stdout).toContain("stopped");
   }, 30_000);
 
   it.each(["{", JSON.stringify({ pid: 2147483647 })])("recovers malformed stale locks via detached start: %s", async (content) => {

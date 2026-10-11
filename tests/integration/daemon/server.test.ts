@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { Server } from "node:http";
+import { createServer, Server } from "node:http";
 import { Server as NetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -302,6 +302,50 @@ describe("daemon HTTP protocol", () => {
       if (closeDescriptor) Object.defineProperty(Server.prototype, "close", closeDescriptor);
       else Reflect.deleteProperty(Server.prototype, "close");
     }
+  });
+
+  it("rejects closed after listener errors, logs a safe diagnostic, and cleans up discovery", async () => {
+    const { daemon: initial, paths, root } = await setup();
+    await initial.close();
+    let listener: Server | undefined;
+    const daemon = await startDaemon({
+      paths,
+      serverFactory(handler) {
+        listener = createServer(handler);
+        return listener;
+      },
+    });
+    const closed = expect(daemon.closed).rejects.toMatchObject({ code: "DAEMON_LISTENER_ERROR" });
+    listener!.emit("error", new Error("Sensitive listener failure detail"));
+    await closed;
+    await expect(daemon.close()).rejects.toMatchObject({ code: "DAEMON_LISTENER_ERROR" });
+    expect(await readLock(resolveDaemonPaths(paths).runDir)).toBeUndefined();
+    await expect(stat(resolveDaemonPaths(paths).tokenPath)).rejects.toMatchObject({ code: "ENOENT" });
+    const logs = (await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { event: string; code?: string; diagnosticId?: string });
+    expect(logs.at(-1)).toMatchObject({
+      event: "listener_failed", code: "DAEMON_LISTENER_ERROR", diagnosticId: expect.any(String),
+    });
+    expect(JSON.stringify(logs)).not.toContain("Sensitive listener failure detail");
+  });
+
+  it("recovers a stale lock whose PID belongs to a live unrelated process", async () => {
+    const { daemon, paths } = await setup();
+    await daemon.close();
+    await writeFile(join(resolveDaemonPaths(paths).runDir, "daemon.lock"), JSON.stringify({
+      pid: process.pid, instanceId: randomUUID(), endpoint: daemon.endpoint,
+    }));
+    const replacement = await startDaemon({ paths });
+    daemons.push(replacement);
+    const token = await readFile(resolveDaemonPaths(paths).tokenPath, "utf8");
+    const response = await sendRequest({
+      endpoint: replacement.endpoint, method: "GET", path: "/v1/daemon/identity", token, timeoutMs: 1000,
+    });
+    expect(response.value).toEqual({ instanceId: (await readLock(resolveDaemonPaths(paths).runDir))!.instanceId });
+    const denied = await sendRequest({
+      endpoint: replacement.endpoint, method: "GET", path: "/v1/daemon/identity", timeoutMs: 1000,
+    });
+    expect(denied.status).toBe(401);
   });
 
   it("creates owner-only token/run files and logs no tokens or request content", async () => {

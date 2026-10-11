@@ -26,7 +26,12 @@ to the daemon is separate follow-up work.
 
 `daemon.lock` in the run directory records the PID, instance identifier,
 and endpoint. Exclusive creation prevents concurrent instances, live
-locks refuse another `serve`, and dead-PID locks are reclaimed at startup.
+locks refuse another `serve`, and stale locks are reclaimed at startup.
+Published locks are checked using an authenticated `/v1/daemon/identity`
+response matching the recorded instance ID, not PID existence alone:
+an unrelated process reusing an old PID does not prevent recovery.
+Unpublished live-PID locks are protected by the ten-second startup grace
+period. `stop` likewise verifies ownership instead of terminating a PID.
 Incomplete locks are treated as a startup in progress for ten seconds.
 `status` reports an invalid lock as unavailable and records a safe local
 diagnostic; `start` still launches the recovery path, which reclaims an
@@ -43,6 +48,10 @@ and diagnostic IDs, not tokens, request content, raw errors, or GitHub
 command output. Detached startup has ignored stdio. Logs and discovery
 directories have owner-only access: POSIX directory mode `0700` and file
 mode `0600`, or a Windows DACL restricted to the current user's SID.
+Unexpected listener errors record `DAEMON_LISTENER_ERROR` with a diagnostic
+ID, drain work and clean up discovery, then fail the foreground lifecycle
+rather than reporting a successful shutdown. Raw listener error details
+are not written to the log.
 
 The protocol's `endpoints` map is the source of truth for HTTP methods,
 paths, request/response Zod schemas, and project scope. `EndpointRequest`

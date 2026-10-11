@@ -6,6 +6,8 @@ import { daemonEndpointSchema } from "@openmembrane/protocol";
 import type { DaemonEndpoint } from "@openmembrane/protocol";
 import { isMissing, writePrivateFile } from "./privateFiles";
 import { DaemonLifecycleError } from "./errors";
+import { sendRequest } from "../../../packages/client/src/transport";
+import { OpenMembraneClientError } from "../../../packages/client/src/errors";
 
 const lockSchema = z.object({
   pid: z.number().int().positive(),
@@ -42,6 +44,25 @@ export interface LockHandle {
   record: DaemonLock;
   publish(endpoint: DaemonEndpoint): Promise<void>;
   release(): Promise<void>;
+}
+
+export async function daemonOwnsLock(runDir: string, record: DaemonLock): Promise<boolean> {
+  if (!processAlive(record.pid)) return false;
+  if (record.endpoint === null) {
+    return Date.now() - (await stat(join(runDir, "daemon.lock"))).mtimeMs < 10_000;
+  }
+  try {
+    const token = (await readFile(join(runDir, "token"), "utf8")).trim();
+    const result = await sendRequest({
+      endpoint: record.endpoint, method: "GET", path: "/v1/daemon/identity", token, timeoutMs: 1000,
+    });
+    return result.status === 200 && typeof result.value === "object" && result.value !== null &&
+      "instanceId" in result.value && result.value.instanceId === record.instanceId;
+  } catch (error) {
+    if (isMissing(error) || (error instanceof OpenMembraneClientError &&
+      (error.code === "E_DAEMON_NOT_RUNNING" || error.code === "E_REQUEST_TIMEOUT"))) return false;
+    throw error;
+  }
 }
 
 async function acquireRecovery(runDir: string, candidate: string, snapshot: string): Promise<string> {
@@ -85,7 +106,9 @@ export async function acquireLock(runDir: string): Promise<LockHandle> {
           throw new DaemonLifecycleError("DAEMON_STARTING", "Another daemon is starting.");
         }
       }
-      if (existing && processAlive(existing.pid)) throw new DaemonLifecycleError("DAEMON_ALREADY_RUNNING", "A daemon is already running for this user.");
+      if (existing && await daemonOwnsLock(runDir, existing)) {
+        throw new DaemonLifecycleError("DAEMON_ALREADY_RUNNING", "A daemon is already running for this user.");
+      }
       if (await readFile(path, "utf8") !== snapshot) {
         throw new DaemonLifecycleError("DAEMON_RECOVERING", "Another daemon replaced the lock.");
       }

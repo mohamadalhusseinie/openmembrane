@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -26,5 +26,20 @@ it("elects only one successor when concurrent starters encounter an interrupted 
     } finally {
       await rm(runDir, { recursive: true, force: true });
     }
+  }
+});
+
+it("protects unpublished startup locks during the grace period but recovers old reused PIDs", async () => {
+  const runDir = await mkdtemp(join(tmpdir(), "om-lock-"));
+  const path = join(runDir, "daemon.lock");
+  try {
+    await writeFile(path, JSON.stringify({ pid: process.pid, instanceId: randomUUID(), endpoint: null }));
+    await expect(acquireLock(runDir)).rejects.toMatchObject({ code: "DAEMON_ALREADY_RUNNING" });
+    const old = new Date(Date.now() - 20_000);
+    await utimes(path, old, old);
+    const lock = await acquireLock(runDir);
+    await lock.release();
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
   }
 });

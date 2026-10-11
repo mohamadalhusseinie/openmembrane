@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { rename, unlink } from "node:fs/promises";
 import { createServer } from "node:http";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, RequestListener, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createOpenMembraneService } from "@openmembrane/service";
 import type { CreateServiceOptions } from "@openmembrane/service";
@@ -13,11 +13,13 @@ import { createLogger } from "./logging";
 import { isMissing, privateDirectory, writePrivateFile } from "./privateFiles";
 import { createDaemonRouter, safeError } from "./routes";
 import type { RouteResponse } from "../../review-ui/src/router";
+import { DaemonLifecycleError } from "./errors";
 
 export interface DaemonOptions {
   paths?: DaemonPathOptions;
   serviceOptions?: CreateServiceOptions;
   transport?: "socket" | "tcp";
+  serverFactory?: (listener: RequestListener) => Server;
 }
 
 export interface RunningDaemon {
@@ -85,6 +87,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
   const router = createDaemonRouter(service, logger);
   const inFlight = new Set<Promise<void>>();
   let closing: Promise<void> | undefined;
+  let listenerFailure: DaemonLifecycleError | undefined;
   let resolveClosed: () => void = () => undefined;
   let rejectClosed: (error: unknown) => void = () => undefined;
   const closed = new Promise<void>((resolve, reject) => { resolveClosed = resolve; rejectClosed = reject; });
@@ -116,6 +119,11 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
       setImmediate(() => { void close(); });
       return;
     }
+    if (req.method === "GET" && url.pathname === "/v1/daemon/identity") {
+      req.resume();
+      send(res, { status: 200, body: { instanceId: lock.record.instanceId } });
+      return;
+    }
     const match = router.match(req.method ?? "", url.pathname);
     if (!match) {
       req.resume();
@@ -141,7 +149,9 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     await response.afterResponse?.();
   }
 
-  const server = createServer({ requestTimeout: 30_000, headersTimeout: 10_000 }, (req, res) => {
+  const serverFactory = options.serverFactory ?? ((listener: RequestListener) =>
+    createServer({ requestTimeout: 30_000, headersTimeout: 10_000 }, listener));
+  const server = serverFactory((req, res) => {
     const work = handle(req, res).catch(async () => {
       try {
         send(res, await safeError(logger, 500, "UNKNOWN_ERROR", "The daemon could not handle the request."));
@@ -187,6 +197,10 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
         } finally {
           await cleanup();
         }
+        if (listenerFailure) {
+          await logger.write("listener_failed", createId("diag"), listenerFailure.code);
+          throw listenerFailure;
+        }
         await logger.write("stopped");
       })();
       void closing.then(resolveClosed, rejectClosed);
@@ -221,7 +235,11 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     }
     await lock.publish(endpoint);
     await logger.write("started");
-    server.on("error", () => { void close(); });
+    server.on("error", (error: Error) => {
+      listenerFailure ??= new DaemonLifecycleError("DAEMON_LISTENER_ERROR", "The daemon listener failed. See the local daemon log.");
+      listenerFailure.cause = error;
+      void close();
+    });
     return { endpoint, closed, close };
   } catch (error) {
     if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
