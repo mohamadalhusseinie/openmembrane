@@ -24,6 +24,11 @@ daemon clients in this release. Do not use those in-process surfaces and
 the daemon to write the same project store concurrently; switching them
 to the daemon is separate follow-up work.
 
+Project requests default their ID to the project directory's basename,
+never to the daemon's environment. Filesystem-root projects (`/` or a
+Windows drive root) require an explicit non-empty `projectId`; omission
+returns a diagnostic-bearing validation error before storage is opened.
+
 `daemon.lock` in the run directory records the PID, instance identifier,
 and endpoint. Exclusive creation prevents concurrent instances, live
 locks refuse another `serve`, and stale locks are reclaimed at startup.

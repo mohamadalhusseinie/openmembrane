@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from
 import { createServer, Server } from "node:http";
 import { Server as NetServer } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, parse } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
@@ -210,6 +210,24 @@ describe("daemon HTTP protocol", () => {
     expect(explicit.projectId).toBe("explicit");
     expect((await stat(join(beta, "explicit-storage", "memories"))).isDirectory()).toBe(true);
     expect(await first.searchMemory({ query: "Caller" })).toEqual([]);
+  });
+
+  it("requires an explicit ID for filesystem-root projects without falling back to daemon settings", async () => {
+    const { root, client } = await setup();
+    const api = client(parse(root).root);
+    const storageDir = join(root, "root-storage");
+    const input = {
+      storageDir, content: "Root projects must use explicit isolated project identities.",
+      type: "testing_rule" as const, confidence: "high" as const,
+    };
+    vi.stubEnv("OPENMEMBRANE_PROJECT_ID", "");
+    await expect(api.remember(input)).rejects.toMatchObject({ code: "VALIDATION_ERROR", origin: "daemon" });
+    vi.stubEnv("OPENMEMBRANE_PROJECT_ID", "daemon-project");
+    await expect(api.remember(input)).rejects.toMatchObject({ code: "VALIDATION_ERROR", origin: "daemon" });
+    await expect(stat(storageDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await api.remember({ ...input, projectId: "caller-root" })).projectId).toBe("caller-root");
+    expect((await api.searchMemory({ storageDir, projectId: "caller-root" })).map((memory) => memory.projectId))
+      .toEqual(["caller-root"]);
   });
 
   it("binds Windows-compatible TCP only on loopback and uses an ephemeral port", async () => {

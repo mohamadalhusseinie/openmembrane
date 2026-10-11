@@ -101,9 +101,13 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
         return safeError(logger, 400, "VALIDATION_ERROR", "projectRoot must identify an existing absolute directory.");
       }
       // Supply every routing default explicitly: the daemon's environment is not the caller's.
+      const projectId = input.projectId ?? basename(input.projectRoot);
+      if (projectId.trim().length === 0) {
+        return safeError(logger, 400, "VALIDATION_ERROR", "Provide an explicit projectId for a filesystem-root project.");
+      }
       const ref: ProjectRef = {
         projectRoot: input.projectRoot,
-        projectId: input.projectId ?? basename(input.projectRoot),
+        projectId,
         storageDir: input.storageDir ?? join(input.projectRoot, ".openmembrane"),
         storageBackend: input.storageBackend ?? "json",
       };
