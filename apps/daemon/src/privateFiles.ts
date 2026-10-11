@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, open } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, rename } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { DaemonLifecycleError } from "./errors";
 
@@ -58,4 +59,23 @@ export async function writePrivateFile(path: string, content: string): Promise<v
   }
   // Newly created files inherit the private run directory's DACL on Windows.
   if (process.platform !== "win32") await protectPath(path);
+}
+
+export async function replacePrivateFile(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (cause) {
+      // Windows readers and scanners can briefly prevent atomic replacement.
+      if (process.platform === "win32" && attempt < 5 && cause instanceof Error && "code" in cause &&
+        (cause.code === "EPERM" || cause.code === "EBUSY")) {
+        await delay(25 * 2 ** attempt);
+        continue;
+      }
+      const error = new DaemonLifecycleError("DAEMON_PRIVATE_PUBLICATION", "The daemon could not publish its private discovery files.");
+      error.cause = cause;
+      throw error;
+    }
+  }
 }

@@ -39,7 +39,11 @@ old malformed lock but preserves the ten-second startup grace period.
 The bearer token is randomly generated on each startup. Shutdown closes
 the listener, drains requests and retrieval-triggered retry work, closes
 all cached project stores, and removes the lock, token, endpoint file,
-and socket. `stop` uses an authenticated `POST /v1/daemon/stop` lifecycle
+and socket. Before closing the listener, the instance holds the recovery
+election until its discovery cleanup finishes. A concurrent restart cannot
+publish replacement files that the stopping instance would then delete.
+An instance that has already lost its lock does not remove shared discovery.
+`stop` uses an authenticated `POST /v1/daemon/stop` lifecycle
 endpoint rather than process termination, including on Windows.
 
 Logs live in `~/.openmembrane/logs/daemon.log`, independently of
@@ -48,6 +52,9 @@ and diagnostic IDs, not tokens, request content, raw errors, or GitHub
 command output. Detached startup has ignored stdio. Logs and discovery
 directories have owner-only access: POSIX directory mode `0700` and file
 mode `0600`, or a Windows DACL restricted to the current user's SID.
+Atomic discovery replacement retries transient Windows `EPERM`/`EBUSY`
+errors for at most 775 milliseconds; persistent errors fail startup with
+`DAEMON_PRIVATE_PUBLICATION` rather than weakening file permissions.
 Unexpected listener errors record `DAEMON_LISTENER_ERROR` with a diagnostic
 ID, drain work and clean up discovery, then fail the foreground lifecycle
 rather than reporting a successful shutdown. Raw listener error details

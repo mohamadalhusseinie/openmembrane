@@ -43,3 +43,20 @@ it("protects unpublished startup locks during the grace period but recovers old 
     await rm(runDir, { recursive: true, force: true });
   }
 });
+
+it("holds the recovery election through cleanup even after the startup grace expires", async () => {
+  const runDir = await mkdtemp(join(tmpdir(), "om-lock-"));
+  try {
+    const lock = await acquireLock(runDir);
+    expect(await lock.protectCleanup()).toBe(true);
+    const old = new Date(Date.now() - 20_000);
+    await utimes(join(runDir, "daemon.lock"), old, old);
+    await expect(acquireLock(runDir)).rejects.toMatchObject({ code: "DAEMON_RECOVERING" });
+    await lock.release();
+    const replacement = await acquireLock(runDir);
+    expect(await lock.protectCleanup()).toBe(false);
+    await replacement.release();
+  } finally {
+    await rm(runDir, { recursive: true, force: true });
+  }
+});

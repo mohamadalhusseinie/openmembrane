@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { link, readFile, rename, stat, unlink } from "node:fs/promises";
+import { link, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { daemonEndpointSchema } from "@openmembrane/protocol";
 import type { DaemonEndpoint } from "@openmembrane/protocol";
-import { isMissing, writePrivateFile } from "./privateFiles";
+import { isMissing, replacePrivateFile, writePrivateFile } from "./privateFiles";
 import { DaemonLifecycleError } from "./errors";
 import { sendRequest } from "../../../packages/client/src/transport";
 import { OpenMembraneClientError } from "../../../packages/client/src/errors";
@@ -43,6 +44,7 @@ async function readRecord(path: string): Promise<DaemonLock | undefined> {
 export interface LockHandle {
   record: DaemonLock;
   publish(endpoint: DaemonEndpoint): Promise<void>;
+  protectCleanup(): Promise<boolean>;
   release(): Promise<void>;
 }
 
@@ -120,21 +122,54 @@ export async function acquireLock(runDir: string): Promise<LockHandle> {
   } finally {
     await unlink(candidate);
   }
+  let cleanupGuard: string | undefined;
   return {
     record,
+    async protectCleanup() {
+      if (cleanupGuard) return true;
+      const deadline = Date.now() + 5000;
+      while (true) {
+        const current = await readLock(runDir);
+        if (current?.instanceId !== record.instanceId) return false;
+        const snapshot = await readFile(path, "utf8");
+        await writePrivateFile(candidate, JSON.stringify(record));
+        try {
+          cleanupGuard = await acquireRecovery(runDir, candidate, snapshot);
+        } catch (error) {
+          if (!(error instanceof DaemonLifecycleError && error.code === "DAEMON_RECOVERING") ||
+            Date.now() >= deadline) throw error;
+        } finally {
+          await unlink(candidate);
+        }
+        if (cleanupGuard) {
+          if ((await readLock(runDir))?.instanceId === record.instanceId) return true;
+          await unlink(cleanupGuard);
+          cleanupGuard = undefined;
+          return false;
+        }
+        await delay(50);
+      }
+    },
     async publish(endpoint) {
       const current = await readLock(runDir);
       if (current?.instanceId !== record.instanceId) throw new DaemonLifecycleError("DAEMON_LOCK_LOST", "Daemon lock ownership was lost.");
       record.endpoint = endpoint;
       await writePrivateFile(candidate, JSON.stringify(record));
       try {
-        await rename(candidate, path);
+        await replacePrivateFile(candidate, path);
       } finally {
         await unlink(candidate).catch((error: unknown) => { if (!isMissing(error)) throw error; });
       }
     },
     async release() {
-      if ((await readLock(runDir))?.instanceId === record.instanceId) await unlink(path);
+      try {
+        if ((await readLock(runDir))?.instanceId === record.instanceId) await unlink(path);
+      } finally {
+        if (cleanupGuard) {
+          await unlink(cleanupGuard);
+          cleanupGuard = undefined;
+        }
+      }
     },
   };
 }

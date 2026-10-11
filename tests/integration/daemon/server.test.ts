@@ -348,6 +348,49 @@ describe("daemon HTTP protocol", () => {
     expect(denied.status).toBe(401);
   });
 
+  it("blocks replacement until listener shutdown and discovery cleanup finish", async () => {
+    const { daemon: initial, paths } = await setup();
+    await initial.close();
+    let listenerClosed: () => void = () => undefined;
+    let releaseClose: () => void = () => undefined;
+    const stoppedListening = new Promise<void>((resolve) => { listenerClosed = resolve; });
+    const finishClose = new Promise<void>((resolve) => { releaseClose = resolve; });
+    const daemon = await startDaemon({
+      paths,
+      serverFactory(handler) {
+        const server = createServer(handler);
+        const originalClose = server.close.bind(server);
+        server.close = (callback) => originalClose((error) => {
+          listenerClosed();
+          void finishClose.then(() => callback?.(error));
+        });
+        return server;
+      },
+    });
+    daemons.push(daemon);
+    const resolved = resolveDaemonPaths(paths);
+    const token = await readFile(resolved.tokenPath, "utf8");
+    const shutdown = daemon.close();
+    try {
+      await stoppedListening;
+      await expect(startDaemon({ paths })).rejects.toMatchObject({ code: "DAEMON_RECOVERING" });
+      expect(await readFile(resolved.tokenPath, "utf8")).toBe(token);
+      expect(await readLock(resolved.runDir)).toBeDefined();
+    } finally {
+      releaseClose();
+      await shutdown;
+    }
+    const replacement = await startDaemon({ paths });
+    daemons.push(replacement);
+    const replacementToken = await readFile(resolved.tokenPath, "utf8");
+    await daemon.close();
+    expect(await readFile(resolved.tokenPath, "utf8")).toBe(replacementToken);
+    expect((await sendRequest({
+      endpoint: replacement.endpoint, method: "GET", path: "/v1/daemon/identity", token: replacementToken,
+      timeoutMs: 1000,
+    })).value).toEqual({ instanceId: (await readLock(resolved.runDir))!.instanceId });
+  }, 15_000);
+
   it("creates owner-only token/run files and logs no tokens or request content", async () => {
     const { token, paths, root, client, daemon } = await setup();
     const resolved = resolveDaemonPaths(paths);

@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { rename, unlink } from "node:fs/promises";
+import { unlink } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, RequestListener, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -10,7 +10,7 @@ import type { DaemonEndpoint, DaemonPathOptions } from "@openmembrane/protocol";
 import { createId } from "@openmembrane/shared";
 import { acquireLock } from "./lock";
 import { createLogger } from "./logging";
-import { isMissing, privateDirectory, writePrivateFile } from "./privateFiles";
+import { isMissing, privateDirectory, replacePrivateFile, writePrivateFile } from "./privateFiles";
 import { createDaemonRouter, safeError } from "./routes";
 import type { RouteResponse } from "../../review-ui/src/router";
 import { DaemonLifecycleError } from "./errors";
@@ -104,7 +104,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (closing) {
+    if (closing && !(req.method === "GET" && url.pathname === "/v1/daemon/identity")) {
       send(res, await safeError(logger, 503, "DAEMON_STOPPING", "The daemon is stopping."));
       return;
     }
@@ -171,11 +171,14 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
 
   async function cleanup(): Promise<void> {
     const failures: unknown[] = [];
+    const ownsDiscovery = await lock.protectCleanup();
     for (const operation of [
       () => service.close(),
-      () => remove(paths.endpointPath),
-      () => remove(paths.tokenPath),
-      ...(transport === "socket" ? [() => remove(paths.socketPath)] : []),
+      ...(ownsDiscovery ? [
+        () => remove(paths.endpointPath),
+        () => remove(paths.tokenPath),
+        ...(transport === "socket" ? [() => remove(paths.socketPath)] : []),
+      ] : []),
       () => lock.release(),
     ]) {
       try { await operation(); } catch (error) { failures.push(error); }
@@ -187,6 +190,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     if (!closing) {
       closing = (async () => {
         try {
+          await lock.protectCleanup();
           if (server.listening) {
             await new Promise<void>((resolve, reject) => {
               server.close((error) => error ? reject(error) : resolve());
@@ -229,7 +233,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     const endpointDraft = `${paths.endpointPath}.${lock.record.instanceId}`;
     await writePrivateFile(endpointDraft, JSON.stringify(endpoint));
     try {
-      await rename(endpointDraft, paths.endpointPath);
+      await replacePrivateFile(endpointDraft, paths.endpointPath);
     } finally {
       await remove(endpointDraft);
     }
