@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { link, readFile, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -44,6 +44,26 @@ export interface LockHandle {
   release(): Promise<void>;
 }
 
+async function acquireRecovery(runDir: string, candidate: string, snapshot: string): Promise<string> {
+  let generation = createHash("sha256").update(snapshot).digest("hex");
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const path = join(runDir, `recovery-${generation}`);
+    try {
+      await link(candidate, path);
+      return path;
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+      const holder = await readRecord(path);
+      if (!holder || processAlive(holder.pid)) {
+        throw new DaemonLifecycleError("DAEMON_RECOVERING", "Another daemon is recovering its lock.");
+      }
+      // Elect a successor without unlinking the dead holder's guard: unlink/recreate has an ABA race.
+      generation = createHash("sha256").update(`${generation}:${holder.instanceId}`).digest("hex");
+    }
+  }
+  throw new DaemonLifecycleError("DAEMON_RECOVERING", "The daemon lock has too many interrupted recoveries.");
+}
+
 export async function acquireLock(runDir: string): Promise<LockHandle> {
   const path = join(runDir, "daemon.lock");
   const record: DaemonLock = { pid: process.pid, instanceId: randomUUID(), endpoint: null };
@@ -53,26 +73,12 @@ export async function acquireLock(runDir: string): Promise<LockHandle> {
     await link(candidate, path);
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-    // Serialize stale-lock recovery so simultaneous starters cannot unlink a new owner's lock.
-    const recoveryPath = join(runDir, "recovery.lock");
-    try {
-      await link(candidate, recoveryPath);
-    } catch (recoveryError) {
-      if (!(recoveryError instanceof Error && "code" in recoveryError && recoveryError.code === "EEXIST")) throw recoveryError;
-      const recovery = await readRecord(recoveryPath);
-      if (recovery && processAlive(recovery.pid)) {
-        throw new DaemonLifecycleError("DAEMON_RECOVERING", "Another daemon is recovering its lock.");
-      }
-      if ((await readRecord(recoveryPath))?.instanceId !== recovery?.instanceId) {
-        throw new DaemonLifecycleError("DAEMON_RECOVERING", "Another daemon is recovering its lock.");
-      }
-      await unlink(recoveryPath).catch((unlinkError: unknown) => { if (!isMissing(unlinkError)) throw unlinkError; });
-      await link(candidate, recoveryPath);
-    }
+    const snapshot = await readFile(path, "utf8");
+    const recoveryPath = await acquireRecovery(runDir, candidate, snapshot);
     try {
       let existing: DaemonLock | undefined;
       try {
-        existing = await readLock(runDir);
+        existing = lockSchema.parse(JSON.parse(snapshot));
       } catch (readError) {
         if (!(readError instanceof z.ZodError || readError instanceof SyntaxError)) throw readError;
         if (Date.now() - (await stat(path)).mtimeMs < 10_000) {
@@ -80,7 +86,10 @@ export async function acquireLock(runDir: string): Promise<LockHandle> {
         }
       }
       if (existing && processAlive(existing.pid)) throw new DaemonLifecycleError("DAEMON_ALREADY_RUNNING", "A daemon is already running for this user.");
-      await unlink(path).catch((unlinkError: unknown) => { if (!isMissing(unlinkError)) throw unlinkError; });
+      if (await readFile(path, "utf8") !== snapshot) {
+        throw new DaemonLifecycleError("DAEMON_RECOVERING", "Another daemon replaced the lock.");
+      }
+      await unlink(path);
       await link(candidate, path);
     } finally {
       if ((await readRecord(recoveryPath))?.instanceId === record.instanceId) await unlink(recoveryPath);

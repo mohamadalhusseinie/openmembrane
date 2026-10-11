@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { Server } from "node:http";
 import { Server as NetServer } from "node:net";
@@ -199,7 +199,7 @@ describe("daemon HTTP protocol", () => {
     const legacyMcp = await createOpenMembraneContext({ projectRoot: alpha });
     try {
       expect(legacyMcp.defaultProjectId).toBe(result.projectId);
-      expect(legacyMcp.storageDir).toBe(resolved.storageDir);
+      expect(legacyMcp.storageDir).toBe(await realpath(resolved.storageDir));
     } finally {
       await legacyMcp.close();
     }
@@ -336,10 +336,12 @@ describe("daemon HTTP protocol", () => {
     await expect(stat(resolveDaemonPaths(paths).tokenPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(stat(resolveDaemonPaths(paths).endpointPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readLock(resolveDaemonPaths(paths).runDir)).toBeUndefined();
-    await writeFile(join(resolveDaemonPaths(paths).runDir, "daemon.lock"), JSON.stringify({
+    const staleLock = JSON.stringify({
       pid: 2147483647, instanceId: randomUUID(), endpoint: daemon.endpoint,
-    }));
-    await writeFile(join(resolveDaemonPaths(paths).runDir, "recovery.lock"), JSON.stringify({
+    });
+    await writeFile(join(resolveDaemonPaths(paths).runDir, "daemon.lock"), staleLock);
+    const recoveryPath = `recovery-${createHash("sha256").update(staleLock).digest("hex")}`;
+    await writeFile(join(resolveDaemonPaths(paths).runDir, recoveryPath), JSON.stringify({
       pid: 2147483647, instanceId: randomUUID(), endpoint: null,
     }));
     const attempts = await Promise.allSettled(Array.from({ length: 4 }, () => startDaemon({ paths })));
