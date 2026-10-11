@@ -409,6 +409,53 @@ describe("daemon HTTP protocol", () => {
     })).value).toEqual({ instanceId: (await readLock(resolved.runDir))!.instanceId });
   }, 15_000);
 
+  it("never reclaims a slow live daemon and treats legacy identity timeouts as indeterminate", async () => {
+    const { daemon: initial, paths } = await setup();
+    await initial.close();
+    const daemon = await startDaemon({
+      paths,
+      serverFactory(handler) {
+        return createServer((req, res) => {
+          if (req.url === "/v1/daemon/identity") req.resume();
+          else handler(req, res);
+        });
+      },
+    });
+    daemons.push(daemon);
+    const resolved = resolveDaemonPaths(paths);
+    const current = (await readLock(resolved.runDir))!;
+    await expect(startDaemon({ paths })).rejects.toMatchObject({ code: "DAEMON_ALREADY_RUNNING" });
+    const { processIdentity: _identity, ...legacy } = current;
+    await writeFile(join(resolved.runDir, "daemon.lock"), JSON.stringify(legacy));
+    await expect(startDaemon({ paths })).rejects.toMatchObject({ code: "DAEMON_OWNERSHIP_UNCERTAIN" });
+    expect(await readLock(resolved.runDir)).toEqual(legacy);
+    expect((await sendRequest({
+      endpoint: daemon.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000,
+    })).status).toBe(200);
+  }, 15_000);
+
+  it("rejects stop requests for a previous instance even with the replacement's valid token", async () => {
+    const { daemon: initial, paths } = await setup();
+    const previous = (await readLock(resolveDaemonPaths(paths).runDir))!;
+    await initial.close();
+    const replacement = await startDaemon({ paths });
+    daemons.push(replacement);
+    const current = (await readLock(resolveDaemonPaths(paths).runDir))!;
+    const token = await readFile(resolveDaemonPaths(paths).tokenPath, "utf8");
+    const stop = (instanceId?: string) => sendRequest({
+      endpoint: replacement.endpoint, method: "POST", path: "/v1/daemon/stop", token, timeoutMs: 1000,
+      body: JSON.stringify(instanceId === undefined ? {} : { instanceId }),
+    });
+    expect((await stop()).status).toBe(400);
+    const stale = await stop(previous.instanceId);
+    expect(stale.status).toBe(409);
+    expect(errorResponseSchema.parse(stale.value).error.code).toBe("DAEMON_INSTANCE_MISMATCH");
+    expect(await readLock(resolveDaemonPaths(paths).runDir)).toEqual(current);
+    expect((await stop(current.instanceId)).status).toBe(200);
+    await replacement.closed;
+    expect(await readLock(resolveDaemonPaths(paths).runDir)).toBeUndefined();
+  }, 15_000);
+
   it("creates owner-only token/run files and logs no tokens or request content", async () => {
     const { token, paths, root, client, daemon } = await setup();
     const resolved = resolveDaemonPaths(paths);

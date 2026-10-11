@@ -9,11 +9,13 @@ import { isMissing, replacePrivateFile, writePrivateFile } from "./privateFiles"
 import { DaemonLifecycleError } from "./errors";
 import { sendRequest } from "../../../packages/client/src/transport";
 import { OpenMembraneClientError } from "../../../packages/client/src/errors";
+import { readProcessIdentity } from "./processIdentity";
 
 const lockSchema = z.object({
   pid: z.number().int().positive(),
   instanceId: z.string().uuid(),
   endpoint: daemonEndpointSchema.nullable(),
+  processIdentity: z.string().min(1).optional(),
 }).strict();
 export type DaemonLock = z.infer<typeof lockSchema>;
 
@@ -50,6 +52,9 @@ export interface LockHandle {
 
 export async function daemonOwnsLock(runDir: string, record: DaemonLock): Promise<boolean> {
   if (!processAlive(record.pid)) return false;
+  if (record.processIdentity !== undefined) {
+    return await readProcessIdentity(record.pid) === record.processIdentity;
+  }
   if (record.endpoint === null) {
     return Date.now() - (await stat(join(runDir, "daemon.lock"))).mtimeMs < 10_000;
   }
@@ -61,8 +66,10 @@ export async function daemonOwnsLock(runDir: string, record: DaemonLock): Promis
     return result.status === 200 && typeof result.value === "object" && result.value !== null &&
       "instanceId" in result.value && result.value.instanceId === record.instanceId;
   } catch (error) {
-    if (isMissing(error) || (error instanceof OpenMembraneClientError &&
-      (error.code === "E_DAEMON_NOT_RUNNING" || error.code === "E_REQUEST_TIMEOUT"))) return false;
+    if (error instanceof OpenMembraneClientError && error.code === "E_REQUEST_TIMEOUT") {
+      throw new DaemonLifecycleError("DAEMON_OWNERSHIP_UNCERTAIN", "Daemon ownership verification timed out; the lock was not reclaimed.");
+    }
+    if (isMissing(error) || (error instanceof OpenMembraneClientError && error.code === "E_DAEMON_NOT_RUNNING")) return false;
     throw error;
   }
 }
@@ -77,7 +84,15 @@ async function acquireRecovery(runDir: string, candidate: string, snapshot: stri
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
       const holder = await readRecord(path);
-      if (!holder || processAlive(holder.pid)) {
+      let owned = false;
+      if (holder && processAlive(holder.pid)) {
+        owned = holder.processIdentity !== undefined
+          ? await readProcessIdentity(holder.pid) === holder.processIdentity
+          : holder.endpoint !== null
+            ? await daemonOwnsLock(runDir, holder)
+            : Date.now() - (await stat(path)).mtimeMs < 10_000;
+      }
+      if (!holder || owned) {
         throw new DaemonLifecycleError("DAEMON_RECOVERING", "Another daemon is recovering its lock.");
       }
       // Elect a successor without unlinking the dead holder's guard: unlink/recreate has an ABA race.
@@ -89,7 +104,9 @@ async function acquireRecovery(runDir: string, candidate: string, snapshot: stri
 
 export async function acquireLock(runDir: string): Promise<LockHandle> {
   const path = join(runDir, "daemon.lock");
-  const record: DaemonLock = { pid: process.pid, instanceId: randomUUID(), endpoint: null };
+  const identity = await readProcessIdentity(process.pid);
+  if (identity === undefined) throw new DaemonLifecycleError("DAEMON_PROCESS_IDENTITY", "The daemon could not identify its own process.");
+  const record: DaemonLock = { pid: process.pid, instanceId: randomUUID(), endpoint: null, processIdentity: identity };
   const candidate = join(runDir, `lock-${record.instanceId}`);
   await writePrivateFile(candidate, JSON.stringify(record));
   try {

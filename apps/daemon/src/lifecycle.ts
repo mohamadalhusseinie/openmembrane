@@ -60,7 +60,10 @@ export async function runDaemonCommand(command: "serve" | "start" | "stop" | "st
       return;
     }
     const token = (await readFile(paths.tokenPath, "utf8")).trim();
-    const result = await sendRequest({ endpoint: lock.endpoint, method: "POST", path: "/v1/daemon/stop", token, timeoutMs: 1000 });
+    const result = await sendRequest({
+      endpoint: lock.endpoint, method: "POST", path: "/v1/daemon/stop", token, timeoutMs: 1000,
+      body: JSON.stringify({ instanceId: lock.instanceId }),
+    });
     if (result.status !== 200) throw new DaemonLifecycleError("DAEMON_STOP_REJECTED", "Daemon stop was rejected.");
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {

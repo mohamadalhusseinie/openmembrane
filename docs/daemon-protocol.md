@@ -29,14 +29,18 @@ never to the daemon's environment. Filesystem-root projects (`/` or a
 Windows drive root) require an explicit non-empty `projectId`; omission
 returns a diagnostic-bearing validation error before storage is opened.
 
-`daemon.lock` in the run directory records the PID, instance identifier,
+`daemon.lock` in the run directory records the PID, OS process-start identity, instance identifier,
 and endpoint. Exclusive creation prevents concurrent instances, live
 locks refuse another `serve`, and stale locks are reclaimed at startup.
-Published locks are checked using an authenticated `/v1/daemon/identity`
-response matching the recorded instance ID, not PID existence alone:
-an unrelated process reusing an old PID does not prevent recovery.
-Unpublished live-PID locks are protected by the ten-second startup grace
-period. `stop` likewise verifies ownership instead of terminating a PID.
+Process-start identity distinguishes an unrelated process reusing an old
+PID from the actual owner, even if the live daemon is slow or its listener
+is closed for cleanup. Recovery guards use the same identity. Legacy
+published locks without process-start identity use authenticated
+`/v1/daemon/identity` verification; a timeout is indeterminate and fails
+with `DAEMON_OWNERSHIP_UNCERTAIN` without reclaiming the lock.
+Legacy unpublished live-PID locks and recovery guards are protected by
+a ten-second startup grace period. `stop` likewise verifies ownership
+instead of terminating a PID.
 Incomplete locks are treated as a startup in progress for ten seconds.
 `status` reports an invalid lock as unavailable and records a safe local
 diagnostic; `start` still launches the recovery path, which reclaims an
@@ -49,7 +53,10 @@ election until its discovery cleanup finishes. A concurrent restart cannot
 publish replacement files that the stopping instance would then delete.
 An instance that has already lost its lock does not remove shared discovery.
 `stop` uses an authenticated `POST /v1/daemon/stop` lifecycle
-endpoint rather than process termination, including on Windows.
+endpoint with JSON `{ "instanceId": "<expected UUID>" }` rather than
+process termination, including on Windows. A replacement rejects a stop
+request for the old instance with `DAEMON_INSTANCE_MISMATCH`, even if the
+caller read the replacement's token during the transition.
 
 Logs live in `~/.openmembrane/logs/daemon.log`, independently of
 `OPENMEMBRANE_HOME`. Logs contain lifecycle events, safe failure codes,

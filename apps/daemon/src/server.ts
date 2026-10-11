@@ -14,6 +14,7 @@ import { isMissing, privateDirectory, replacePrivateFile, writePrivateFile } fro
 import { createDaemonRouter, safeError } from "./routes";
 import type { RouteResponse } from "../../review-ui/src/router";
 import { DaemonLifecycleError } from "./errors";
+import { z } from "zod";
 
 export interface DaemonOptions {
   paths?: DaemonPathOptions;
@@ -29,6 +30,7 @@ export interface RunningDaemon {
 }
 
 const maxBodyBytes = 2 * 1024 * 1024;
+const stopInputSchema = z.object({ instanceId: z.string().uuid() }).strict();
 
 async function readBody(req: IncomingMessage): Promise<{ ok: true; value: Buffer } | { ok: false }> {
   return new Promise((resolve, reject) => {
@@ -114,7 +116,22 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
       return;
     }
     if (req.method === "POST" && url.pathname === "/v1/daemon/stop") {
-      req.resume();
+      const content = await readBody(req);
+      if (!content.ok) {
+        send(res, await safeError(logger, 413, "VALIDATION_ERROR", "The request body exceeds the size limit."));
+        return;
+      }
+      let input: unknown;
+      try { input = JSON.parse(content.value.toString("utf8")); } catch { input = undefined; }
+      const parsed = stopInputSchema.safeParse(input);
+      if (!parsed.success) {
+        send(res, await safeError(logger, 400, "VALIDATION_ERROR", "Provide the expected daemon instanceId to stop."));
+        return;
+      }
+      if (parsed.data.instanceId !== lock.record.instanceId) {
+        send(res, await safeError(logger, 409, "DAEMON_INSTANCE_MISMATCH", "The daemon instance changed; shutdown was not requested."));
+        return;
+      }
       send(res, { status: 200, body: {} });
       setImmediate(() => { void close(); });
       return;
