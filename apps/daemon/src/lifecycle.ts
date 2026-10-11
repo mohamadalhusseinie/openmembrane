@@ -98,7 +98,9 @@ export async function runDaemonCommand(command: "serve" | "start" | "stop" | "st
 }
 
 export async function reportDaemonFailure(error: unknown): Promise<void> {
-  const code = error instanceof DaemonLifecycleError ? error.code : "DAEMON_LIFECYCLE_ERROR";
+  const systemCode = error instanceof Error && "code" in error && typeof error.code === "string" &&
+    /^E[A-Z0-9_]+$/.test(error.code) ? error.code : undefined;
+  const code = error instanceof DaemonLifecycleError ? error.code : systemCode ?? "DAEMON_LIFECYCLE_ERROR";
   try {
     await (await createLogger()).write("lifecycle_failed", undefined, code);
   } catch {

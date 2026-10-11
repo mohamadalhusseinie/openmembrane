@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { chmod, lstat, mkdir, open } from "node:fs/promises";
 import { promisify } from "node:util";
+import { DaemonLifecycleError } from "./errors";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,7 +20,8 @@ export async function protectPath(path: string, directory = false): Promise<void
     return;
   }
   // POSIX modes do not restrict Windows access. Replace the DACL, without inherited grants.
-  await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", [
+  try {
+    await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", [
     "$ErrorActionPreference = 'Stop'",
     "$path = $env:OPENMEMBRANE_PRIVATE_PATH",
     "$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
@@ -34,7 +36,12 @@ export async function protectPath(path: string, directory = false): Promise<void
   ].join("; ")], {
     env: { ...process.env, OPENMEMBRANE_PRIVATE_PATH: path },
     windowsHide: true,
-  });
+    });
+  } catch (cause) {
+    const error = new DaemonLifecycleError("DAEMON_PRIVATE_PERMISSIONS", "The daemon could not restrict private-file permissions.");
+    error.cause = cause;
+    throw error;
+  }
 }
 
 export async function privateDirectory(path: string): Promise<void> {

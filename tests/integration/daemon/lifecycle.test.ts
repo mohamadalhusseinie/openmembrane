@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -42,13 +43,32 @@ async function setup() {
     OPENMEMBRANE_EXTRACTION_PROVIDER: "mock", OPENMEMBRANE_EXTRACTION_ENABLED: "false",
   };
   environments.push(env);
-  const cli = (command: string) => exec(process.execPath, [entry, command], { cwd: project, env, windowsHide: true });
+  const cli = async (command: string) => {
+    try {
+      return await exec(process.execPath, [entry, command], { cwd: project, env, windowsHide: true });
+    } catch (error) {
+      if (error instanceof Error) error.message += `\nSafe daemon diagnostics:\n${await diagnosticLog(home)}`;
+      throw error;
+    }
+  };
   return { home, env, cli, project };
 }
 
-async function waitForDaemon(home: string): Promise<void> {
+async function diagnosticLog(home: string): Promise<string> {
+  try {
+    return await readFile(join(home, ".openmembrane", "logs", "daemon.log"), "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return "No daemon log was created.";
+    throw error;
+  }
+}
+
+async function waitForDaemon(home: string, child?: ChildProcess): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
+    if (child && (child.exitCode !== null || child.signalCode !== null)) {
+      throw new Error(`Daemon exited before readiness (${child.exitCode ?? child.signalCode}).\n${await diagnosticLog(home)}`);
+    }
     const lock = await readLock(resolveDaemonPaths({ homeDir: home, runtimeDir: home }).runDir);
     if (lock?.endpoint) {
       const result = await sendRequest({ endpoint: lock.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000 });
@@ -56,7 +76,7 @@ async function waitForDaemon(home: string): Promise<void> {
     }
     await delay(50);
   }
-  throw new Error("Daemon did not become ready.");
+  throw new Error(`Daemon did not become ready.\n${await diagnosticLog(home)}`);
 }
 
 describe("packaged openmembrane lifecycle", () => {
@@ -81,7 +101,7 @@ describe("packaged openmembrane lifecycle", () => {
     let output = "";
     child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
     try {
-      await waitForDaemon(home);
+      await waitForDaemon(home, child);
       expect(child.exitCode).toBeNull();
       expect((await cli("stop")).stdout).toContain("stopped");
       expect((await exit)[0]).toBe(0);
@@ -142,7 +162,7 @@ describe("packaged openmembrane lifecycle", () => {
     const child = spawn(process.execPath, [entry, "serve"], { cwd: project, env, stdio: "ignore" });
     const exit = once(child, "exit");
     try {
-      await waitForDaemon(home);
+      await waitForDaemon(home, child);
       child.kill("SIGTERM");
       expect((await exit)[0]).toBe(0);
       expect(await readLock(resolveDaemonPaths({ homeDir: home, runtimeDir: home }).runDir)).toBeUndefined();
