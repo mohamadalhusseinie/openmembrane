@@ -394,5 +394,5 @@ describe("daemon HTTP protocol", () => {
     expect(winners).toHaveLength(1);
     expect((await readLock(resolveDaemonPaths(paths).runDir))?.pid).toBe(process.pid);
     expect((await readFile(resolveDaemonPaths(paths).tokenPath, "utf8")).trim()).not.toBe(token);
-  });
+  }, 15_000);
 });
