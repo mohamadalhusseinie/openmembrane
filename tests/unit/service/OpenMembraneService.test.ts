@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -107,6 +107,63 @@ describe("OpenMembraneService", () => {
     await first.remember({ content: "Store alpha knowledge for future tests", type: "testing_rule", confidence: "high" });
     expect((await first.searchMemory({ query: "alpha" })).length).toBeGreaterThan(0);
     expect(await second.searchMemory({ query: "alpha" })).toEqual([]);
+  });
+
+  it("caches json and sqlite separately for the same storage directory", async () => {
+    const root = await tempDir();
+    const service = createOpenMembraneService();
+    services.push(service);
+    const ref = { projectRoot: root, projectId: "project-a", storageDir: root };
+    const jsonRef = { ...ref, storageBackend: "json" as const };
+    const sqliteRef = { ...ref, storageBackend: "sqlite" as const };
+    const json = await service.forProject(jsonRef);
+    const sqlite = await service.forProject(sqliteRef);
+    const jsonState = await service.projectState(jsonRef);
+    const sqliteState = await service.projectState(sqliteRef);
+    expect(jsonState.memoryStore).not.toBe(sqliteState.memoryStore);
+    await jsonState.memoryStore.save(entry({ id: "json-only", content: "JSON storage keeps its own fixtures." }));
+    await sqliteState.memoryStore.save(entry({ id: "sqlite-only", content: "SQLite storage keeps separate fixtures." }));
+    expect((await json.searchMemory({})).map((memory) => memory.id)).toEqual(["json-only"]);
+    expect((await sqlite.searchMemory({})).map((memory) => memory.id)).toEqual(["sqlite-only"]);
+    expect(await service.forProject(jsonRef)).toBe(json);
+    expect(await service.forProject(sqliteRef)).toBe(sqlite);
+    await service.close();
+    await expect(service.forProject(jsonRef)).rejects.toThrow("closed");
+    await expect(service.forProject(sqliteRef)).rejects.toThrow("closed");
+  });
+
+  it("shares cached stores across symlink aliases including initially missing subdirectories", async () => {
+    const root = await tempDir();
+    const storage = join(root, "storage");
+    const alias = join(root, "alias");
+    await mkdir(storage);
+    await symlink(storage, alias, process.platform === "win32" ? "junction" : "dir");
+    const service = createOpenMembraneService();
+    services.push(service);
+    const directRef = { projectRoot: root, storageDir: join(storage, "nested"), storageBackend: "json" as const };
+    const aliasRef = { ...directRef, storageDir: join(alias, "nested") };
+    const [direct, aliased] = await Promise.all([service.forProject(directRef), service.forProject(aliasRef)]);
+    expect(aliased).toBe(direct);
+    expect((await service.projectState(aliasRef)).memoryStore).toBe((await service.projectState(directRef)).memoryStore);
+    expect(direct.storageDir).toBe(await realpath(directRef.storageDir));
+  });
+
+  it.skipIf(process.platform !== "darwin")("shares stores across casing aliases on a case-insensitive filesystem", async (context) => {
+    const root = await tempDir();
+    const storage = join(root, "MixedCaseStorage");
+    const alias = join(root, "mixedcasestorage");
+    await mkdir(storage);
+    try {
+      await realpath(alias);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+      context.skip();
+      return;
+    }
+    const service = createOpenMembraneService();
+    services.push(service);
+    const direct = await service.forProject({ projectRoot: root, storageDir: storage });
+    expect(await service.forProject({ projectRoot: root, storageDir: alias })).toBe(direct);
   });
 
   it.each(["json", "sqlite"])("ranks all eligible %s memories before limiting either retrieval tool", async (backend) => {

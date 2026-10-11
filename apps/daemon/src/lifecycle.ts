@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { resolveDaemonPaths } from "@openmembrane/protocol";
 import type { DaemonPathOptions } from "@openmembrane/protocol";
+import { ZodError } from "zod";
 import { sendRequest } from "../../../packages/client/src/transport";
 import { processAlive, readLock } from "./lock";
 import { startDaemon } from "./server";
@@ -10,7 +11,15 @@ import { createLogger } from "./logging";
 import { DaemonLifecycleError } from "./errors";
 
 async function running(paths: DaemonPathOptions = {}): Promise<boolean> {
-  const lock = await readLock(resolveDaemonPaths(paths).runDir);
+  let lock;
+  try {
+    lock = await readLock(resolveDaemonPaths(paths).runDir);
+  } catch (error) {
+    if (!(error instanceof SyntaxError || error instanceof ZodError)) throw error;
+    await (await createLogger(paths.homeDir)).write("lock_invalid", undefined, "DAEMON_LOCK_INVALID");
+    // Startup owns recovery and the grace period; preflight must not block it.
+    return false;
+  }
   if (!lock?.endpoint || !processAlive(lock.pid)) return false;
   try {
     const health = await sendRequest({ endpoint: lock.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000 });

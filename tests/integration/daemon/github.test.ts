@@ -99,7 +99,9 @@ describe("GitHub Team through the daemon", () => {
       code, diagnosticId: expect.any(String), origin: "daemon",
     });
     expect(await client.health()).toEqual({});
-    expect(await client.getDiagnostics()).toEqual(expect.arrayContaining([expect.objectContaining({ code })]));
+    expect(await client.getDiagnostics()).toEqual(expect.arrayContaining([expect.objectContaining({
+      code, operation: "configure_github_team",
+    })]));
     runner.failure = undefined;
     expect(await client.configureGitHubTeamMode({ repository })).toMatchObject({ kind: "configured" });
     runner.failure = failure;
@@ -107,6 +109,10 @@ describe("GitHub Team through the daemon", () => {
     await expect(client.remember({
       content: "Team changes must pass isolated integration tests before deployment.", type: "testing_rule", confidence: "high",
     })).rejects.toMatchObject({ code, diagnosticId: expect.any(String) });
+    await expect(client.searchMemory({ query: "tests" })).rejects.toMatchObject({ code, diagnosticId: expect.any(String) });
+    const diagnostics = (await client.getDiagnostics()).filter((diagnostic) => diagnostic.code === code);
+    expect(diagnostics.filter((diagnostic) => diagnostic.operation === "configure_github_team")).toHaveLength(1);
+    expect(diagnostics.filter((diagnostic) => diagnostic.operation === "check_github_availability")).toHaveLength(3);
     expect(await client.health()).toEqual({});
     runner.failure = undefined;
     expect(await client.getCollaborationStatus()).toMatchObject({ proposals: { proposed: 0 } });

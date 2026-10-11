@@ -6,6 +6,7 @@ import type { StoreSet, StorageBackend } from "@openmembrane/storage";
 import { createProjectState, resolveProjectRef } from "./factory";
 import type { CreateServiceOptions, ProjectRef, ProjectState } from "./factory";
 import { createProjectOperations } from "./operations";
+import { canonicalStoragePath } from "./storagePath";
 
 export type ProjectService = ReturnType<typeof createProjectOperations> & {
   projectId: string;
@@ -41,6 +42,8 @@ export class OpenMembraneService {
   private async project(ref: ProjectRef): Promise<{ service: ProjectService; state: ProjectState }> {
     if (this.closed) throw new Error("OpenMembraneService is closed.");
     const resolved = resolveProjectRef(ref);
+    resolved.storageDir = await canonicalStoragePath(resolved.storageDir);
+    if (this.closed) throw new Error("OpenMembraneService is closed.");
     const backend: StorageBackend = ref.storageBackend ?? (env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json");
     const storeKey = JSON.stringify([resolved.storageDir, backend]);
     const key = JSON.stringify([storeKey, resolved.projectRoot, resolved.projectId]);

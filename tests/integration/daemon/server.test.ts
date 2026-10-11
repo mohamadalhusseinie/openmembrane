@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { Server } from "node:http";
+import { Server as NetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
@@ -235,6 +237,71 @@ describe("daemon HTTP protocol", () => {
     })));
     expect(results.map((result) => result.savedCount)).toEqual([1, 1, 1, 1]);
     expect((await api.searchMemory()).map((memory) => memory.content).sort()).toEqual([...contents].sort());
+  });
+
+  it("serializes shared-store writes through symlink aliases", async () => {
+    const { client, root } = await setup();
+    const storage = join(root, "storage");
+    const alias = join(root, "alias");
+    await mkdir(storage);
+    await symlink(storage, alias, process.platform === "win32" ? "junction" : "dir");
+    const api = client();
+    const contents = [
+      "All API routes must validate request payloads with Zod schemas.",
+      "Frontend components must use CSS modules for isolated styling.",
+      "Database schema changes must include reversible SQL migration scripts.",
+      "Release artifacts must be signed before production deployments.",
+    ];
+    const results = await Promise.all(contents.map((content, index) => api.remember({
+      content, type: "coding_rule", confidence: "high", storageDir: join(index % 2 ? alias : storage, "nested"),
+    })));
+    expect(results.map((result) => result.savedCount)).toEqual([1, 1, 1, 1]);
+    expect((await api.searchMemory({ storageDir: join(storage, "nested") })).map((memory) => memory.content).sort())
+      .toEqual([...contents].sort());
+  });
+
+  it.skipIf(process.platform !== "darwin")("serializes casing aliases on case-insensitive macOS filesystems", async (context) => {
+    const { client, root } = await setup();
+    const storage = join(root, "MixedCaseStorage");
+    const alias = join(root, "mixedcasestorage");
+    await mkdir(storage);
+    try {
+      await realpath(alias);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+      context.skip();
+      return;
+    }
+    const api = client();
+    const contents = [
+      "All API routes must validate request payloads with Zod schemas.",
+      "Database schema changes must include reversible SQL migration scripts.",
+    ];
+    const results = await Promise.all(contents.map((content, index) => api.remember({
+      content, type: "coding_rule", confidence: "high", storageDir: index ? alias : storage,
+    })));
+    expect(results.map((result) => result.savedCount)).toEqual([1, 1]);
+    expect((await api.searchMemory({ storageDir: storage })).map((memory) => memory.content).sort()).toEqual([...contents].sort());
+  });
+
+  it("shuts down when closeIdleConnections is absent as on Node 18.0 and 18.1", async () => {
+    const { daemon, paths, client } = await setup();
+    expect(await client().health()).toEqual({});
+    const descriptor = Object.getOwnPropertyDescriptor(Server.prototype, "closeIdleConnections");
+    const closeDescriptor = Object.getOwnPropertyDescriptor(Server.prototype, "close");
+    Object.defineProperty(Server.prototype, "closeIdleConnections", { value: undefined, configurable: true });
+    // Modern HTTP close() invokes closeIdleConnections internally; emulate the older net close path.
+    Object.defineProperty(Server.prototype, "close", { value: NetServer.prototype.close, configurable: true });
+    try {
+      await daemon.close();
+      await daemon.closed;
+      expect(await readLock(resolveDaemonPaths(paths).runDir)).toBeUndefined();
+    } finally {
+      if (descriptor) Object.defineProperty(Server.prototype, "closeIdleConnections", descriptor);
+      else Reflect.deleteProperty(Server.prototype, "closeIdleConnections");
+      if (closeDescriptor) Object.defineProperty(Server.prototype, "close", closeDescriptor);
+      else Reflect.deleteProperty(Server.prototype, "close");
+    }
   });
 
   it("creates owner-only token/run files and logs no tokens or request content", async () => {

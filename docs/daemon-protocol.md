@@ -28,6 +28,9 @@ to the daemon is separate follow-up work.
 and endpoint. Exclusive creation prevents concurrent instances, live
 locks refuse another `serve`, and dead-PID locks are reclaimed at startup.
 Incomplete locks are treated as a startup in progress for ten seconds.
+`status` reports an invalid lock as unavailable and records a safe local
+diagnostic; `start` still launches the recovery path, which reclaims an
+old malformed lock but preserves the ten-second startup grace period.
 The bearer token is randomly generated on each startup. Shutdown closes
 the listener, drains requests and retrieval-triggered retry work, closes
 all cached project stores, and removes the lock, token, endpoint file,
@@ -71,7 +74,9 @@ These fields must not be replaced by the daemon's cwd/environment.
 The daemon rejects relative, nonexistent, and non-directory project
 roots before opening stores. Requests sharing a storage directory are
 serialized to protect JSON indexes; unrelated project stores can run
-concurrently. Explicit backend selection participates in the store cache.
+concurrently. Queue and store-cache keys use filesystem-canonical paths
+so symlink and case-insensitive filesystem aliases share the same store.
+Explicit backend selection participates in the store cache.
 
 GitHub Team commands run as the same OS user with `cwd` set to the
 request's project directory. The daemon neither reads nor stores GitHub

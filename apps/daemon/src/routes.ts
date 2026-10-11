@@ -1,9 +1,10 @@
 import { stat } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, join } from "node:path";
 import { normalizeOpenMembraneError } from "@openmembrane/core";
 import { endpoints } from "@openmembrane/protocol";
 import type { EndpointName, EndpointRequest } from "@openmembrane/protocol";
 import type { OpenMembraneService, ProjectRef, ProjectService } from "@openmembrane/service";
+import { canonicalStoragePath } from "@openmembrane/service";
 import { createId } from "@openmembrane/shared";
 import { Router } from "../../review-ui/src/router";
 import type { RouteResponse } from "../../review-ui/src/router";
@@ -53,7 +54,7 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
   router.get(endpoints.health.path, () => ({ status: 200, body: {} }));
 
   async function withStore<T>(ref: ProjectRef, operation: () => Promise<T>): Promise<T> {
-    const path = resolve(ref.storageDir ?? join(ref.projectRoot, ".openmembrane"));
+    const path = await canonicalStoragePath(ref.storageDir ?? join(ref.projectRoot, ".openmembrane"));
     const key = process.platform === "win32" ? path.toLowerCase() : path;
     const previous = queues.get(key) ?? Promise.resolve();
     let release: () => void = () => undefined;

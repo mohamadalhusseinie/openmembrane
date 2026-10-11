@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -87,6 +87,35 @@ describe("packaged openmembrane lifecycle", () => {
       expect(output).toContain("daemon is running");
     } finally {
       if (child.exitCode === null) child.kill();
+    }
+  }, 30_000);
+
+  it.each(["{", JSON.stringify({ pid: 2147483647 })])("recovers malformed stale locks via detached start: %s", async (content) => {
+    const { cli, home } = await setup();
+    const paths = resolveDaemonPaths({ homeDir: home, runtimeDir: home });
+    await mkdir(paths.runDir, { recursive: true });
+    const lockPath = join(paths.runDir, "daemon.lock");
+    await writeFile(lockPath, content);
+    const stale = new Date(Date.now() - 20_000);
+    await utimes(lockPath, stale, stale);
+    await expect(cli("status")).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining("not running") });
+    expect((await cli("start")).stdout).toContain("started");
+    expect((await cli("status")).stdout).toContain("is running");
+    expect((await cli("stop")).stdout).toContain("stopped");
+    expect(await readLock(paths.runDir)).toBeUndefined();
+  }, 30_000);
+
+  it("preserves the grace period for a fresh malformed lock during detached start", async () => {
+    const { cli, home } = await setup();
+    const paths = resolveDaemonPaths({ homeDir: home, runtimeDir: home });
+    await mkdir(paths.runDir, { recursive: true });
+    const lockPath = join(paths.runDir, "daemon.lock");
+    await writeFile(lockPath, "{");
+    try {
+      await expect(cli("start")).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining("startup failed") });
+      expect(await readFile(lockPath, "utf8")).toBe("{");
+    } finally {
+      await rm(lockPath);
     }
   }, 30_000);
 

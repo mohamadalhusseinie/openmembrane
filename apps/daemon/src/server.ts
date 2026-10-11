@@ -180,7 +180,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
           if (server.listening) {
             await new Promise<void>((resolve, reject) => {
               server.close((error) => error ? reject(error) : resolve());
-              server.closeIdleConnections();
+              if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
             });
           }
           await Promise.all(inFlight);

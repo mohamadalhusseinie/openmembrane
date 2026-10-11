@@ -1,6 +1,7 @@
 export { OpenMembraneService, createOpenMembraneService } from "./OpenMembraneService";
 export type { ProjectService } from "./OpenMembraneService";
 export { resolveProjectRef } from "./factory";
+export { canonicalStoragePath } from "./storagePath";
 export type { ProjectRef, ProjectState, CreateServiceOptions } from "./factory";
 export type {
   ApproveAllCandidatesInput, ApproveMemoryCandidateInput, ConfigureGitHubTeamModeInput,

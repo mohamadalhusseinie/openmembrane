@@ -16,6 +16,10 @@ are separate from team sync.
 
 Add the OpenMembrane MCP server in Cursor's settings.
 
+If upgrading an existing configuration, replace `args: ["serve"]` with
+`args: ["mcp"]` (or omit arguments). `serve` now runs the HTTP daemon,
+not MCP stdio. Restart Cursor after updating the configuration.
+
 ### Project-level (`.cursor/mcp.json` in project root)
 
 ```json
@@ -23,7 +27,7 @@ Add the OpenMembrane MCP server in Cursor's settings.
   "mcpServers": {
     "openmembrane": {
       "command": "openmembrane",
-      "args": ["serve"],
+      "args": ["mcp"],
       "env": {
         "OPENMEMBRANE_PROJECT_ID": "my-project"
       }
@@ -39,7 +43,7 @@ Add the OpenMembrane MCP server in Cursor's settings.
 3. Add a new MCP server with:
    - **Name**: `OpenMembrane`
    - **Command**: `openmembrane`
-   - **Args**: `["serve"]`
+   - **Args**: `["mcp"]`
 
 ## Environment Variables
 
