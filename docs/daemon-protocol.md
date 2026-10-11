@@ -3,7 +3,43 @@
 `@openmembrane/protocol` defines the additive `/v1` HTTP contract.
 `@openmembrane/client` supplies `OpenMembraneClient`; existing MCP, CLI, and
 review UI surfaces still use the in-process service. This change does not
-ship a daemon or switch production consumers.
+switch those production consumers. `apps/daemon` serves the contract via
+the existing `OpenMembraneService`, with no HTTP framework dependency.
+
+## Daemon lifecycle
+
+The installed `openmembrane` executable provides:
+
+| Command | Behavior |
+| --- | --- |
+| `serve` | Run the daemon in the foreground; SIGINT/SIGTERM initiate shutdown. |
+| `start` | Start a detached daemon and wait for health readiness; an existing daemon is left running. |
+| `status` | Report daemon availability; exit code 1 means it is not running. |
+| `stop` | Request authenticated graceful shutdown and wait for lock cleanup. |
+| `mcp`, or no arguments | Launch the existing MCP stdio server, unchanged. |
+
+From the repository, `npm run start -w @openmembrane/daemon` runs the
+foreground daemon. MCP, `ingest`, `context`, and the review UI are not
+daemon clients in this release. Do not use those in-process surfaces and
+the daemon to write the same project store concurrently; switching them
+to the daemon is separate follow-up work.
+
+`daemon.lock` in the run directory records the PID, instance identifier,
+and endpoint. Exclusive creation prevents concurrent instances, live
+locks refuse another `serve`, and dead-PID locks are reclaimed at startup.
+Incomplete locks are treated as a startup in progress for ten seconds.
+The bearer token is randomly generated on each startup. Shutdown closes
+the listener, drains requests and retrieval-triggered retry work, closes
+all cached project stores, and removes the lock, token, endpoint file,
+and socket. `stop` uses an authenticated `POST /v1/daemon/stop` lifecycle
+endpoint rather than process termination, including on Windows.
+
+Logs live in `~/.openmembrane/logs/daemon.log`, independently of
+`OPENMEMBRANE_HOME`. Logs contain lifecycle events, safe failure codes,
+and diagnostic IDs, not tokens, request content, raw errors, or GitHub
+command output. Detached startup has ignored stdio. Logs and discovery
+directories have owner-only access: POSIX directory mode `0700` and file
+mode `0600`, or a Windows DACL restricted to the current user's SID.
 
 The protocol's `endpoints` map is the source of truth for HTTP methods,
 paths, request/response Zod schemas, and project scope. `EndpointRequest`
@@ -32,6 +68,20 @@ The client defaults `projectRoot` to the caller's cwd, forwards
 `OPENMEMBRANE_HOME` relative to the caller's project root into `storageDir`.
 Explicit per-call fields take precedence over environment defaults.
 These fields must not be replaced by the daemon's cwd/environment.
+The daemon rejects relative, nonexistent, and non-directory project
+roots before opening stores. Requests sharing a storage directory are
+serialized to protect JSON indexes; unrelated project stores can run
+concurrently. Explicit backend selection participates in the store cache.
+
+GitHub Team commands run as the same OS user with `cwd` set to the
+request's project directory. The daemon neither reads nor stores GitHub
+credentials; the user's existing `gh` authentication applies. Missing or
+unauthenticated `gh` produces a safe error with a diagnostic ID without
+stopping the daemon; diagnostics and candidate rejection remain usable.
+Other publication failures retain durable retry state and the existing
+publication result shapes. Eligible retries run after successful rules,
+context, or search responses, with the existing backoff and no scheduled
+timers. Shutdown also drains this post-response work.
 
 ## Shared per-user endpoint resolution
 

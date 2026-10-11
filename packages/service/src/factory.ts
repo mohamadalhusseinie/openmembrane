@@ -1,4 +1,4 @@
-import { basename, join, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { env } from "node:process";
 import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrane/core";
 import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryExtractor, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
@@ -7,7 +7,7 @@ import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
 import { StaticMemoryExportService } from "@openmembrane/exporters";
 import { createId, nowIso } from "@openmembrane/shared";
 import { JsonCollaborationStore } from "@openmembrane/storage";
-import type { StoreSet } from "@openmembrane/storage";
+import type { StoreSet, StorageBackend } from "@openmembrane/storage";
 import { GitHubCli, type CommandRunner } from "./collaboration/GitHubCli";
 import { GitHubTeamService } from "./collaboration/GitHubTeamService";
 
@@ -15,6 +15,7 @@ export interface ProjectRef {
   projectRoot: string;
   projectId?: string;
   storageDir?: string;
+  storageBackend?: StorageBackend;
 }
 
 export interface ProjectState {
@@ -43,7 +44,7 @@ export function resolveProjectRef(ref: ProjectRef): { projectRoot: string; stora
   const projectRoot = resolve(ref.projectRoot);
   return {
     projectRoot,
-    storageDir: resolve(ref.storageDir ?? env.OPENMEMBRANE_HOME ?? join(projectRoot, ".openmembrane")),
+    storageDir: resolve(projectRoot, ref.storageDir ?? env.OPENMEMBRANE_HOME ?? ".openmembrane"),
     projectId: ref.projectId?.trim() || env.OPENMEMBRANE_PROJECT_ID || basename(projectRoot),
   };
 }
@@ -127,7 +128,7 @@ export async function createProjectState(
     collaborationStore,
     memoryStore,
     diagnosticsLogStore,
-    github: new GitHubCli(options.githubRunner),
+    github: new GitHubCli(options.githubRunner, projectRoot),
     storageDir,
   });
 

@@ -1,0 +1,15 @@
+{
+  "name": "@openmembrane/daemon",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "devDependencies": {
+    "@openmembrane/core": "*",
+    "@openmembrane/protocol": "*",
+    "@openmembrane/service": "*",
+    "@openmembrane/shared": "*"
+  }
+}

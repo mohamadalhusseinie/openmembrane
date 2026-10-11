@@ -28,6 +28,21 @@ openmembrane
 No cloud account is required for the default Local Private mode, which stores
 memory locally in git-ignored `.openmembrane/`.
 
+The optional local daemon has explicit lifecycle commands:
+
+```sh
+openmembrane serve   # foreground
+openmembrane start   # detached
+openmembrane status
+openmembrane stop
+```
+
+Bare `openmembrane` and `openmembrane mcp` both launch MCP stdio.
+MCP, `ingest`, `context`, and the review UI still use the in-process service;
+they do not connect to or auto-start the daemon yet. See
+[Daemon Protocol](../../docs/daemon-protocol.md) for transport, authentication,
+and per-project request settings.
+
 ## Deployment Modes
 
 OpenMembrane ships [Local Private mode](../../docs/deployment-modes.md#local-private)
@@ -176,6 +191,7 @@ Package responsibilities:
 - `packages/exporters`: static fallback file generation for AI tools that read project instruction files.
 - `packages/shared`: small runtime helpers for IDs, time, and result types.
 - `apps/mcp-server`: local MCP server exposing saved memory and approval workflows to AI tools.
+- `apps/daemon`: authenticated per-user HTTP daemon with project-scoped stores and CLI lifecycle management.
 
 Provider-specific LLM calls are intentionally kept out of the core. The boundary is:
 

@@ -16,6 +16,7 @@ export type ProjectService = ReturnType<typeof createProjectOperations> & {
   pendingCandidateCount: () => Promise<number>;
   listReviewAuditLog: (limit: number) => Promise<AuditEvent[]>;
   retryEligiblePublications: () => Promise<void>;
+  checkCollaborationAvailability: () => ReturnType<ProjectState["githubTeamService"]["checkAvailability"]>;
   listCandidates: (options?: { limit?: number }) => ReturnType<ReturnType<typeof createProjectOperations>["listMemoryCandidates"]>;
   approveCandidate: (input: { candidateId: string }) => ReturnType<ReturnType<typeof createProjectOperations>["approveMemoryCandidate"]>;
   rejectCandidate: (input: { candidateId: string; reason?: string }) => ReturnType<ReturnType<typeof createProjectOperations>["rejectMemoryCandidate"]>;
@@ -40,15 +41,16 @@ export class OpenMembraneService {
   private async project(ref: ProjectRef): Promise<{ service: ProjectService; state: ProjectState }> {
     if (this.closed) throw new Error("OpenMembraneService is closed.");
     const resolved = resolveProjectRef(ref);
-    const key = JSON.stringify([resolved.storageDir, resolved.projectRoot, resolved.projectId]);
+    const backend: StorageBackend = ref.storageBackend ?? (env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json");
+    const storeKey = JSON.stringify([resolved.storageDir, backend]);
+    const key = JSON.stringify([storeKey, resolved.projectRoot, resolved.projectId]);
     let promise = this.projects.get(key);
     if (!promise) {
-      let stores = this.stores.get(resolved.storageDir);
+      let stores = this.stores.get(storeKey);
       if (!stores) {
-        const backend: StorageBackend = env.OPENMEMBRANE_STORAGE_BACKEND === "sqlite" ? "sqlite" : "json";
         stores = createStores({ backend, baseDir: resolved.storageDir });
-        this.stores.set(resolved.storageDir, stores);
-        void stores.catch(() => this.stores.delete(resolved.storageDir));
+        this.stores.set(storeKey, stores);
+        void stores.catch(() => this.stores.delete(storeKey));
       }
       promise = stores.then(async (storeSet) => {
         const state = await createProjectState(resolved, this.options, storeSet);
@@ -102,6 +104,7 @@ export class OpenMembraneService {
           async retryEligiblePublications() {
             await state.githubTeamService.retryEligiblePublications(resolved.projectId);
           },
+          checkCollaborationAvailability: () => state.githubTeamService.checkAvailability(resolved.projectId),
           async listCandidates(input = {}) {
             const candidates = await state.pendingCandidateStore.list(resolved.projectId);
             return candidates.slice(0, input.limit);
@@ -121,11 +124,11 @@ export class OpenMembraneService {
     if (this.closed) return;
     this.closed = true;
     await Promise.allSettled(this.projects.values());
-    for (const stores of this.stores.values()) {
-      (await stores).close?.();
-    }
+    const results = await Promise.allSettled([...this.stores.values()].map(async (stores) => (await stores).close?.()));
     this.projects.clear();
     this.stores.clear();
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length > 0) throw new AggregateError(failures.map((result) => result.reason), "Failed to close project stores.");
   }
 }
 

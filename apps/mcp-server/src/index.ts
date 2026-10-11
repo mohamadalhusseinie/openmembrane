@@ -14,7 +14,20 @@ if (!result.ok) {
       process.stdout.write(USAGE);
       break;
 
-    case "serve": {
+    case "serve":
+    case "start":
+    case "stop":
+    case "status": {
+      const { runDaemonCommand, reportDaemonFailure } = await import("../../daemon/src/lifecycle");
+      try {
+        await runDaemonCommand(cmd.command);
+      } catch (error) {
+        await reportDaemonFailure(error);
+      }
+      break;
+    }
+
+    case "mcp": {
       const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
       const { createOpenMembraneContext } = await import("./context");
       const { createOpenMembraneMcpServer } = await import("./server");

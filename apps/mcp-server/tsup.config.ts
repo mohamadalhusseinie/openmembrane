@@ -7,7 +7,7 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   banner: {
-    js: "#!/usr/bin/env node",
+    js: '#!/usr/bin/env node\nimport { createRequire as createNodeRequire } from "node:module";\nconst require = createNodeRequire(import.meta.url);',
   },
   external: ["better-sqlite3"],
   noExternal: [/^@openmembrane\//],

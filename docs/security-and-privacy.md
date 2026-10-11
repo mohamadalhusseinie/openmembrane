@@ -39,6 +39,18 @@ The local store should not contain:
 
 ## Secret And Sensitive Data Handling
 
+The optional local daemon uses a Unix socket with owner-only access on
+macOS/Linux or an ephemeral `127.0.0.1` port on Windows. All endpoints
+except the data-free `/v1/health` require a random per-user bearer token.
+That local authentication token is stored only in the private run directory,
+never in project memory or logs; it is not a GitHub or provider credential.
+Windows access is restricted by a current-user DACL, not POSIX file modes.
+See [Daemon Protocol](daemon-protocol.md) for lifecycle and discovery.
+
+The daemon does not read, store, or forward GitHub tokens. GitHub Team uses
+the same user's `gh` CLI authentication and runs commands in the caller's
+project directory.
+
 Rule-based filters should detect:
 
 - API keys

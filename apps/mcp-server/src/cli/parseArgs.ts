@@ -5,6 +5,14 @@ export interface ServeCommand {
   readonly command: "serve";
 }
 
+export interface McpCommand {
+  readonly command: "mcp";
+}
+
+export interface DaemonCommand {
+  readonly command: "start" | "stop" | "status";
+}
+
 export interface IngestCommand {
   readonly command: "ingest";
   readonly file?: string | undefined;
@@ -27,7 +35,7 @@ export interface HelpCommand {
   readonly command: "help";
 }
 
-export type CliCommand = ServeCommand | IngestCommand | ContextCommand | HelpCommand;
+export type CliCommand = ServeCommand | McpCommand | DaemonCommand | IngestCommand | ContextCommand | HelpCommand;
 
 export interface ParseError {
   readonly ok: false;
@@ -57,7 +65,7 @@ export function parseArgs(argv: readonly string[]): ParseResult {
   const args = argv.slice(2);
 
   if (args.length === 0) {
-    return { ok: true, value: { command: "serve" } };
+    return { ok: true, value: { command: "mcp" } };
   }
 
   const subcommand = args[0];
@@ -68,6 +76,10 @@ export function parseArgs(argv: readonly string[]): ParseResult {
 
   if (subcommand === "serve") {
     return { ok: true, value: { command: "serve" } };
+  }
+
+  if (subcommand === "mcp" || subcommand === "start" || subcommand === "stop" || subcommand === "status") {
+    return { ok: true, value: { command: subcommand } };
   }
 
   if (subcommand === "ingest") {
@@ -113,13 +125,17 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     };
   }
 
-  return { ok: false, error: `Unknown command: "${subcommand}". Use "serve", "ingest", or "context".` };
+  return { ok: false, error: `Unknown command: "${subcommand}". Use "mcp", "serve", "start", "stop", "status", "ingest", or "context".` };
 }
 
 export const USAGE = `Usage: openmembrane <command> [options]
 
 Commands:
-  serve                     Start MCP server (default)
+  mcp                       Start MCP stdio server (default when no command is given)
+  serve                     Run the local daemon in the foreground
+  start                     Start the local daemon detached
+  stop                      Gracefully stop the local daemon
+  status                    Check whether the local daemon is running
   ingest                    Submit a session transcript for memory extraction
   context                   Retrieve relevant memories for a project
 

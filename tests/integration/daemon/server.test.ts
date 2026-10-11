@@ -1,0 +1,285 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { promisify } from "node:util";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
+import type { ClientRequest } from "@openmembrane/client";
+import { endpoints, errorResponseSchema, resolveDaemonPaths } from "@openmembrane/protocol";
+import type { EndpointName, EndpointResponse } from "@openmembrane/protocol";
+import { createOpenMembraneService, resolveProjectRef } from "@openmembrane/service";
+import type { CommandRunner } from "@openmembrane/service";
+import { startDaemon } from "../../../apps/daemon/src/server";
+import type { RunningDaemon } from "../../../apps/daemon/src/server";
+import { readLock } from "../../../apps/daemon/src/lock";
+import { createOpenMembraneContext } from "../../../apps/mcp-server/src/context";
+import { sendRequest } from "../../../packages/client/src/transport";
+import { candidate, entry } from "../../unit/helpers";
+
+const directories: string[] = [];
+const daemons: RunningDaemon[] = [];
+
+afterEach(async () => {
+  await Promise.all(daemons.splice(0).map((daemon) => daemon.close()));
+  await Promise.all(directories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  vi.unstubAllEnvs();
+});
+
+async function setup(runner?: CommandRunner, transport?: "socket" | "tcp") {
+  const root = await mkdtemp(join(tmpdir(), "omd-"));
+  directories.push(root);
+  const alpha = join(root, "alpha");
+  const beta = join(root, "beta");
+  await Promise.all([mkdir(alpha), mkdir(beta)]);
+  const paths = { homeDir: root, runtimeDir: root };
+  const daemon = await startDaemon({
+    paths,
+    ...(transport ? { transport } : {}),
+    ...(runner ? { serviceOptions: { githubRunner: runner } } : {}),
+  });
+  daemons.push(daemon);
+  const client = (projectRoot = alpha, env: NodeJS.ProcessEnv = {}) => new OpenMembraneClient({
+    endpoint: daemon.endpoint, daemonPaths: paths, projectRoot, env,
+  });
+  const token = (await readFile(resolveDaemonPaths(paths).tokenPath, "utf8")).trim();
+  return { root, alpha, beta, paths, daemon, client, token };
+}
+
+async function seed(projectRoot: string) {
+  const service = createOpenMembraneService();
+  try {
+    const state = await service.projectState({ projectRoot, projectId: basename(projectRoot), storageBackend: "json" });
+    await state.pendingCandidateStore.save(candidate({ projectId: basename(projectRoot), id: "approve candidate" }));
+    await state.pendingCandidateStore.save(candidate({ projectId: basename(projectRoot), id: "reject-candidate" }));
+    await state.pendingCandidateStore.save(candidate({
+      projectId: basename(projectRoot), id: "bulk-approve", content: "Database changes must use reversible migrations.",
+    }));
+    await state.pendingCandidateStore.save(candidate({
+      projectId: basename(projectRoot), id: "bulk-secret", sensitivity: "secret", recommendedAction: "reject",
+      content: "A flagged candidate must not be approved.",
+    }));
+    await state.memoryStore.save(entry({
+      projectId: basename(projectRoot), id: "old-memory", updatedAt: "2020-01-01T00:00:00.000Z",
+    }));
+  } finally {
+    await service.close();
+  }
+}
+
+describe("daemon HTTP protocol", () => {
+  it("serves every project endpoint with schema-valid results", async () => {
+    const { alpha, client } = await setup();
+    await seed(alpha);
+    const api = client();
+    const covered = new Set<EndpointName>();
+    async function call<K extends EndpointName>(
+      name: K, input: ClientRequest<K>,
+    ): Promise<EndpointResponse<K>> {
+      covered.add(name);
+      const value = await api.call(name, input);
+      expect(endpoints[name].response.safeParse(value).success).toBe(true);
+      return value;
+    }
+    expect(await call("health", {})).toEqual({});
+    const saved = await call("remember", {
+      content: "Use dedicated integration fixtures for the alpha subsystem.", type: "testing_rule", confidence: "high",
+    });
+    expect(saved.savedCount).toBe(1);
+    const memoryId = saved.saved[0]!.id;
+    expect((await call("ingest", { transcript: "rule: The project must run Vitest before deployment." })).savedCount).toBe(1);
+    expect((await call("getProjectRules", {})).rules.length).toBeGreaterThan(0);
+    expect((await call("getRelevantContext", { query: "alpha fixtures" })).memories.length).toBeGreaterThan(0);
+    expect((await call("searchMemory", { query: "alpha fixtures" })).length).toBeGreaterThan(0);
+    expect((await call("listMemoryCandidates", {})).length).toBe(4);
+    expect((await call("approveMemoryCandidate", { candidateId: "approve candidate" })).status).toBe("active");
+    expect(await call("rejectMemoryCandidate", { candidateId: "reject-candidate", reason: "Obsolete" })).toMatchObject({ rejected: true });
+    const bulk = await call("approveAllCandidates", {});
+    expect(bulk.approved).toHaveLength(1);
+    expect(bulk.skipped).toMatchObject([{ candidateId: "bulk-secret" }]);
+    expect((await call("rejectAllCandidates", {})).rejectedCount).toBe(1);
+    expect((await call("updateMemory", { memoryId, content: "Use isolated integration fixtures for the alpha subsystem." })).content).toContain("isolated");
+    expect((await call("reviewStaleMemories", { staleAfterMonths: 6 })).map((memory) => memory.id)).toContain("old-memory");
+    expect((await call("supersedeMemory", { memoryId, reason: "Obsolete" })).status).toBe("superseded");
+    const exported = await call("exportStaticMemoryFiles", { targets: ["agents"] });
+    expect(exported.files[0]!.path).toBe("AGENTS.md");
+    expect(await readFile(join(alpha, "AGENTS.md"), "utf8")).toContain("Vitest");
+    expect((await call("getDiagnostics", {})).length).toBeGreaterThan(0);
+    expect((await call("listAuditLog", {})).length).toBeGreaterThan(0);
+    expect(await call("getCollaborationStatus", {})).toMatchObject({ mode: "local_private" });
+    // GitHub configure is covered separately with the CommandRunner seam.
+    expect([...covered].sort()).toEqual(Object.keys(endpoints).filter((name) => name !== "configureGitHubTeamMode").sort());
+  });
+
+  it("requires the token on every endpoint except data-free health", async () => {
+    const { daemon, token } = await setup();
+    for (const [name, definition] of Object.entries(endpoints)) {
+      const response = await sendRequest({
+        endpoint: daemon.endpoint, method: definition.method,
+        path: definition.path.replace(":id", "id"), timeoutMs: 1000,
+        ...(definition.method === "GET" ? {} : { body: "{}" }),
+      });
+      expect(response.status, name).toBe(name === "health" ? 200 : 401);
+      if (name === "health") expect(response.value).toEqual({});
+      else expect(errorResponseSchema.parse(response.value).error.code).toBe("UNAUTHORIZED");
+    }
+    for (const invalid of ["wrong", `${token}x`, token.slice(1)]) {
+      const response = await sendRequest({
+        endpoint: daemon.endpoint, method: "POST", path: "/v1/remember", body: "{}", token: invalid, timeoutMs: 1000,
+      });
+      expect(response.status).toBe(401);
+    }
+    const stop = await sendRequest({ endpoint: daemon.endpoint, method: "POST", path: "/v1/daemon/stop", timeoutMs: 1000 });
+    expect(stop.status).toBe(401);
+  });
+
+  it("rejects malformed requests, invalid project roots and route ID mismatches safely", async () => {
+    const { daemon, token, alpha, root, client } = await setup();
+    const invalidRequests = [
+      { path: "/v1/remember", body: "{" },
+      { path: "/v1/remember", body: JSON.stringify({ projectRoot: "relative", content: "Do not persist invalid requests.", type: "testing_rule" }) },
+      { path: "/v1/remember", body: JSON.stringify({ projectRoot: join(root, "missing"), content: "Do not persist invalid requests.", type: "testing_rule" }) },
+      { path: "/v1/remember", body: JSON.stringify({ projectRoot: resolveDaemonPaths({ homeDir: root, runtimeDir: root }).tokenPath, content: "Do not persist invalid requests.", type: "testing_rule" }) },
+      { path: "/v1/candidates/other/approve", body: JSON.stringify({ projectRoot: alpha, candidateId: "candidate" }) },
+      { path: "/v1/candidates/%ZZ/approve", body: JSON.stringify({ projectRoot: alpha, candidateId: "candidate" }) },
+    ];
+    for (const input of invalidRequests) {
+      const result = await sendRequest({ ...input, endpoint: daemon.endpoint, method: "POST", token, timeoutMs: 1000 });
+      expect(result.status).toBe(400);
+      expect(errorResponseSchema.parse(result.value).error).toMatchObject({ code: "VALIDATION_ERROR", diagnosticId: expect.any(String) });
+      expect(JSON.stringify(result.value)).not.toContain(root);
+    }
+    const badQuery = await sendRequest({
+      endpoint: daemon.endpoint, method: "GET", path: "/v1/candidates?input=no-json", token, timeoutMs: 1000,
+    });
+    expect(badQuery.status).toBe(400);
+    const unknown = await sendRequest({ endpoint: daemon.endpoint, method: "GET", path: "/v1/unknown", token, timeoutMs: 1000 });
+    expect(unknown.status).toBe(404);
+    const oversized = await sendRequest({
+      endpoint: daemon.endpoint, method: "POST", path: "/v1/remember", token, timeoutMs: 1000,
+      body: JSON.stringify({ padding: "x".repeat(2 * 1024 * 1024) }),
+    });
+    expect(oversized.status).toBe(413);
+    expect(errorResponseSchema.parse(oversized.value).error.code).toBe("VALIDATION_ERROR");
+    await expect(client().approveMemoryCandidate({ candidateId: "missing" })).rejects.toMatchObject({
+      code: "CANDIDATE_NOT_FOUND", diagnosticId: expect.any(String), origin: "daemon",
+    });
+    expect(await client().health()).toEqual({});
+  });
+
+  it("isolates two project directories and honors client overrides, not daemon environment", async () => {
+    const { alpha, beta, root, client } = await setup();
+    vi.stubEnv("OPENMEMBRANE_HOME", join(root, "daemon-storage"));
+    vi.stubEnv("OPENMEMBRANE_PROJECT_ID", "daemon-project");
+    vi.stubEnv("OPENMEMBRANE_STORAGE_BACKEND", "sqlite");
+    const first = client(alpha);
+    const second = client(beta);
+    expect((await first.remember({ content: "Alpha must use isolated integration fixtures.", type: "testing_rule", confidence: "high" })).projectId).toBe("alpha");
+    expect(await second.searchMemory({ query: "Alpha" })).toEqual([]);
+    expect((await second.remember({ content: "Beta must deploy using its separate release pipeline.", type: "deployment_rule", confidence: "high" })).projectId).toBe("beta");
+    expect(await first.searchMemory({ query: "Beta" })).toEqual([]);
+    expect((await stat(join(alpha, ".openmembrane", "memories"))).isDirectory()).toBe(true);
+    await expect(stat(join(root, "daemon-storage"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    const clientEnv = {
+      OPENMEMBRANE_HOME: "custom-storage", OPENMEMBRANE_PROJECT_ID: "caller-project", OPENMEMBRANE_STORAGE_BACKEND: "sqlite",
+    };
+    const forwarded = client(alpha, clientEnv);
+    const result = await forwarded.remember({ content: "Caller storage must be independent of the daemon.", type: "testing_rule", confidence: "high" });
+    expect(result.projectId).toBe("caller-project");
+    expect(await stat(join(alpha, "custom-storage", "openmembrane.db"))).toBeDefined();
+    const resolved = resolveProjectRef({
+      projectRoot: alpha, storageDir: join(alpha, clientEnv.OPENMEMBRANE_HOME), projectId: clientEnv.OPENMEMBRANE_PROJECT_ID,
+    });
+    expect(resolved).toEqual({ projectRoot: alpha, storageDir: join(alpha, "custom-storage"), projectId: result.projectId });
+    for (const [key, value] of Object.entries(clientEnv)) vi.stubEnv(key, value);
+    const legacyMcp = await createOpenMembraneContext({ projectRoot: alpha });
+    try {
+      expect(legacyMcp.defaultProjectId).toBe(result.projectId);
+      expect(legacyMcp.storageDir).toBe(resolved.storageDir);
+    } finally {
+      await legacyMcp.close();
+    }
+    const explicit = await forwarded.remember({
+      projectId: "explicit", storageDir: join(beta, "explicit-storage"), storageBackend: "json",
+      content: "Explicit request fields override forwarded client settings.", type: "testing_rule", confidence: "high",
+    });
+    expect(explicit.projectId).toBe("explicit");
+    expect((await stat(join(beta, "explicit-storage", "memories"))).isDirectory()).toBe(true);
+    expect(await first.searchMemory({ query: "Caller" })).toEqual([]);
+  });
+
+  it("binds Windows-compatible TCP only on loopback and uses an ephemeral port", async () => {
+    const { daemon, client, paths } = await setup(undefined, "tcp");
+    expect(daemon.endpoint).toMatchObject({ transport: "tcp", host: "127.0.0.1", port: expect.any(Number) });
+    expect(JSON.parse(await readFile(resolveDaemonPaths(paths).endpointPath, "utf8"))).toEqual(daemon.endpoint);
+    expect(await client().health()).toEqual({});
+    if (daemon.endpoint.transport !== "tcp") throw new Error("Expected TCP");
+    expect(daemon.endpoint.port).toBeGreaterThan(0);
+    const bad = { ...daemon.endpoint, host: "0.0.0.0" };
+    expect(() => new OpenMembraneClient({ endpoint: bad as typeof daemon.endpoint })).toThrow();
+  });
+
+  it("serializes concurrent writers sharing JSON indexes without losing memories", async () => {
+    const { client } = await setup();
+    const api = client();
+    const contents = [
+      "All API routes must validate request payloads with Zod schemas.",
+      "Frontend components must use CSS modules for isolated styling.",
+      "Database schema changes must include reversible SQL migration scripts.",
+      "Release artifacts must be signed before production deployments.",
+    ];
+    const results = await Promise.all(contents.map((content) => api.remember({
+      content, type: "coding_rule", confidence: "high",
+    })));
+    expect(results.map((result) => result.savedCount)).toEqual([1, 1, 1, 1]);
+    expect((await api.searchMemory()).map((memory) => memory.content).sort()).toEqual([...contents].sort());
+  });
+
+  it("creates owner-only token/run files and logs no tokens or request content", async () => {
+    const { token, paths, root, client, daemon } = await setup();
+    const resolved = resolveDaemonPaths(paths);
+    expect(token).toMatch(/^[a-f0-9]{64}$/);
+    if (process.platform !== "win32") {
+      expect((await stat(resolved.runDir)).mode & 0o777).toBe(0o700);
+      expect((await stat(resolved.tokenPath)).mode & 0o777).toBe(0o600);
+      if (daemon.endpoint.transport === "socket") expect((await stat(daemon.endpoint.socketPath)).mode & 0o777).toBe(0o600);
+    } else {
+      const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+        "$acl = Get-Acl -LiteralPath $env:OPENMEMBRANE_TEST_TOKEN; $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; if (@($acl.Access | Where-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid }).Count -ne 0) { exit 1 }; if (-not $acl.AreAccessRulesProtected) { Write-Output 'inherited-private-directory' } else { Write-Output 'protected' }"],
+        { env: { ...process.env, OPENMEMBRANE_TEST_TOKEN: resolved.tokenPath }, windowsHide: true });
+      expect(stdout).toMatch(/protected|inherited-private-directory/);
+    }
+    await client().remember({ content: "This unique request text must never be recorded in daemon logs.", type: "testing_rule", confidence: "high" });
+    await expect(client().updateMemory({ memoryId: "missing" })).rejects.toBeInstanceOf(OpenMembraneClientError);
+    const logs = await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8");
+    expect(logs).toContain("request_failed");
+    expect(logs).not.toContain(token);
+    expect(logs).not.toContain("unique request text");
+    expect(logs).not.toContain(root);
+  });
+
+  it("refuses a live lock, recovers stale locks, and removes discovery files on shutdown", async () => {
+    const { daemon, paths, token } = await setup();
+    await expect(startDaemon({ paths })).rejects.toThrow("already running");
+    expect((await readLock(resolveDaemonPaths(paths).runDir))?.pid).toBe(process.pid);
+    expect((await readFile(resolveDaemonPaths(paths).tokenPath, "utf8")).trim()).toBe(token);
+    await daemon.close();
+    await expect(stat(resolveDaemonPaths(paths).tokenPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(resolveDaemonPaths(paths).endpointPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readLock(resolveDaemonPaths(paths).runDir)).toBeUndefined();
+    await writeFile(join(resolveDaemonPaths(paths).runDir, "daemon.lock"), JSON.stringify({
+      pid: 2147483647, instanceId: randomUUID(), endpoint: daemon.endpoint,
+    }));
+    await writeFile(join(resolveDaemonPaths(paths).runDir, "recovery.lock"), JSON.stringify({
+      pid: 2147483647, instanceId: randomUUID(), endpoint: null,
+    }));
+    const attempts = await Promise.allSettled(Array.from({ length: 4 }, () => startDaemon({ paths })));
+    const winners = attempts.filter((result) => result.status === "fulfilled");
+    daemons.push(...winners.map((result) => result.value));
+    expect(winners).toHaveLength(1);
+    expect((await readLock(resolveDaemonPaths(paths).runDir))?.pid).toBe(process.pid);
+    expect((await readFile(resolveDaemonPaths(paths).tokenPath, "utf8")).trim()).not.toBe(token);
+  });
+});
