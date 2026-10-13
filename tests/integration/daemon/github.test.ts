@@ -73,7 +73,7 @@ async function setup() {
   return { projectRoot, client, runner, repository, daemon };
 }
 
-describe("GitHub Team through the daemon", () => {
+describe("GitHub Team through the daemon", { timeout: process.platform === "win32" ? 15_000 : 5000 }, () => {
   it("configures, reports status, and publishes with gh in the caller's project directory", async () => {
     const { client, runner, projectRoot, repository } = await setup();
     expect(await client.configureGitHubTeamMode({ repository })).toMatchObject({ kind: "configured" });

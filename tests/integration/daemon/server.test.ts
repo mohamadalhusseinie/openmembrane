@@ -73,7 +73,7 @@ async function seed(projectRoot: string) {
   }
 }
 
-describe("daemon HTTP protocol", () => {
+describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_000 : 5000 }, () => {
   it("serves every project endpoint with schema-valid results", async () => {
     const { alpha, client } = await setup();
     await seed(alpha);
