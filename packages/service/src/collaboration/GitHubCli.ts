@@ -148,11 +148,14 @@ export class GitHubCli {
   }
 }
 
-class ExecFileCommandRunner implements CommandRunner {
+export class ExecFileCommandRunner implements CommandRunner {
+  constructor(private readonly environment?: () => NodeJS.ProcessEnv) {}
+
   async run(command: Command): Promise<CommandResult> {
     try {
       const { stdout, stderr } = await execFileAsync(command.executable, [...command.args], {
         ...(command.cwd === undefined ? {} : { cwd: command.cwd }),
+        ...(this.environment === undefined ? {} : { env: this.environment() }),
         encoding: "utf8",
         shell: false,
         windowsHide: true,

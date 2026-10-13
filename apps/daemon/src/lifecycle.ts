@@ -9,6 +9,7 @@ import { daemonOwnsLock, processAlive, readLock } from "./lock";
 import { startDaemon } from "./server";
 import { createLogger } from "./logging";
 import { DaemonLifecycleError } from "./errors";
+import { daemonEnvironment, isGitHubCredentialVariable } from "./environment";
 
 async function running(paths: DaemonPathOptions = {}): Promise<boolean> {
   let lock;
@@ -33,6 +34,9 @@ async function running(paths: DaemonPathOptions = {}): Promise<boolean> {
 
 export async function runDaemonCommand(command: "serve" | "start" | "stop" | "status"): Promise<void> {
   if (command === "serve") {
+    for (const name of Object.keys(process.env)) {
+      if (isGitHubCredentialVariable(name)) delete process.env[name];
+    }
     const daemon = await startDaemon();
     const shutdown = (): void => { void daemon.close(); };
     process.once("SIGINT", shutdown);
@@ -82,6 +86,7 @@ export async function runDaemonCommand(command: "serve" | "start" | "stop" | "st
   }
   const child = spawn(process.execPath, [...process.execArgv, process.argv[1]!, "serve"], {
     detached: true, stdio: "ignore", windowsHide: true,
+    env: daemonEnvironment(),
   });
   await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
   child.unref();

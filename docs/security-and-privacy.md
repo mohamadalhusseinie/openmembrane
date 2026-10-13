@@ -50,6 +50,16 @@ See [Daemon Protocol](daemon-protocol.md) for lifecycle and discovery.
 The daemon does not read, store, or forward GitHub tokens. GitHub Team uses
 the same user's `gh` CLI authentication and runs commands in the caller's
 project directory.
+Detached startup excludes GitHub credential environment variables, and
+foreground `serve` removes them before initializing the daemon. The daemon's
+GitHub subprocess runner also filters them on every `gh`/`git` invocation,
+including variables added after startup. This covers `GH_TOKEN`,
+`GITHUB_TOKEN`, their enterprise variants, and other `GH_`/`GITHUB_`
+variables ending in `TOKEN`, `PAT`, `PASSWORD`, or `SECRET`, case-insensitively.
+Non-secret configuration such as `PATH`, `HOME`, `GH_HOST`, and `GH_CONFIG_DIR`
+is retained. Daemon GitHub Team authentication therefore requires the user's
+stored `gh` login rather than a shell-provided token. Other in-process
+surfaces retain their existing environment behavior.
 
 Rule-based filters should detect:
 

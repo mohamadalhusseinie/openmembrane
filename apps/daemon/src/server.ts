@@ -3,7 +3,7 @@ import { unlink } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, RequestListener, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createOpenMembraneService } from "@openmembrane/service";
+import { createOpenMembraneService, ExecFileCommandRunner } from "@openmembrane/service";
 import type { CreateServiceOptions } from "@openmembrane/service";
 import { resolveDaemonPaths } from "@openmembrane/protocol";
 import type { DaemonEndpoint, DaemonPathOptions } from "@openmembrane/protocol";
@@ -15,6 +15,7 @@ import { createDaemonRouter, safeError } from "./routes";
 import type { RouteResponse } from "../../review-ui/src/router";
 import { DaemonLifecycleError } from "./errors";
 import { z } from "zod";
+import { daemonEnvironment } from "./environment";
 
 export interface DaemonOptions {
   paths?: DaemonPathOptions;
@@ -84,12 +85,18 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
   await privateDirectory(paths.runDir);
   const logger = await createLogger(options.paths?.homeDir);
   const lock = await acquireLock(paths.runDir);
-  const service = createOpenMembraneService({ deferExtractionInitialization: true, ...options.serviceOptions });
+  const service = createOpenMembraneService({
+    deferExtractionInitialization: true,
+    ...options.serviceOptions,
+    githubRunner: options.serviceOptions?.githubRunner ?? new ExecFileCommandRunner(() => daemonEnvironment()),
+  });
   const token = randomBytes(32).toString("hex");
   const router = createDaemonRouter(service, logger);
   const inFlight = new Set<Promise<void>>();
   let closing: Promise<void> | undefined;
   let listenerFailure: DaemonLifecycleError | undefined;
+  let startupComplete = false;
+  let rejectListen: ((error: Error) => void) | undefined;
   let resolveClosed: () => void = () => undefined;
   let rejectClosed: (error: unknown) => void = () => undefined;
   const closed = new Promise<void>((resolve, reject) => { resolveClosed = resolve; rejectClosed = reject; });
@@ -106,8 +113,10 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (closing && !(req.method === "GET" && url.pathname === "/v1/daemon/identity")) {
-      send(res, await safeError(logger, 503, "DAEMON_STOPPING", "The daemon is stopping."));
+    if ((!startupComplete || closing) && !(req.method === "GET" && url.pathname === "/v1/daemon/identity")) {
+      send(res, await safeError(logger, 503,
+        closing ? "DAEMON_STOPPING" : "DAEMON_STARTING",
+        closing ? "The daemon is stopping." : "The daemon is starting."));
       return;
     }
     if (!(req.method === "GET" && url.pathname === "/v1/health") && !authenticated(req)) {
@@ -181,6 +190,16 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     }).finally(() => { inFlight.delete(work); });
     inFlight.add(work);
   });
+  server.on("error", (error: Error) => {
+    listenerFailure ??= new DaemonLifecycleError("DAEMON_LISTENER_ERROR", "The daemon listener failed. See the local daemon log.");
+    listenerFailure.cause = error;
+    rejectListen?.(listenerFailure);
+    if (startupComplete) void close();
+  });
+
+  function checkListener(): void {
+    if (listenerFailure) throw listenerFailure;
+  }
 
   async function remove(path: string): Promise<void> {
     await unlink(path).catch((error: unknown) => { if (!isMissing(error)) throw error; });
@@ -234,37 +253,39 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     await remove(paths.tokenPath);
     if (transport === "socket") await remove(paths.socketPath);
     await writePrivateFile(paths.tokenPath, token);
+    checkListener();
     await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      const ready = (): void => { server.off("error", reject); resolve(); };
+      rejectListen = reject;
+      const ready = (): void => { rejectListen = undefined; resolve(); };
       if (transport === "socket") server.listen(paths.socketPath, ready);
       else server.listen(0, "127.0.0.1", ready);
-    });
+    }).finally(() => { rejectListen = undefined; });
+    checkListener();
     const endpoint: DaemonEndpoint = transport === "socket"
       ? { transport: "socket", socketPath: paths.socketPath }
       : { transport: "tcp", host: "127.0.0.1", port: (server.address() as AddressInfo).port };
     if (transport === "socket") {
       const { chmod } = await import("node:fs/promises");
       await chmod(paths.socketPath, 0o600);
+      checkListener();
     }
     const endpointDraft = `${paths.endpointPath}.${lock.record.instanceId}`;
     await writePrivateFile(endpointDraft, JSON.stringify(endpoint));
     try {
+      checkListener();
       await replacePrivateFile(endpointDraft, paths.endpointPath);
     } finally {
       await remove(endpointDraft);
     }
+    checkListener();
     await lock.publish(endpoint);
+    checkListener();
     await logger.write("started");
-    server.on("error", (error: Error) => {
-      listenerFailure ??= new DaemonLifecycleError("DAEMON_LISTENER_ERROR", "The daemon listener failed. See the local daemon log.");
-      listenerFailure.cause = error;
-      void close();
-    });
+    checkListener();
+    startupComplete = true;
     return { endpoint, closed, close };
   } catch (error) {
-    if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
-    await cleanup();
+    await close();
     throw error;
   }
 }

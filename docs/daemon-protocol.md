@@ -71,6 +71,12 @@ Unexpected listener errors record `DAEMON_LISTENER_ERROR` with a diagnostic
 ID, drain work and clean up discovery, then fail the foreground lifecycle
 rather than reporting a successful shutdown. Raw listener error details
 are not written to the log.
+The listener-error handler is installed before listening and remains active
+through discovery publication. Failures before readiness or during startup
+publication reject startup only after cleanup; they do not leave an
+uncaught listener error or stale discovery files. Project requests during
+publication receive `DAEMON_STARTING` instead of starting work before the
+daemon is ready.
 
 The protocol's `endpoints` map is the source of truth for HTTP methods,
 paths, request/response Zod schemas, and project scope. `EndpointRequest`

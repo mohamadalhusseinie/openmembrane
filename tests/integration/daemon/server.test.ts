@@ -12,8 +12,10 @@ import type { ClientRequest } from "@openmembrane/client";
 import { endpoints, errorResponseSchema, resolveDaemonPaths } from "@openmembrane/protocol";
 import type { EndpointName, EndpointResponse } from "@openmembrane/protocol";
 import { createOpenMembraneService, resolveProjectRef } from "@openmembrane/service";
+import * as serviceModule from "@openmembrane/service";
 import type { CommandRunner } from "@openmembrane/service";
 import { startDaemon } from "../../../apps/daemon/src/server";
+import * as privateFiles from "../../../apps/daemon/src/privateFiles";
 import type { RunningDaemon } from "../../../apps/daemon/src/server";
 import { readLock } from "../../../apps/daemon/src/lock";
 import { createOpenMembraneContext } from "../../../apps/mcp-server/src/context";
@@ -27,6 +29,7 @@ afterEach(async () => {
   await Promise.all(daemons.splice(0).map((daemon) => daemon.close()));
   await Promise.all(directories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 async function setup(runner?: CommandRunner, transport?: "socket" | "tcp") {
@@ -230,6 +233,23 @@ describe("daemon HTTP protocol", () => {
       .toEqual(["caller-root"]);
   });
 
+  it("supplies a credential-free environment to its default GitHub command runner", async () => {
+    const factory = vi.spyOn(serviceModule, "createOpenMembraneService");
+    await setup();
+    const runner = factory.mock.calls[0]?.[0]?.githubRunner;
+    expect(runner).toBeDefined();
+    if (runner === undefined) throw new Error("The daemon must configure its GitHub command runner.");
+    vi.stubEnv("GH_TOKEN", "test-token");
+    vi.stubEnv("GITHUB_ENTERPRISE_TOKEN", "test-enterprise-token");
+    vi.stubEnv("GH_CONFIG_DIR", "test-config");
+    const result = await runner.run({
+      executable: process.execPath,
+      args: ["-e", "console.log(JSON.stringify({tokenPresent:!!process.env.GH_TOKEN,enterprisePresent:!!process.env.GITHUB_ENTERPRISE_TOKEN,config:process.env.GH_CONFIG_DIR}))"],
+    });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ tokenPresent: false, enterprisePresent: false, config: "test-config" });
+  });
+
   it("binds Windows-compatible TCP only on loopback and uses an ephemeral port", async () => {
     const { daemon, client, paths } = await setup(undefined, "tcp");
     expect(daemon.endpoint).toMatchObject({ transport: "tcp", host: "127.0.0.1", port: expect.any(Number) });
@@ -346,6 +366,52 @@ describe("daemon HTTP protocol", () => {
     });
     expect(JSON.stringify(logs)).not.toContain("Sensitive listener failure detail");
   });
+
+  it.each(["before listening", "after ready", "during publication"])(
+    "cleans up listener errors %s during startup and allows a clean restart",
+    async (phase) => {
+      const { daemon: initial, paths, root } = await setup();
+      await initial.close();
+      let listener: Server | undefined;
+      const failure = new Error("Sensitive startup listener failure");
+      if (phase === "during publication") {
+        const replace = privateFiles.replacePrivateFile;
+        vi.spyOn(privateFiles, "replacePrivateFile").mockImplementationOnce(async (source, destination) => {
+          listener!.emit("error", failure);
+          await replace(source, destination);
+        });
+      }
+      await expect(startDaemon({
+        paths,
+        serverFactory(handler) {
+          const server = createServer(handler);
+          listener = server;
+          if (phase === "before listening") {
+            vi.spyOn(server, "listen").mockImplementation(() => {
+              queueMicrotask(() => server.emit("error", failure));
+              return server;
+            });
+          } else if (phase === "after ready") {
+            server.once("listening", () => { queueMicrotask(() => server.emit("error", failure)); });
+          }
+          return server;
+        },
+      })).rejects.toMatchObject({ code: "DAEMON_LISTENER_ERROR", cause: failure });
+      expect(listener!.listening).toBe(false);
+      const resolved = resolveDaemonPaths(paths);
+      expect(await readLock(resolved.runDir)).toBeUndefined();
+      for (const path of [resolved.tokenPath, resolved.endpointPath,
+        ...(process.platform === "win32" ? [] : [resolved.socketPath])]) {
+        await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      const log = await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8");
+      expect(log).toContain('"event":"listener_failed"');
+      expect(log).toContain('"code":"DAEMON_LISTENER_ERROR"');
+      expect(log).not.toContain(failure.message);
+      const replacement = await startDaemon({ paths });
+      daemons.push(replacement);
+    }, 15_000,
+  );
 
   it("recovers a stale lock whose PID belongs to a live unrelated process", async () => {
     const { daemon, paths } = await setup();

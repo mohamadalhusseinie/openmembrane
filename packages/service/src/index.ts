@@ -11,5 +11,5 @@ export type {
   RejectMemoryCandidateInput, RememberInput, ReviewStaleMemoriesInput,
   SearchMemoryInput, SupersedeMemoryInput, UpdateMemoryInput,
 } from "./operations";
-export { GitHubCli } from "./collaboration/GitHubCli";
+export { ExecFileCommandRunner, GitHubCli } from "./collaboration/GitHubCli";
 export type { CommandRunner } from "./collaboration/GitHubCli";
