@@ -45,5 +45,13 @@ export async function readProcessIdentity(pid: number): Promise<string | undefin
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new DaemonLifecycleError("DAEMON_PROCESS_IDENTITY", "Invalid process identity request.");
   if (pid !== process.pid) return lookup(pid);
   currentIdentity ??= lookup(pid);
-  return currentIdentity;
+  const pending = currentIdentity;
+  try {
+    const identity = await pending;
+    if (identity === undefined && currentIdentity === pending) currentIdentity = undefined;
+    return identity;
+  } catch (error) {
+    if (currentIdentity === pending) currentIdentity = undefined;
+    throw error;
+  }
 }
