@@ -11,3 +11,5 @@ Daemon startup and GitHub subprocesses exclude inherited GitHub credential varia
 Release the daemon lock and close initialized resources when service or server construction fails, so retries in a still-running host are not blocked by abandoned ownership.
 
 Use a fixed timezone for POSIX process identity and normalize project roots before deriving default IDs, preventing timezone-dependent lock takeover and inconsistent memory visibility across dot-segment path spellings.
+
+Normalize storage dot segments before canonicalizing daemon queue keys, keeping symlink-parent path spellings serialized with writes to the same service store.

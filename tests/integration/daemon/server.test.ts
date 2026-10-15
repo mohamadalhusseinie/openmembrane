@@ -324,6 +324,36 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
       .toEqual([...contents].sort());
   });
 
+  it("normalizes symlink-parent storage paths before queueing writes to the service's store", async () => {
+    const { client, root } = await setup();
+    const physical = join(root, "physical");
+    const leaf = join(physical, "leaf");
+    const alias = join(root, "alias");
+    const storage = join(root, "store");
+    await mkdir(leaf, { recursive: true });
+    await symlink(leaf, alias, process.platform === "win32" ? "junction" : "dir");
+    const separator = process.platform === "win32" ? "\\" : "/";
+    const aliasStorage = `${alias}${separator}..${separator}store`;
+    const canonicalize = vi.spyOn(serviceModule, "canonicalStoragePath");
+    const api = client();
+    const contents = [
+      "All API routes must validate request payloads with Zod schemas.",
+      "Frontend components must use CSS modules for isolated styling.",
+      "Database schema changes must include reversible SQL migration scripts.",
+      "Release artifacts must be signed before production deployments.",
+    ];
+    const results = await Promise.all(contents.map((content, index) => api.remember({
+      content, type: "coding_rule", confidence: "high", storageDir: index % 2 ? aliasStorage : storage,
+    })));
+    expect(results.map((result) => result.savedCount)).toEqual([1, 1, 1, 1]);
+    expect(canonicalize.mock.calls.every(([path]) => path === storage)).toBe(true);
+    expect((await api.searchMemory({ storageDir: storage })).map((memory) => memory.content).sort())
+      .toEqual([...contents].sort());
+    expect((await api.searchMemory({ storageDir: aliasStorage })).map((memory) => memory.content).sort())
+      .toEqual([...contents].sort());
+    await expect(stat(join(physical, "store"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it.skipIf(process.platform !== "darwin")("serializes casing aliases on case-insensitive macOS filesystems", async (context) => {
     const { client, root } = await setup();
     const storage = join(root, "MixedCaseStorage");

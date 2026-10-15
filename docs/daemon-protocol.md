@@ -27,6 +27,9 @@ to the daemon is separate follow-up work.
 Project requests normalize their absolute root before validating the
 directory or deriving the default ID from its basename. Dot and parent
 segments therefore do not split memory visibility or bypass root-ID validation.
+Storage queue keys also resolve dot segments before filesystem canonicalization,
+matching the service's storage resolution. A symlink followed by `..` cannot
+give concurrent writers to the same store different serialization queues.
 Project requests default their ID to the project directory's basename,
 never to the daemon's environment. Filesystem-root projects (`/` or a
 Windows drive root) require an explicit non-empty `projectId`; omission

@@ -54,7 +54,7 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
   router.get(endpoints.health.path, () => ({ status: 200, body: {} }));
 
   async function withStore<T>(ref: ProjectRef, operation: () => Promise<T>): Promise<T> {
-    const path = await canonicalStoragePath(ref.storageDir ?? join(ref.projectRoot, ".openmembrane"));
+    const path = await canonicalStoragePath(resolve(ref.projectRoot, ref.storageDir ?? ".openmembrane"));
     const key = process.platform === "win32" ? path.toLowerCase() : path;
     const previous = queues.get(key) ?? Promise.resolve();
     let release: () => void = () => undefined;
