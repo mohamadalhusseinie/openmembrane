@@ -342,6 +342,43 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     }
   });
 
+  it("closes the service and releases its live-process lock when the server factory throws", async () => {
+    const { daemon: initial, paths } = await setup();
+    await initial.close();
+    const service = createOpenMembraneService();
+    const closeService = vi.spyOn(service, "close");
+    const factory = vi.spyOn(serviceModule, "createOpenMembraneService").mockReturnValueOnce(service);
+    const failure = new Error("Sensitive server factory failure");
+    await expect(startDaemon({
+      paths,
+      serverFactory() { throw failure; },
+    })).rejects.toBe(failure);
+    expect(factory).toHaveBeenCalledOnce();
+    expect(closeService).toHaveBeenCalledOnce();
+    const resolved = resolveDaemonPaths(paths);
+    expect(await readLock(resolved.runDir)).toBeUndefined();
+    for (const path of [resolved.tokenPath, resolved.endpointPath,
+      ...(process.platform === "win32" ? [] : [resolved.socketPath])]) {
+      await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+    const replacement = await startDaemon({ paths });
+    daemons.push(replacement);
+    expect((await sendRequest({
+      endpoint: replacement.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000,
+    })).status).toBe(200);
+  });
+
+  it("releases its live-process lock when service initialization throws", async () => {
+    const { daemon: initial, paths } = await setup();
+    await initial.close();
+    const failure = new Error("Sensitive service initialization failure");
+    vi.spyOn(serviceModule, "createOpenMembraneService").mockImplementationOnce(() => { throw failure; });
+    await expect(startDaemon({ paths })).rejects.toBe(failure);
+    expect(await readLock(resolveDaemonPaths(paths).runDir)).toBeUndefined();
+    const replacement = await startDaemon({ paths });
+    daemons.push(replacement);
+  });
+
   it("rejects closed after listener errors, logs a safe diagnostic, and cleans up discovery", async () => {
     const { daemon: initial, paths, root } = await setup();
     await initial.close();

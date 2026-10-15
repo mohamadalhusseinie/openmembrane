@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, RequestListener, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createOpenMembraneService, ExecFileCommandRunner } from "@openmembrane/service";
-import type { CreateServiceOptions } from "@openmembrane/service";
+import type { CreateServiceOptions, OpenMembraneService } from "@openmembrane/service";
 import { resolveDaemonPaths } from "@openmembrane/protocol";
 import type { DaemonEndpoint, DaemonPathOptions } from "@openmembrane/protocol";
 import { createId } from "@openmembrane/shared";
@@ -85,13 +85,10 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
   await privateDirectory(paths.runDir);
   const logger = await createLogger(options.paths?.homeDir);
   const lock = await acquireLock(paths.runDir);
-  const service = createOpenMembraneService({
-    deferExtractionInitialization: true,
-    ...options.serviceOptions,
-    githubRunner: options.serviceOptions?.githubRunner ?? new ExecFileCommandRunner(() => daemonEnvironment()),
-  });
-  const token = randomBytes(32).toString("hex");
-  const router = createDaemonRouter(service, logger);
+  let service: OpenMembraneService | undefined;
+  let server: Server | undefined;
+  let token: string;
+  let router: ReturnType<typeof createDaemonRouter>;
   const inFlight = new Set<Promise<void>>();
   let closing: Promise<void> | undefined;
   let listenerFailure: DaemonLifecycleError | undefined;
@@ -175,9 +172,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     await response.afterResponse?.();
   }
 
-  const serverFactory = options.serverFactory ?? ((listener: RequestListener) =>
-    createServer({ requestTimeout: 30_000, headersTimeout: 10_000 }, listener));
-  const server = serverFactory((req, res) => {
+  const requestListener: RequestListener = (req, res) => {
     const work = handle(req, res).catch(async () => {
       try {
         send(res, await safeError(logger, 500, "UNKNOWN_ERROR", "The daemon could not handle the request."));
@@ -189,13 +184,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
       }
     }).finally(() => { inFlight.delete(work); });
     inFlight.add(work);
-  });
-  server.on("error", (error: Error) => {
-    listenerFailure ??= new DaemonLifecycleError("DAEMON_LISTENER_ERROR", "The daemon listener failed. See the local daemon log.");
-    listenerFailure.cause = error;
-    rejectListen?.(listenerFailure);
-    if (startupComplete) void close();
-  });
+  };
 
   function checkListener(): void {
     if (listenerFailure) throw listenerFailure;
@@ -209,7 +198,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     const failures: unknown[] = [];
     const ownsDiscovery = await lock.protectCleanup();
     for (const operation of [
-      () => service.close(),
+      () => service?.close(),
       ...(ownsDiscovery ? [
         () => remove(paths.endpointPath),
         () => remove(paths.tokenPath),
@@ -227,10 +216,11 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
       closing = (async () => {
         try {
           await lock.protectCleanup();
-          if (server.listening) {
+          const listener = server;
+          if (listener?.listening) {
             await new Promise<void>((resolve, reject) => {
-              server.close((error) => error ? reject(error) : resolve());
-              if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
+              listener.close((error) => error ? reject(error) : resolve());
+              if (typeof listener.closeIdleConnections === "function") listener.closeIdleConnections();
             });
           }
           await Promise.all(inFlight);
@@ -249,6 +239,23 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
   }
 
   try {
+    service = createOpenMembraneService({
+      deferExtractionInitialization: true,
+      ...options.serviceOptions,
+      githubRunner: options.serviceOptions?.githubRunner ?? new ExecFileCommandRunner(() => daemonEnvironment()),
+    });
+    token = randomBytes(32).toString("hex");
+    router = createDaemonRouter(service, logger);
+    const serverFactory = options.serverFactory ?? ((listener: RequestListener) =>
+      createServer({ requestTimeout: 30_000, headersTimeout: 10_000 }, listener));
+    const listener = serverFactory(requestListener);
+    server = listener;
+    listener.on("error", (error: Error) => {
+      listenerFailure ??= new DaemonLifecycleError("DAEMON_LISTENER_ERROR", "The daemon listener failed. See the local daemon log.");
+      listenerFailure.cause = error;
+      rejectListen?.(listenerFailure);
+      if (startupComplete) void close();
+    });
     await remove(paths.endpointPath);
     await remove(paths.tokenPath);
     if (transport === "socket") await remove(paths.socketPath);
@@ -257,13 +264,13 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     await new Promise<void>((resolve, reject) => {
       rejectListen = reject;
       const ready = (): void => { rejectListen = undefined; resolve(); };
-      if (transport === "socket") server.listen(paths.socketPath, ready);
-      else server.listen(0, "127.0.0.1", ready);
+      if (transport === "socket") listener.listen(paths.socketPath, ready);
+      else listener.listen(0, "127.0.0.1", ready);
     }).finally(() => { rejectListen = undefined; });
     checkListener();
     const endpoint: DaemonEndpoint = transport === "socket"
       ? { transport: "socket", socketPath: paths.socketPath }
-      : { transport: "tcp", host: "127.0.0.1", port: (server.address() as AddressInfo).port };
+      : { transport: "tcp", host: "127.0.0.1", port: (listener.address() as AddressInfo).port };
     if (transport === "socket") {
       const { chmod } = await import("node:fs/promises");
       await chmod(paths.socketPath, 0o600);

@@ -77,6 +77,9 @@ publication reject startup only after cleanup; they do not leave an
 uncaught listener error or stale discovery files. Project requests during
 publication receive `DAEMON_STARTING` instead of starting work before the
 daemon is ready.
+Initialization after lock acquisition is also covered by cleanup: a service
+or server-factory exception closes any initialized service and releases the
+lock, allowing another startup in the same still-running host process.
 
 The protocol's `endpoints` map is the source of truth for HTTP methods,
 paths, request/response Zod schemas, and project scope. `EndpointRequest`

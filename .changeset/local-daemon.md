@@ -7,3 +7,5 @@ Add an authenticated per-user local daemon with Unix sockets or Windows loopback
 MCP configurations that previously passed `serve` must switch to `mcp` or omit arguments. Canonical storage paths protect shared indexes across filesystem aliases, and detached startup recovers malformed stale locks.
 
 Daemon startup and GitHub subprocesses exclude inherited GitHub credential variables, using stored `gh` authentication instead. Listener failures throughout startup publication produce safe diagnostics and clean up discovery before failing.
+
+Release the daemon lock and close initialized resources when service or server construction fails, so retries in a still-running host are not blocked by abandoned ownership.
