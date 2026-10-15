@@ -24,6 +24,9 @@ daemon clients in this release. Do not use those in-process surfaces and
 the daemon to write the same project store concurrently; switching them
 to the daemon is separate follow-up work.
 
+Project requests normalize their absolute root before validating the
+directory or deriving the default ID from its basename. Dot and parent
+segments therefore do not split memory visibility or bypass root-ID validation.
 Project requests default their ID to the project directory's basename,
 never to the daemon's environment. Filesystem-root projects (`/` or a
 Windows drive root) require an explicit non-empty `projectId`; omission
@@ -34,7 +37,9 @@ and endpoint. Exclusive creation prevents concurrent instances, live
 locks refuse another `serve`, and stale locks are reclaimed at startup.
 Process-start identity distinguishes an unrelated process reusing an old
 PID from the actual owner, even if the live daemon is slow or its listener
-is closed for cleanup. Recovery guards use the same identity. Legacy
+is closed for cleanup. POSIX `ps` lookups use the C locale and UTC timezone,
+so callers with different timezone settings derive the same identity.
+Recovery guards use the same identity. Legacy
 published locks without process-start identity use authenticated
 `/v1/daemon/identity` verification; a timeout is indeterminate and fails
 with `DAEMON_OWNERSHIP_UNCERTAIN` without reclaiming the lock.

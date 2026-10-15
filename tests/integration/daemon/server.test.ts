@@ -215,6 +215,28 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     expect(await first.searchMemory({ query: "Caller" })).toEqual([]);
   });
 
+  it("shares default project identity and memory visibility across normalized root spellings", async () => {
+    const { alpha, client } = await setup();
+    const normal = client(alpha);
+    const separator = process.platform === "win32" ? "\\" : "/";
+    const aliases = [`${alpha}${separator}.`, `${alpha}${separator}..${separator}alpha`];
+    const content = "Project path normalization must preserve memory visibility.";
+    for (const alias of aliases) {
+      expect((await client(alias).remember({
+        content, type: "testing_rule", confidence: "high",
+      })).projectId).toBe("alpha");
+      expect((await normal.searchMemory({ query: content })).map((memory) => memory.content)).toContain(content);
+      expect((await client(alias).searchMemory({ query: content })).map((memory) => memory.content)).toContain(content);
+    }
+    const explicit = await client(aliases[0]!).remember({
+      projectId: "explicit-alias", content: "Explicit project identities override normalized defaults.",
+      type: "testing_rule", confidence: "high",
+    });
+    expect(explicit.projectId).toBe("explicit-alias");
+    expect((await normal.searchMemory({ query: "Explicit project identities" }))
+      .map((memory) => memory.projectId)).not.toContain("explicit-alias");
+  });
+
   it("requires an explicit ID for filesystem-root projects without falling back to daemon settings", async () => {
     const { root, client } = await setup();
     const api = client(parse(root).root);
@@ -227,8 +249,12 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     await expect(api.remember(input)).rejects.toMatchObject({ code: "VALIDATION_ERROR", origin: "daemon" });
     vi.stubEnv("OPENMEMBRANE_PROJECT_ID", "daemon-project");
     await expect(api.remember(input)).rejects.toMatchObject({ code: "VALIDATION_ERROR", origin: "daemon" });
+    const separator = process.platform === "win32" ? "\\" : "/";
+    const rootAlias = `${parse(root).root}nonexistent-root-alias${separator}..`;
+    await expect(client(rootAlias).remember(input)).rejects.toMatchObject({ code: "VALIDATION_ERROR", origin: "daemon" });
     await expect(stat(storageDir)).rejects.toMatchObject({ code: "ENOENT" });
     expect((await api.remember({ ...input, projectId: "caller-root" })).projectId).toBe("caller-root");
+    expect((await client(rootAlias).remember({ ...input, projectId: "caller-root" })).projectId).toBe("caller-root");
     expect((await api.searchMemory({ storageDir, projectId: "caller-root" })).map((memory) => memory.projectId))
       .toEqual(["caller-root"]);
   });

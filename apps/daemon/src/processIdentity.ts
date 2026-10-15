@@ -26,7 +26,7 @@ async function lookup(pid: number): Promise<string | undefined> {
       return `win32:${start}`;
     }
     const { stdout } = await exec("ps", ["-p", String(pid), "-o", "lstart="], {
-      env: { ...process.env, LC_ALL: "C" }, timeout: 5000,
+      env: { ...process.env, LC_ALL: "C", TZ: "UTC" }, timeout: 5000,
     });
     const start = stdout.trim().replace(/\s+/g, " ");
     if (start.length === 0) throw new Error("Invalid process start record.");

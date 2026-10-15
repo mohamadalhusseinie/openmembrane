@@ -9,6 +9,7 @@ afterEach(() => {
   vi.resetAllMocks();
   vi.resetModules();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function linuxProcess(): void {
@@ -42,4 +43,14 @@ it("does not permanently cache an unavailable own-process identity", async () =>
   expect(await readProcessIdentity(process.pid)).toBeUndefined();
   successfulLookup();
   expect(await readProcessIdentity(process.pid)).toBe("linux:test-boot:99");
+});
+
+it.skipIf(process.platform !== "darwin")("keeps uncached macOS process identity stable across caller timezones", async () => {
+  const { readProcessIdentity } = await import("../../../apps/daemon/src/processIdentity");
+  vi.stubEnv("TZ", "Pacific/Honolulu");
+  const first = await readProcessIdentity(process.ppid);
+  vi.stubEnv("TZ", "Asia/Tokyo");
+  const second = await readProcessIdentity(process.ppid);
+  expect(first).toMatch(/^darwin:.+/);
+  expect(second).toBe(first);
 });

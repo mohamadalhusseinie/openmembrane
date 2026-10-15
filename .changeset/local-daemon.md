@@ -9,3 +9,5 @@ MCP configurations that previously passed `serve` must switch to `mcp` or omit a
 Daemon startup and GitHub subprocesses exclude inherited GitHub credential variables, using stored `gh` authentication instead. Listener failures throughout startup publication produce safe diagnostics and clean up discovery before failing.
 
 Release the daemon lock and close initialized resources when service or server construction fails, so retries in a still-running host are not blocked by abandoned ownership.
+
+Use a fixed timezone for POSIX process identity and normalize project roots before deriving default IDs, preventing timezone-dependent lock takeover and inconsistent memory visibility across dot-segment path spellings.

@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { normalizeOpenMembraneError } from "@openmembrane/core";
 import { endpoints } from "@openmembrane/protocol";
 import type { EndpointName, EndpointRequest } from "@openmembrane/protocol";
@@ -84,6 +84,7 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
       const parsed = definition.request.safeParse(raw);
       if (!parsed.success) return safeError(logger, 400, "VALIDATION_ERROR", "The request does not match the daemon protocol.");
       const input = parsed.data;
+      const projectRoot = resolve(input.projectRoot);
       if ("idField" in definition) {
         let routeId: string;
         try {
@@ -96,19 +97,19 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
         }
       }
       try {
-        if (!(await stat(input.projectRoot)).isDirectory()) throw new Error("Not a directory.");
+        if (!(await stat(projectRoot)).isDirectory()) throw new Error("Not a directory.");
       } catch {
         return safeError(logger, 400, "VALIDATION_ERROR", "projectRoot must identify an existing absolute directory.");
       }
       // Supply every routing default explicitly: the daemon's environment is not the caller's.
-      const projectId = input.projectId ?? basename(input.projectRoot);
+      const projectId = input.projectId ?? basename(projectRoot);
       if (projectId.trim().length === 0) {
         return safeError(logger, 400, "VALIDATION_ERROR", "Provide an explicit projectId for a filesystem-root project.");
       }
       const ref: ProjectRef = {
-        projectRoot: input.projectRoot,
+        projectRoot,
         projectId,
-        storageDir: input.storageDir ?? join(input.projectRoot, ".openmembrane"),
+        storageDir: input.storageDir ?? join(projectRoot, ".openmembrane"),
         storageBackend: input.storageBackend ?? "json",
       };
       try {
