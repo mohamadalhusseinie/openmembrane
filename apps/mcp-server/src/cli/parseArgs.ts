@@ -47,6 +47,7 @@ export interface ManagementCommand {
   readonly operation: ManagementOperation;
   readonly input: EndpointRequest<ManagementOperation>;
   readonly output: OutputFormat;
+  readonly timeoutMs?: number;
 }
 
 export type CliCommand = ServeCommand | McpCommand | DaemonCommand | IngestCommand | ContextCommand | HelpCommand | ManagementCommand;
@@ -188,13 +189,18 @@ function parseManagement(args: readonly string[]): ParseResult {
   const operation = operations[key];
   if (!operation) return { ok: false, error: `Unknown command: "${key}". Use --help for available commands.` };
   const options: Record<string, { type: "string" | "boolean" }> = {};
-  for (const flag of ["project", "output", ...(operation.flags ?? [])]) {
+  for (const flag of ["project", "output", "timeout-ms", ...(operation.flags ?? [])]) {
     options[flag] = { type: flag === "preview" || flag === "include-confidential" ? "boolean" : "string" };
   }
   try {
     const { values, positionals } = parseOptions({ args: args.slice(grouped ? 2 : 1), options, allowPositionals: true });
     const output = values.output ?? "text";
     if (typeof output !== "string" || !isOutputFormat(output)) return { ok: false, error: "Invalid output format. Must be one of: text, json, markdown" };
+    const timeoutRaw = values["timeout-ms"];
+    const timeoutMs = typeof timeoutRaw === "string" ? Number(timeoutRaw) : undefined;
+    if (timeoutRaw !== undefined && (timeoutMs === undefined || !Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647)) {
+      return { ok: false, error: "--timeout-ms requires an integer between 1 and 2147483647." };
+    }
     if (positionals.length !== (operation.id ? 1 : 0)) return { ok: false, error: operation.id ? `${key} requires exactly one ID.` : `${key} does not accept positional arguments.` };
     const input: Record<string, unknown> = { projectRoot: process.cwd() };
     if (values.project !== undefined) input.projectId = values.project;
@@ -220,7 +226,7 @@ function parseManagement(args: readonly string[]): ParseResult {
     if (!parsed.success) {
       return { ok: false, error: `Invalid ${key} options: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` };
     }
-    return { ok: true, value: { command: "manage", operation: operation.name, input: parsed.data, output } };
+    return { ok: true, value: { command: "manage", operation: operation.name, input: parsed.data, output, ...(timeoutMs === undefined ? {} : { timeoutMs }) } };
   } catch (error) {
     if (error instanceof TypeError) return { ok: false, error: error.message };
     throw error;
@@ -261,6 +267,7 @@ Context options:
   --output <format>         Output format: text, json, markdown (default: text)
 
 Management options:
+  --timeout-ms <ms>         Request deadline (default: 1800000, or 30 minutes)
   --project <id>            Override the project ID
   --output <format>         text, json, markdown (default: text)
   --limit <number>          candidates list, diagnostics, audit

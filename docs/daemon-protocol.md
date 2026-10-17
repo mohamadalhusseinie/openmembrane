@@ -36,10 +36,13 @@ Caller opt-outs (`OPENMEMBRANE_EXTRACTION_ENABLED=false` or
 for that request, even if the daemon has a remote provider configured.
 Callers cannot enable extraction or forward provider credentials through
 this field; remote provider configuration remains daemon-owned.
-Ingestion uses a 30-minute request deadline instead of the general client's
-30-second default. Use `ingest --timeout-ms <ms>` for longer transcripts or
-slower providers. A timeout does not cancel daemon processing or imply that
-nothing was saved; the CLI warns to inspect context and audit before retrying.
+Ingestion and management commands use a 30-minute request deadline instead
+of the general client's 30-second default. Use `--timeout-ms <ms>` for longer
+transcripts, slower providers, or large GitHub Team batches. The review UI
+uses the same default and accepts `--timeout-ms <ms>` at startup (or
+`timeoutMs` when embedded). A timeout does not cancel daemon processing or
+imply that nothing was saved; CLI and UI errors warn to inspect context and
+audit before retrying a mutation.
 
 | Command | Client operation |
 | --- | --- |

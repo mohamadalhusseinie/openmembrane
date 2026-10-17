@@ -52,7 +52,7 @@ export async function sendRequest(input: HttpRequest): Promise<{ status: number;
       });
     });
     const timer = setTimeout(() => {
-      req.destroy(new OpenMembraneClientError("E_REQUEST_TIMEOUT", "The daemon request timed out."));
+      req.destroy(new OpenMembraneClientError("E_REQUEST_TIMEOUT", "The daemon request timed out. If this was a mutation, it may still be processing; check context and audit before retrying."));
     }, input.timeoutMs);
     req.on("close", () => clearTimeout(timer));
     req.on("error", (cause: Error & { code?: string }) => {

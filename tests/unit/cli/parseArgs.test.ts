@@ -22,6 +22,19 @@ describe("ingest timeout options", () => {
     });
   });
 
+  describe("management timeout options", () => {
+    it("accepts a configurable deadline without forwarding it as operation input", () => {
+      const result = expectOk(parseArgs(argv("candidates", "approve-all", "--timeout-ms", "3600000")));
+      expect(result).toMatchObject({ command: "manage", timeoutMs: 3_600_000 });
+      if (result.command !== "manage") throw new Error("Expected a management command.");
+      expect(result.input).not.toHaveProperty("timeoutMs");
+    });
+
+    it.each(["0", "-1", "1.5", "NaN", "Infinity", "2147483648"])("rejects invalid timeout %s", (value) => {
+      expect(expectError(parseArgs(argv("candidates", "approve-all", "--timeout-ms", value)))).toContain("--timeout-ms");
+    });
+  });
+
   it.each(["0", "-1", "1.5", "NaN", "Infinity", "2147483648"])("rejects invalid timeout %s", (value) => {
     expect(expectError(parseArgs(argv("ingest", "--stdin", "--timeout-ms", value)))).toContain("--timeout-ms");
   });

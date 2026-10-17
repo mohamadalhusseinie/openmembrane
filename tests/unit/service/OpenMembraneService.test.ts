@@ -18,11 +18,29 @@ afterEach(async () => {
   await Promise.all(services.map((service) => service.close()));
   await Promise.all(directories.map((path) => rm(path, { recursive: true, force: true })));
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   services.length = 0;
   directories.length = 0;
 });
 
 describe("OpenMembraneService", () => {
+  it.each(["json", "sqlite"] as const)("keeps review search active-only before limiting on %s", async (storageBackend) => {
+    const root = await tempDir();
+    const service = createOpenMembraneService();
+    services.push(service);
+    const ref = { projectRoot: root, projectId: "search-project", storageBackend };
+    const project = await service.forProject(ref);
+    const state = await service.projectState(ref);
+    const active = entry({ projectId: ref.projectId, id: "active", content: "Search sentinel rule.", updatedAt: "2025-01-01" });
+    const superseded = entry({ projectId: ref.projectId, id: "obsolete", content: "Search sentinel rule.", status: "superseded", updatedAt: "2026-01-01" });
+    await state.memoryStore.save(active);
+    await state.memoryStore.save(superseded);
+    expect((await project.listMemories({ query: "sentinel" })).map(memory => memory.id)).toEqual(["active"]);
+    expect((await project.listMemories({ query: "sentinel", limit: 1 })).map(memory => memory.id)).toEqual(["active"]);
+    vi.spyOn(state.memoryStore, "search").mockResolvedValue([superseded, active]);
+    expect((await project.listMemories({ query: "sentinel", limit: 1 })).map(memory => memory.id)).toEqual(["active"]);
+  });
+
   it("defers invalid extractor configuration for review without masking extraction errors", async () => {
     const root = await tempDir();
     vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "anthropic");

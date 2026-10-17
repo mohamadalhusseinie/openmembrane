@@ -7,6 +7,7 @@ import { createReviewServer } from "../../../apps/review-ui/src/server";
 import { diagnosticsResponseSchema, exportResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
 import { setupSurfaceDaemon } from "./helpers";
 import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
+import { MemoryApprovalService } from "@openmembrane/core";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -15,12 +16,14 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function setup(many = false) {
+async function setup(many = false, timeoutMs?: number) {
   vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "mock");
   vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "false");
   const fixture = await setupSurfaceDaemon({ many });
   cleanup.push(() => fixture.close());
-  const context = await createReviewUiContext({ clientOptions: fixture.clientOptions });
+  const context = await createReviewUiContext({
+    clientOptions: fixture.clientOptions, ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  });
   const server = createReviewServer(context);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -41,6 +44,29 @@ async function setup(many = false) {
 }
 
 describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
+  it("awaits long mutations and reports uncertain completion on a configured timeout", async () => {
+    const approveAll = vi.spyOn(MemoryApprovalService.prototype, "approveAll").mockImplementation(async projectId => {
+      await new Promise(resolve => setTimeout(resolve, 31_000));
+      return { projectId, approved: [], skipped: [] };
+    });
+    const { request } = await setup();
+    const start = performance.now();
+    const completed = await request("/api/candidates/approve-all", "POST");
+    expect(completed.status).toBe(200);
+    expect(performance.now() - start).toBeGreaterThan(30_000);
+    approveAll.mockImplementation(async projectId => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { projectId, approved: [], skipped: [] };
+    });
+    const shortDeadline = await setup(false, 500);
+    const response = await shortDeadline.request("/api/candidates/approve-all", "POST");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      code: "E_REQUEST_TIMEOUT", error: expect.stringContaining("may still be processing; check context and audit before retrying"),
+    });
+    expect(approveAll).toHaveBeenCalledTimes(2);
+  }, 45_000);
+
   it("exercises every data route, memory mutation, export preview, and export write", async () => {
     const { request, projectRoot } = await setup();
     const page = await request("/");

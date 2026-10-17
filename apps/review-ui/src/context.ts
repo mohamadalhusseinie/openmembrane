@@ -15,6 +15,7 @@ export interface ReviewUiOptions {
   open?: boolean;
   home?: string;
   project?: string;
+  timeoutMs?: number;
   clientOptions?: OpenMembraneClientOptions;
 }
 
@@ -26,7 +27,10 @@ export async function createReviewUiContext(options: ReviewUiOptions = {}): Prom
   return {
     projectId: env.OPENMEMBRANE_PROJECT_ID ?? basename(projectRoot),
     storageDir: resolve(projectRoot, env.OPENMEMBRANE_HOME ?? ".openmembrane"),
-    project: new OpenMembraneClient({ ...options.clientOptions, projectRoot, env }),
+    project: new OpenMembraneClient({
+      ...options.clientOptions, projectRoot, env,
+      requestTimeoutMs: options.timeoutMs ?? options.clientOptions?.requestTimeoutMs ?? 30 * 60_000,
+    }),
     close: async () => {},
   };
 }

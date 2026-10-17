@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PrivateTeamRunner, setupSurfaceDaemon } from "./integration/surfaces/helpers";
 import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
 import { OpenMembraneClient } from "@openmembrane/client";
+import { MemoryApprovalService } from "@openmembrane/core";
 
 const fixtures: Awaited<ReturnType<typeof setupSurfaceDaemon>>[] = [];
 afterEach(async () => {
@@ -150,6 +151,26 @@ describe("CLI subprocess and real daemon", { timeout: 90_000 }, () => {
       stdout: "", stderr: expect.stringContaining("Check context and audit before retrying"),
     });
     expect(remoteExtract).toHaveBeenCalledTimes(2);
+  });
+
+  it("awaits long management mutations and warns when an explicit deadline expires", async () => {
+    const approveAll = vi.spyOn(MemoryApprovalService.prototype, "approveAll").mockImplementation(async projectId => {
+      await new Promise(resolve => setTimeout(resolve, 31_000));
+      return { projectId, approved: [], skipped: [] };
+    });
+    const { cli } = await setup();
+    const start = performance.now();
+    const completed = await cli(["candidates", "approve-all", "--output", "json"]);
+    expect(JSON.parse(completed.stdout).approved).toEqual([]);
+    expect(performance.now() - start).toBeGreaterThan(30_000);
+    approveAll.mockImplementation(async projectId => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { projectId, approved: [], skipped: [] };
+    });
+    await expect(cli(["candidates", "approve-all", "--timeout-ms", "500"])).rejects.toMatchObject({
+      stdout: "", stderr: expect.stringContaining("may still be processing; check context and audit before retrying"),
+    });
+    expect(approveAll).toHaveBeenCalledTimes(2);
   });
 
   it("preserves untruncated context and caller project overrides", async () => {

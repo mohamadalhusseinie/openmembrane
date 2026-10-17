@@ -10,6 +10,14 @@ function parseArgs(args: string[]): ReviewUiOptions & { open: boolean } {
       case "--port":
         options.port = parseInt(args[++i] ?? "4800", 10);
         break;
+      case "--timeout-ms": {
+        const value = Number(args[++i]);
+        if (!Number.isInteger(value) || value <= 0 || value > 2_147_483_647) {
+          throw new Error("--timeout-ms requires an integer between 1 and 2147483647.");
+        }
+        options.timeoutMs = value;
+        break;
+      }
       case "--no-open":
         options.open = false;
         break;
@@ -29,6 +37,7 @@ function parseArgs(args: string[]): ReviewUiOptions & { open: boolean } {
 
 Options:
   --port <number>    Port to bind (default: 4800)
+  --timeout-ms <ms>  Daemon request deadline (default: 1800000, or 30 minutes)
   --no-open          Don't auto-open browser
   --home <path>      Override OPENMEMBRANE_HOME
   --project <id>     Override project ID
