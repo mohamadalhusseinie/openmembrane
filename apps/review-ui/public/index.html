@@ -490,6 +490,14 @@ async function mutateMemory(form, supersede) {
     const result = await apiRequest('/api/memories/' + encodeURIComponent(form.dataset.memoryId) + (supersede ? '/supersede' : ''), {
       method: supersede ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
     });
+    if (result.kind === 'retry_deferred') {
+      showToast(`These changes were not saved. Publication retry is deferred until ${formatDate(result.nextAttemptAt)}. Retry saving after that time; your edits remain in this form.`, 'error');
+      return;
+    }
+    if (result.kind === 'rejected') {
+      showToast(`These changes were not saved: ${result.message} Your edits remain in this form.`, 'error');
+      return;
+    }
     showToast(result.kind ? `Team publication: ${result.kind}` : supersede ? 'Memory superseded' : 'Memory updated', 'success');
     tabsLoaded.audit = false; tabsLoaded.export = false;
     await Promise.all([loadMemories(), loadStaleMemories()]);

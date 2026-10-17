@@ -15,6 +15,22 @@ function expectError(result: ParseResult): string {
   return (result as { ok: false; error: string }).error;
 }
 
+describe("ingest timeout options", () => {
+  it("accepts an explicit ingestion deadline", () => {
+    expect(expectOk(parseArgs(argv("ingest", "--stdin", "--timeout-ms", "3600000")))).toMatchObject({
+      command: "ingest", timeoutMs: 3_600_000,
+    });
+  });
+
+  it.each(["0", "-1", "1.5", "NaN", "Infinity", "2147483648"])("rejects invalid timeout %s", (value) => {
+    expect(expectError(parseArgs(argv("ingest", "--stdin", "--timeout-ms", value)))).toContain("--timeout-ms");
+  });
+
+  it("rejects a missing timeout value", () => {
+    expect(expectError(parseArgs(argv("ingest", "--stdin", "--timeout-ms")))).toContain("--timeout-ms");
+  });
+});
+
 describe("parseArgs", () => {
   describe("MCP and daemon lifecycle", () => {
     it("returns mcp when no args", () => {

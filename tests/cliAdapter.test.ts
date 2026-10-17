@@ -127,6 +127,31 @@ describe("CLI subprocess and real daemon", { timeout: 90_000 }, () => {
     expect(remoteExtract).toHaveBeenCalledOnce();
   });
 
+  it("awaits ingestion beyond 30 seconds and warns about uncertain completion on an explicit timeout", async () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "llm");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "unused-fixture-key");
+    const remoteExtract = vi.spyOn(LlmMemoryExtractor.prototype, "extract").mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 31_000));
+      return [];
+    });
+    const fixture = await setupSurfaceDaemon();
+    fixtures.push(fixture);
+    const overrides = { OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" };
+    const start = performance.now();
+    const completed = await fixture.cli(["ingest", "--stdin"], "Long-running extraction fixture.", overrides);
+    expect(JSON.parse(completed.stdout).savedCount).toBe(0);
+    expect(performance.now() - start).toBeGreaterThan(30_000);
+    remoteExtract.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return [];
+    });
+    await expect(fixture.cli(["ingest", "--stdin", "--timeout-ms", "500"], "Explicit timeout fixture.", overrides)).rejects.toMatchObject({
+      stdout: "", stderr: expect.stringContaining("Check context and audit before retrying"),
+    });
+    expect(remoteExtract).toHaveBeenCalledTimes(2);
+  });
+
   it("preserves untruncated context and caller project overrides", async () => {
     const { cli, projectRoot } = await setup({ many: true });
     const result = await cli(["context", "--output", "json"]);

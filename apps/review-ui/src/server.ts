@@ -33,6 +33,12 @@ function parseBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+export function isAllowedReviewOrigin(host: string | undefined, origin: string | undefined, port: number | undefined): boolean {
+  const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`, ...(port === 80 ? ["127.0.0.1", "localhost"] : [])];
+  if (host === undefined || !allowedHosts.includes(host)) return false;
+  return origin === undefined || origin === new URL(`http://${host}`).origin;
+}
+
 export function createReviewServer(ctx: ReviewUiContext): Server {
   const router = new Router();
 
@@ -63,8 +69,7 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
     const host = req.headers.host;
     const port = req.socket.localPort;
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
-    if ((host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) ||
-      (req.headers.origin !== undefined && req.headers.origin !== `http://${host}`) ||
+    if (!isAllowedReviewOrigin(host, req.headers.origin, port) ||
       (req.headers["sec-fetch-site"] === "cross-site" && url.pathname.startsWith("/api/"))) {
       const diagnosticId = createId("diag");
       process.stderr.write(`Review UI request failed [FORBIDDEN] (diagnostic: ${diagnosticId})\n`);

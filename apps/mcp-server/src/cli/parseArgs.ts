@@ -21,6 +21,7 @@ export interface IngestCommand {
   readonly project?: string | undefined;
   readonly format: InputFormat;
   readonly output?: OutputFormat;
+  readonly timeoutMs?: number;
 }
 
 export interface ContextCommand {
@@ -102,6 +103,11 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     const project = getFlag(args, "project");
     const formatRaw = getFlag(args, "format") ?? "auto";
     const output = getFlag(args, "output");
+    const timeoutRaw = getFlag(args, "timeout-ms");
+    const timeoutMs = timeoutRaw === undefined ? undefined : Number(timeoutRaw);
+    if (hasFlag(args, "timeout-ms") && (timeoutMs === undefined || !Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647)) {
+      return { ok: false, error: "--timeout-ms requires an integer between 1 and 2147483647." };
+    }
     if (output !== undefined && !isOutputFormat(output)) {
       return { ok: false, error: `Invalid output format: "${output}". Must be one of: text, json, markdown` };
     }
@@ -120,7 +126,7 @@ export function parseArgs(argv: readonly string[]): ParseResult {
 
     return {
       ok: true,
-      value: { command: "ingest", file, stdin, tool, project, format: formatRaw as InputFormat, ...(output ? { output } : {}) }
+      value: { command: "ingest", file, stdin, tool, project, format: formatRaw as InputFormat, ...(output ? { output } : {}), ...(timeoutMs === undefined ? {} : { timeoutMs }) }
     };
   }
 
@@ -245,6 +251,7 @@ Ingest options:
   --project <id>            Project identifier (default: env/cwd basename)
   --format <type>           Input format: auto, text, openai-chat (default: auto)
   --output <format>         text, json, markdown (default: json for ingest)
+  --timeout-ms <ms>         Ingestion deadline (default: 1800000, or 30 minutes)
 
 Context options:
   --project <id>            Project identifier (default: env/cwd basename)

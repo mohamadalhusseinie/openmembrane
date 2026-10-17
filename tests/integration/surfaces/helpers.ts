@@ -82,7 +82,7 @@ export async function setupSurfaceDaemon(options: { runner?: CommandRunner; many
     const child = execFile(process.execPath, [
       "--import", pathToFileURL(resolve("node_modules", "tsx", "dist", "loader.mjs")).href,
       resolve("apps", "mcp-server", "src", "index.ts"), ...args,
-    ], { cwd: projectRoot, env: { ...env, ...overrides }, windowsHide: true, timeout: 20_000, maxBuffer: 4 * 1024 * 1024 },
+    ], { cwd: projectRoot, env: { ...env, ...overrides }, windowsHide: true, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
     (error, stdout, stderr) => error ? reject(Object.assign(error, { stdout, stderr })) : accept({ stdout, stderr }));
     child.stdin?.end(input);
   });

@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { serveStatic } from "../../../apps/review-ui/src/static.js";
+import { isAllowedReviewOrigin } from "../../../apps/review-ui/src/server.js";
+
+describe("review UI origin validation", () => {
+  it.each(["127.0.0.1", "localhost"])("accepts browser-normalized default-port requests for %s only on port 80", (host) => {
+    expect(isAllowedReviewOrigin(host, undefined, 80)).toBe(true);
+    expect(isAllowedReviewOrigin(host, `http://${host}`, 80)).toBe(true);
+    expect(isAllowedReviewOrigin(`${host}:80`, `http://${host}`, 80)).toBe(true);
+    expect(isAllowedReviewOrigin(host, `http://${host}`, 3000)).toBe(false);
+    expect(isAllowedReviewOrigin(`${host}:3000`, `http://${host}:3000`, 3000)).toBe(true);
+    expect(isAllowedReviewOrigin(`${host}:3000`, `http://${host}`, 3000)).toBe(false);
+    expect(isAllowedReviewOrigin(host, "https://untrusted.example", 80)).toBe(false);
+    expect(isAllowedReviewOrigin("untrusted.example", "http://untrusted.example", 80)).toBe(false);
+  });
+});
 
 describe("review-ui static file serving", () => {
   it("serves index.html at /", async () => {
