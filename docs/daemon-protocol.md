@@ -49,7 +49,11 @@ the daemon's safe error code and diagnostic ID.
 
 The additive `POST /v1/context/cli` preserves the CLI's existing context
 ranking, filters and untruncated results, with a full pending-candidate
-count. `POST /v1/memories` preserves the UI's active-memory listing and
+count. If only the reminder lookup fails, the endpoint still returns the
+memories with `pendingCandidateCount: null` and a safe `pendingReminderError`
+(`code`, `safeMessage`, `diagnosticId`); the CLI prints context and warns on stderr
+instead of hiding memories or implying an empty review queue.
+`POST /v1/memories` preserves the UI's active-memory listing and
 search behavior. Unfiltered listings without a limit include all active entries.
 `GET /v1/memory/:id` returns a memory (including superseded entries) or
 JSON `null`. Candidate requests accept `limit: null` for complete review

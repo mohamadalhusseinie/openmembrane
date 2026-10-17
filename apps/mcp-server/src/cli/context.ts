@@ -11,5 +11,10 @@ export async function runContext(cmd: ContextCommand): Promise<void> {
     ...(cmd.scope ? { scope: cmd.scope } : {}),
   });
   process.stdout.write(formatMemories(result.memories, cmd.output) + "\n");
-  printPendingReminderCount(result.pendingCandidateCount);
+  if (result.pendingCandidateCount === null) {
+    const error = result.pendingReminderError;
+    process.stderr.write(`Warning: Context retrieved, but the pending reminder is unavailable [${error.code}] (diagnostic: ${error.diagnosticId}).\n`);
+  } else {
+    printPendingReminderCount(result.pendingCandidateCount);
+  }
 }

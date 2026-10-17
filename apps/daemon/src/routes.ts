@@ -11,7 +11,7 @@ import type { RouteResponse } from "../../review-ui/src/router";
 import type { DaemonLogger } from "./logging";
 
 type ProjectEndpoint = Exclude<EndpointName, "health">;
-type Handlers = { [K in ProjectEndpoint]: (project: ProjectService, input: EndpointRequest<K>) => Promise<unknown> };
+type Handlers = { [K in ProjectEndpoint]: (project: ProjectService, input: EndpointRequest<K>, logger: DaemonLogger) => Promise<unknown> };
 
 const handlers: Handlers = {
   remember: (project, input) => project.remember(input),
@@ -26,14 +26,24 @@ const handlers: Handlers = {
     ...(input.limit !== undefined ? { limit: input.limit } : {}),
   }),
   getMemory: async (project, input) => (await project.getMemory(input.memoryId)) ?? null,
-  getCliContext: async (project, input) => ({
-    memories: await project.getCliContext({
+  getCliContext: async (project, input, logger) => {
+    const memories = await project.getCliContext({
       ...(input.query !== undefined ? { query: input.query } : {}),
       ...(input.type !== undefined ? { type: input.type } : {}),
       ...(input.scope !== undefined ? { scope: input.scope } : {}),
-    }),
-    pendingCandidateCount: await project.pendingCandidateCount(),
-  }),
+    });
+    try {
+      return { memories, pendingCandidateCount: await project.pendingCandidateCount() };
+    } catch (error) {
+      const normalized = normalizeOpenMembraneError(error);
+      const diagnosticId = createId("diag");
+      await logger.write("pending_reminder_failed", diagnosticId, normalized.code);
+      return {
+        memories, pendingCandidateCount: null,
+        pendingReminderError: { code: normalized.code, safeMessage: normalized.safeMessage, diagnosticId },
+      };
+    }
+  },
   listMemoryCandidates: (project, input) => project.listMemoryCandidates(input),
   approveMemoryCandidate: (project, input) => project.approveMemoryCandidate(input),
   rejectMemoryCandidate: (project, input) => project.rejectMemoryCandidate(input),
@@ -134,7 +144,7 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
             const unavailable = await project.checkCollaborationAvailability();
             if (unavailable) return safeError(logger, 503, unavailable.code, unavailable.message);
           }
-          const result = await handlers[name](project, input as EndpointRequest<K>);
+          const result = await handlers[name](project, input as EndpointRequest<K>, logger);
           if (name === "configureGitHubTeamMode") {
             const configured = endpoints.configureGitHubTeamMode.response.parse(result);
             if (configured.kind === "rejected") return safeError(logger, 422, configured.code, configured.message);

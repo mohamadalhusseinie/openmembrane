@@ -74,6 +74,28 @@ describe("CLI subprocess and real daemon", { timeout: 90_000 }, () => {
     });
   });
 
+  it("returns context with a diagnostic warning when only the pending reminder fails", async () => {
+    const { cli, client, storageDir, root } = await setup();
+    await writeFile(join(storageDir, "pending", "coding_rule", "frontend", "approve candidate.json"), "{");
+    const result = await client.getCliContext();
+    expect(result.memories).toHaveLength(2);
+    expect(result.pendingCandidateCount).toBeNull();
+    expect(result).toMatchObject({
+      pendingReminderError: { code: "STORAGE_INVALID_JSON", diagnosticId: expect.any(String) },
+    });
+    const context = await cli(["context", "--output", "json"]);
+    expect(JSON.parse(context.stdout)).toHaveLength(2);
+    expect(context.stderr).toContain("Context retrieved, but the pending reminder is unavailable [STORAGE_INVALID_JSON]");
+    expect(context.stderr).toMatch(/diagnostic: diag_/);
+    expect(context.stderr).not.toContain(storageDir);
+    expect(await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8")).toContain("pending_reminder_failed");
+    await writeFile(join(storageDir, "memories", "coding_rule", "frontend", "old memory.json"), "{");
+    await expect(client.getCliContext()).rejects.toMatchObject({ code: "STORAGE_INVALID_JSON" });
+    await expect(cli(["context", "--output", "json"])).rejects.toMatchObject({
+      stdout: "", stderr: expect.stringContaining("STORAGE_INVALID_JSON"),
+    });
+  });
+
   it("preserves untruncated context and caller project overrides", async () => {
     const { cli, projectRoot } = await setup({ many: true });
     const result = await cli(["context", "--output", "json"]);

@@ -66,6 +66,18 @@ describe("v1 protocol", () => {
     expect(collaborationStatusResponseSchema.parse(local)).toEqual(local);
     expect(endpoints.configureGitHubTeamMode.response.parse({ kind: "rejected", code: "GITHUB_AUTH_REQUIRED", message: "Authenticate." })).toEqual({ kind: "rejected", code: "GITHUB_AUTH_REQUIRED", message: "Authenticate." });
   });
+
+  it("requires an explicit diagnostic when the CLI pending reminder is unavailable", () => {
+    const response = {
+      memories: [entry()], pendingCandidateCount: null,
+      pendingReminderError: { code: "STORAGE_ERROR", safeMessage: "Could not load pending candidates.", diagnosticId: "diag_pending" },
+    };
+    expect(endpoints.getCliContext.response.parse(JSON.parse(JSON.stringify(response)))).toEqual(response);
+    expect(endpoints.getCliContext.response.safeParse({ memories: [], pendingCandidateCount: null }).success).toBe(false);
+    expect(endpoints.getCliContext.response.parse({ memories: [], pendingCandidateCount: 0 })).toEqual({
+      memories: [], pendingCandidateCount: 0,
+    });
+  });
 });
 
 describe("shared per-user daemon paths", () => {

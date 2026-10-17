@@ -135,7 +135,14 @@ export const getMemoryResponseSchema = memoryEntrySchema.nullable();
 export const cliContextRequestSchema = projectRequestSchema.extend({
   query: z.string().optional(), type: z.enum(memoryTypes).optional(), scope: z.enum(memoryScopes).optional(),
 });
-export const cliContextResponseSchema = contextResponseSchema;
+export const cliContextResponseSchema = z.union([
+  contextResponseSchema,
+  z.object({
+    memories: z.array(contextMemorySchema),
+    pendingCandidateCount: z.null(),
+    pendingReminderError: errorResponseSchema.shape.error,
+  }),
+]);
 export const candidatesRequestSchema = projectRequestSchema.extend({ limit: limit(200).nullable() });
 export const candidatesResponseSchema = z.array(memoryCandidateSchema);
 export const approveCandidateRequestSchema = projectRequestSchema.extend({ candidateId: text });
