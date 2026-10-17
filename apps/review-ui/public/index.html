@@ -251,6 +251,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 <script>
 const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false, stale: false, export: false };
 const memoryDrafts = new Map();
+const pendingMemoryMutations = new Map();
 
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -321,13 +322,19 @@ function renderMemoryList(target, html) {
   target.querySelectorAll('form.review-form[data-dirty="true"]').forEach(form => {
     const row = form.closest('tr');
     memoryDrafts.set(`${form.dataset.view}:${form.dataset.memoryId}`, {
-      fields: Array.from(new FormData(form).entries()),
+      fields: Array.from(form.elements).filter(control => control.name).map(control => [control.name, control.value]),
       expanded: row ? !row.hidden : form.closest('details').open,
     });
   });
   target.innerHTML = html;
   target.querySelectorAll('form.review-form').forEach(form => {
-    const draft = memoryDrafts.get(`${form.dataset.view}:${form.dataset.memoryId}`);
+    const key = `${form.dataset.view}:${form.dataset.memoryId}`;
+    const pending = pendingMemoryMutations.get(key);
+    if (pending) {
+      pending.form = form;
+      form.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = true; });
+    }
+    const draft = memoryDrafts.get(key);
     if (!draft) return;
     draft.fields.forEach(([name, value]) => { form.elements.namedItem(name).value = value; });
     form.dataset.dirty = 'true';
@@ -504,9 +511,16 @@ async function loadStaleMemories() {
 }
 
 async function mutateMemory(form, supersede) {
+  const key = `${form.dataset.view}:${form.dataset.memoryId}`;
+  if (pendingMemoryMutations.has(key)) {
+    showToast('This editor already has a pending request. Wait for it to finish before trying again.', 'error');
+    return;
+  }
   if (supersede && !window.confirm('Supersede this memory? It will no longer appear in active context.')) return;
   const controls = form.querySelectorAll('button, input, textarea, select');
   const fields = new FormData(form);
+  const mutation = { form };
+  pendingMemoryMutations.set(key, mutation);
   controls.forEach(control => { control.disabled = true; });
   const input = supersede
     ? { ...(fields.get('reason') ? { reason: fields.get('reason') } : {}), ...(fields.get('replacementId') ? { replacementId: fields.get('replacementId') } : {}) }
@@ -524,12 +538,18 @@ async function mutateMemory(form, supersede) {
       return;
     }
     delete form.dataset.dirty;
-    memoryDrafts.delete(`${form.dataset.view}:${form.dataset.memoryId}`);
+    delete mutation.form.dataset.dirty;
+    memoryDrafts.delete(key);
     showToast(result.kind ? `Team publication: ${result.kind}` : supersede ? 'Memory superseded' : 'Memory updated', 'success');
     tabsLoaded.audit = false; tabsLoaded.export = false;
     await Promise.all([loadMemories(), loadStaleMemories()]);
   } catch (e) { showToast(e.message, 'error'); }
-  finally { controls.forEach(control => { control.disabled = false; }); }
+  finally {
+    pendingMemoryMutations.delete(key);
+    [form, mutation.form].forEach(editor => {
+      editor.querySelectorAll('button, input, textarea, select').forEach(control => { control.disabled = false; });
+    });
+  }
 }
 
 function updateMemory(form) { return mutateMemory(form, false); }

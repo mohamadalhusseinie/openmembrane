@@ -29,20 +29,26 @@ async function setupUi() {
 }
 
 describe("review UI memory editor", () => {
-  it.each([false, true])("preserves other editors and cross-tab drafts after a mutation (supersede: %s)", async (supersede) => {
+  it.each([
+    { supersede: false, outcome: "success" },
+    { supersede: true, outcome: "success" },
+    { supersede: false, outcome: "rejected" },
+    { supersede: false, outcome: "retry_deferred" },
+    { supersede: false, outcome: "failed" },
+  ])("preserves drafts when lists refresh during a pending mutation ($outcome, supersede: $supersede)", async ({ supersede, outcome }) => {
     const { context } = await setupUi();
     function form(id: string, view: string, content: string, dirty: boolean, expanded = true) {
-      const controls = new Map([
-        ["content", { value: content, disabled: false }], ["type", { value: "coding_rule", disabled: false }],
-        ["scope", { value: "frontend", disabled: false }], ["tags", { value: "draft", disabled: false }],
-        ["reason", { value: "Unsaved reason", disabled: false }], ["replacementId", { value: "replacement", disabled: false }],
-      ]);
+      const fieldValues = {
+        content, type: "coding_rule", scope: "frontend", tags: "draft",
+        reason: "Unsaved reason", replacementId: "replacement",
+      };
+      const controls = new Map(Object.entries(fieldValues).map(([name, value]) => [name, { name, value, disabled: false }]));
       const row = { hidden: !expanded, previousElementSibling: { querySelector: () => ({ setAttribute: vi.fn() }) } };
       const details = { open: expanded };
       const dataset: Record<string, string> = { memoryId: id, view, ...(dirty ? { dirty: "true" } : {}) };
       return {
         dataset,
-        controls, elements: { namedItem: (name: string) => controls.get(name) },
+        controls, elements: Object.assign([...controls.values()], { namedItem: (name: string) => controls.get(name) }),
         closest: (selector: string) => selector === "tr" ? (view === "memories-content" ? row : null) : details,
         querySelectorAll: () => [...controls.values()],
       };
@@ -63,17 +69,33 @@ describe("review UI memory editor", () => {
     context.memoryTarget = target([saving, other], [savedAfter, otherAfter]);
     context.staleTarget = target([stale], [staleAfter]);
     context.form = saving;
-    context.FormData = class {
-      constructor(private readonly source: typeof saving) {}
-      get(name: string) { return this.source.controls.get(name)?.value; }
-      entries() { return [...this.source.controls].map(([name, control]) => [name, control.value]); }
-    };
-    context.apiRequest = vi.fn().mockResolvedValue(entry());
+    class FormData {
+      private readonly fields: Map<string, string>;
+      constructor(source: typeof saving) {
+        this.fields = new Map([...source.controls].filter(([, control]) => !control.disabled).map(([name, control]) => [name, control.value]));
+      }
+      get(name: string) { return this.fields.get(name); }
+      entries() { return this.fields.entries(); }
+    }
+    context.FormData = FormData;
     context.showToast = vi.fn();
     context.window = { confirm: () => true };
     context.supersede = supersede;
     context.loadMemories = () => runInContext("renderMemoryList(memoryTarget, '')", context);
     context.loadStaleMemories = () => runInContext("renderMemoryList(staleTarget, '')", context);
+    context.apiRequest = vi.fn(async () => {
+      expect([...new FormData(saving).entries()]).toEqual([]);
+      await context.loadMemories();
+      await context.loadStaleMemories();
+      expect(savedAfter.querySelectorAll().every(control => control.disabled)).toBe(true);
+      expect(savedAfter.controls.get("content")?.value).toBe("Saved edit");
+      context.rebuiltForm = savedAfter;
+      await runInContext("mutateMemory(rebuiltForm, false)", context);
+      if (outcome === "failed") throw new Error("Request failed");
+      if (outcome === "rejected") return { kind: "rejected", message: "Publication rejected" };
+      if (outcome === "retry_deferred") return { kind: "retry_deferred", nextAttemptAt: "2026-10-17T16:00:00Z" };
+      return entry();
+    });
     await runInContext("mutateMemory(form, supersede)", context);
     expect(otherAfter.controls.get("content")?.value).toBe("Unsaved other edit");
     expect(staleAfter.controls.get("content")?.value).toBe("Unsaved stale edit");
@@ -83,7 +105,9 @@ describe("review UI memory editor", () => {
     expect(staleAfter.dataset.dirty).toBe("true");
     expect(otherAfter.closest("tr")).toMatchObject({ hidden: false });
     expect(staleAfter.closest("details")).toMatchObject({ open: true });
-    expect(savedAfter.dataset.dirty).toBeUndefined();
+    expect(savedAfter.dataset.dirty).toBe(outcome === "success" ? undefined : "true");
+    expect(context.apiRequest).toHaveBeenCalledTimes(1);
+    expect(savedAfter.querySelectorAll().every(control => !control.disabled)).toBe(true);
     expect(saving.querySelectorAll().every(control => !control.disabled)).toBe(true);
   });
 
