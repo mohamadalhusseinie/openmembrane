@@ -398,6 +398,73 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     }
   });
 
+  it("drains requests and closes stores when recovery-guard creation fails without deleting unprotected discovery", async () => {
+    const service = createOpenMembraneService();
+    const closeService = vi.spyOn(service, "close");
+    vi.spyOn(serviceModule, "createOpenMembraneService").mockReturnValueOnce(service);
+    const { daemon, paths, client, root } = await setup();
+    daemons.splice(daemons.indexOf(daemon), 1);
+    const resolved = resolveDaemonPaths(paths);
+    const token = await readFile(resolved.tokenPath, "utf8");
+    const endpoint = await readFile(resolved.endpointPath, "utf8");
+    let entered: () => void = () => undefined;
+    let release: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const forProject = service.forProject.bind(service);
+    vi.spyOn(service, "forProject").mockImplementation(async (ref) => {
+      entered();
+      await gate;
+      return forProject(ref);
+    });
+    const request = client().remember({
+      content: "Shutdown must drain requests even when guard creation fails.",
+      type: "testing_rule", confidence: "high",
+    });
+    await pending;
+    const failure = Object.assign(new Error("Sensitive guard creation failure"), { code: "ENOSPC" });
+    let guardFailed: () => void = () => undefined;
+    const guardAttempt = new Promise<void>((resolve) => { guardFailed = resolve; });
+    const write = privateFiles.writePrivateFile;
+    const writeSpy = vi.spyOn(privateFiles, "writePrivateFile").mockImplementation(async (path, content) => {
+      if (basename(path).startsWith("lock-")) {
+        guardFailed();
+        throw failure;
+      }
+      await write(path, content);
+    });
+    const closed = expect(daemon.closed).rejects.toMatchObject({ code: "DAEMON_CLEANUP_ERROR" });
+    const shutdown = daemon.close();
+    const rejected = expect(shutdown).rejects.toMatchObject({ code: "DAEMON_CLEANUP_ERROR" });
+    try {
+      await guardAttempt;
+      expect(closeService).not.toHaveBeenCalled();
+    } finally {
+      release();
+    }
+    expect((await request).savedCount).toBe(1);
+    await rejected;
+    await closed;
+    expect(closeService).toHaveBeenCalledOnce();
+    await expect(sendRequest({
+      endpoint: daemon.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000,
+    })).rejects.toMatchObject({ code: "E_DAEMON_NOT_RUNNING" });
+    expect(await readLock(resolved.runDir)).toBeUndefined();
+    expect(await readFile(resolved.tokenPath, "utf8")).toBe(token);
+    expect(await readFile(resolved.endpointPath, "utf8")).toBe(endpoint);
+    await expect(daemon.close()).rejects.toMatchObject({ code: "DAEMON_CLEANUP_ERROR" });
+    const logs = await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8");
+    expect(logs).toContain('"event":"shutdown_failed"');
+    expect(logs).toContain('"code":"DAEMON_CLEANUP_ERROR"');
+    expect(logs).not.toContain(failure.message);
+    writeSpy.mockRestore();
+    const replacement = await startDaemon({ paths });
+    daemons.push(replacement);
+    expect((await sendRequest({
+      endpoint: replacement.endpoint, method: "GET", path: "/v1/health", timeoutMs: 1000,
+    })).status).toBe(200);
+  }, 15_000);
+
   it("closes the service and releases its live-process lock when the server factory throws", async () => {
     const { daemon: initial, paths } = await setup();
     await initial.close();

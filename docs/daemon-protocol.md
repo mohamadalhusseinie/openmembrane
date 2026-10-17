@@ -88,6 +88,11 @@ daemon is ready.
 Initialization after lock acquisition is also covered by cleanup: a service
 or server-factory exception closes any initialized service and releases the
 lock, allowing another startup in the same still-running host process.
+If shutdown cannot acquire its recovery guard, it still closes the listener,
+drains in-flight work, closes stores, and attempts lock release. Shared
+discovery files are not explicitly deleted without ownership protection.
+Cleanup failures are aggregated in memory and reported with the safe
+`DAEMON_CLEANUP_ERROR` diagnostic rather than leaving a live, unusable listener.
 
 The protocol's `endpoints` map is the source of truth for HTTP methods,
 paths, request/response Zod schemas, and project scope. `EndpointRequest`

@@ -13,3 +13,5 @@ Release the daemon lock and close initialized resources when service or server c
 Use a fixed timezone for POSIX process identity and normalize project roots before deriving default IDs, preventing timezone-dependent lock takeover and inconsistent memory visibility across dot-segment path spellings.
 
 Normalize storage dot segments before canonicalizing daemon queue keys, keeping symlink-parent path spellings serialized with writes to the same service store.
+
+Continue listener shutdown, request draining, store closure, and lock release when recovery-guard creation fails, without deleting unprotected shared discovery files.

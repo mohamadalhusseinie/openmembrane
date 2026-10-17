@@ -194,9 +194,7 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     await unlink(path).catch((error: unknown) => { if (!isMissing(error)) throw error; });
   }
 
-  async function cleanup(): Promise<void> {
-    const failures: unknown[] = [];
-    const ownsDiscovery = await lock.protectCleanup();
+  async function cleanup(ownsDiscovery: boolean, failures: unknown[]): Promise<void> {
     for (const operation of [
       () => service?.close(),
       ...(ownsDiscovery ? [
@@ -208,14 +206,19 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
     ]) {
       try { await operation(); } catch (error) { failures.push(error); }
     }
-    if (failures.length > 0) throw new AggregateError(failures, "Daemon cleanup failed.");
   }
 
   function close(): Promise<void> {
     if (!closing) {
       closing = (async () => {
+        const failures: unknown[] = [];
+        let ownsDiscovery = false;
         try {
-          await lock.protectCleanup();
+          ownsDiscovery = await lock.protectCleanup();
+        } catch (error) {
+          failures.push(error);
+        }
+        try {
           const listener = server;
           if (listener?.listening) {
             await new Promise<void>((resolve, reject) => {
@@ -223,13 +226,24 @@ export async function startDaemon(options: DaemonOptions = {}): Promise<RunningD
               if (typeof listener.closeIdleConnections === "function") listener.closeIdleConnections();
             });
           }
-          await Promise.all(inFlight);
-        } finally {
-          await cleanup();
+        } catch (error) {
+          failures.push(error);
         }
+        const drained = await Promise.allSettled(inFlight);
+        for (const result of drained) {
+          if (result.status === "rejected") failures.push(result.reason);
+        }
+        await cleanup(ownsDiscovery, failures);
         if (listenerFailure) {
           await logger.write("listener_failed", createId("diag"), listenerFailure.code);
-          throw listenerFailure;
+          if (failures.length > 0) failures.unshift(listenerFailure);
+          else throw listenerFailure;
+        }
+        if (failures.length > 0) {
+          const failure = new DaemonLifecycleError("DAEMON_CLEANUP_ERROR", "The daemon could not complete all shutdown cleanup. See the local daemon log.");
+          failure.cause = new AggregateError(failures, "Daemon cleanup failed.");
+          await logger.write("shutdown_failed", createId("diag"), failure.code);
+          throw failure;
         }
         await logger.write("stopped");
       })();
