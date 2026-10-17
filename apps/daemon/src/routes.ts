@@ -19,6 +19,21 @@ const handlers: Handlers = {
   getProjectRules: (project, input) => project.getProjectRules(input),
   getRelevantContext: (project, input) => project.getRelevantContext(input),
   searchMemory: (project, input) => project.searchMemory(input),
+  listMemories: (project, input) => project.listMemories({
+    ...(input.query !== undefined ? { query: input.query } : {}),
+    ...(input.types !== undefined ? { types: input.types } : {}),
+    ...(input.scopes !== undefined ? { scopes: input.scopes } : {}),
+    ...(input.limit !== undefined ? { limit: input.limit } : {}),
+  }),
+  getMemory: async (project, input) => (await project.getMemory(input.memoryId)) ?? null,
+  getCliContext: async (project, input) => ({
+    memories: await project.getCliContext({
+      ...(input.query !== undefined ? { query: input.query } : {}),
+      ...(input.type !== undefined ? { type: input.type } : {}),
+      ...(input.scope !== undefined ? { scope: input.scope } : {}),
+    }),
+    pendingCandidateCount: await project.pendingCandidateCount(),
+  }),
   listMemoryCandidates: (project, input) => project.listMemoryCandidates(input),
   approveMemoryCandidate: (project, input) => project.approveMemoryCandidate(input),
   rejectMemoryCandidate: (project, input) => project.rejectMemoryCandidate(input),
@@ -35,12 +50,12 @@ const handlers: Handlers = {
 };
 
 const collaborationOperations = new Set<ProjectEndpoint>([
-  "remember", "ingest", "getProjectRules", "getRelevantContext", "searchMemory",
+  "remember", "ingest", "getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext",
   "approveMemoryCandidate", "approveAllCandidates", "updateMemory", "supersedeMemory",
   "reviewStaleMemories", "exportStaticMemoryFiles", "getCollaborationStatus",
 ]);
 
-const retrievalOperations = new Set<ProjectEndpoint>(["getProjectRules", "getRelevantContext", "searchMemory"]);
+const retrievalOperations = new Set<ProjectEndpoint>(["getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext"]);
 
 export async function safeError(logger: DaemonLogger, status: number, code: string, safeMessage: string): Promise<RouteResponse> {
   const diagnosticId = createId("diag");
@@ -144,6 +159,8 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
       }
     });
   }
-  for (const name of Object.keys(handlers) as ProjectEndpoint[]) register(name);
+  const names = (Object.keys(handlers) as ProjectEndpoint[])
+    .sort((left, right) => Number("idField" in endpoints[left]) - Number("idField" in endpoints[right]));
+  for (const name of names) register(name);
   return router;
 }

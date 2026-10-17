@@ -60,7 +60,7 @@ export interface ConfigureGitHubTeamModeInput extends ProjectScopedInput {
 export type GetCollaborationStatusInput = ProjectScopedInput;
 
 export interface ListMemoryCandidatesInput extends ProjectScopedInput {
-  limit?: number | undefined;
+  limit?: number | null | undefined;
 }
 
 export interface ApproveMemoryCandidateInput extends ProjectScopedInput {
@@ -73,6 +73,7 @@ export interface RejectMemoryCandidateInput extends ProjectScopedInput {
 }
 
 export interface ExportStaticMemoryFilesInput extends ProjectScopedInput {
+  preview?: boolean | undefined;
   targets?: ExportTarget[] | undefined;
   outputDir?: string | undefined;
   includeConfidential?: boolean | undefined;
@@ -241,7 +242,7 @@ export function createProjectOperations(context: ProjectState) {
       const candidates = await context.pendingCandidateStore.list(projectId);
       return candidates
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-        .slice(0, input.limit ?? 50);
+        .slice(0, input.limit === null ? undefined : input.limit ?? 50);
     },
 
     approveMemoryCandidate: async (input: ApproveMemoryCandidateInput) => {
@@ -265,19 +266,13 @@ export function createProjectOperations(context: ProjectState) {
       const memories = await context.memoryStore.list(projectId);
       const outputDir = resolve(context.projectRoot, input.outputDir ?? ".");
 
-      const request = {
-        projectId,
-        memories,
-        outputDir
+      const options = {
+        ...(input.targets !== undefined ? { targets: input.targets } : {}),
+        ...(input.includeConfidential !== undefined ? { includeConfidential: input.includeConfidential } : {}),
       };
-      if (input.targets) {
-        Object.assign(request, { targets: input.targets });
-      }
-      if (input.includeConfidential !== undefined) {
-        Object.assign(request, { includeConfidential: input.includeConfidential });
-      }
-
-      return context.exportService.write(request);
+      return input.preview
+        ? context.exportService.preview(projectId, memories, options)
+        : context.exportService.write({ projectId, memories, outputDir, ...options });
     },
 
     getDiagnostics: async (input: GetDiagnosticsInput) => {

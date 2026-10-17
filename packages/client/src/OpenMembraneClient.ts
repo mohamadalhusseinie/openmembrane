@@ -143,6 +143,9 @@ export class OpenMembraneClient {
   getProjectRules(input: ClientRequest<"getProjectRules"> = {}): Promise<EndpointResponse<"getProjectRules">> { return this.call("getProjectRules", input); }
   getRelevantContext(input: ClientRequest<"getRelevantContext">): Promise<EndpointResponse<"getRelevantContext">> { return this.call("getRelevantContext", input); }
   searchMemory(input: ClientRequest<"searchMemory"> = {}): Promise<EndpointResponse<"searchMemory">> { return this.call("searchMemory", input); }
+  listMemories(input: ClientRequest<"listMemories"> = {}): Promise<EndpointResponse<"listMemories">> { return this.call("listMemories", input); }
+  getMemory(input: ClientRequest<"getMemory">): Promise<EndpointResponse<"getMemory">> { return this.call("getMemory", input); }
+  getCliContext(input: ClientRequest<"getCliContext"> = {}): Promise<EndpointResponse<"getCliContext">> { return this.call("getCliContext", input); }
   listMemoryCandidates(input: ClientRequest<"listMemoryCandidates"> = {}): Promise<EndpointResponse<"listMemoryCandidates">> { return this.call("listMemoryCandidates", input); }
   approveMemoryCandidate(input: ClientRequest<"approveMemoryCandidate">): Promise<EndpointResponse<"approveMemoryCandidate">> { return this.call("approveMemoryCandidate", input); }
   rejectMemoryCandidate(input: ClientRequest<"rejectMemoryCandidate">): Promise<EndpointResponse<"rejectMemoryCandidate">> { return this.call("rejectMemoryCandidate", input); }

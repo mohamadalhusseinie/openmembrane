@@ -1,35 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cwd } from "node:process";
-import { createOpenMembraneService } from "@openmembrane/service";
-import type { OpenMembraneService } from "@openmembrane/service";
+import { describe, expect, it } from "vitest";
+import { resolve } from "node:path";
+import { OpenMembraneClient } from "@openmembrane/client";
 import { createReviewUiContext } from "../../../apps/review-ui/src/context";
 
-vi.mock("@openmembrane/service", () => ({ createOpenMembraneService: vi.fn() }));
-
 describe("review UI context", () => {
-  afterEach(() => vi.resetAllMocks());
-
-  it("resolves a project through the service and closes the root service", async () => {
-    const project = { projectId: "custom", storageDir: "custom-home" };
-    const forProject = vi.fn().mockResolvedValue(project);
-    const close = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(createOpenMembraneService).mockReturnValue({ forProject, close } as unknown as OpenMembraneService);
-
+  it("creates a client with caller project and storage overrides without opening stores", async () => {
     const context = await createReviewUiContext({ home: "custom-home", project: "custom" });
-    expect(createOpenMembraneService).toHaveBeenCalledWith({ deferExtractionInitialization: true });
-    expect(forProject).toHaveBeenCalledWith({ projectRoot: cwd(), projectId: "custom", storageDir: "custom-home" });
-    expect(context).toMatchObject({ project, projectId: "custom", storageDir: "custom-home" });
+    expect(context.project).toBeInstanceOf(OpenMembraneClient);
+    expect(context).toMatchObject({ projectId: "custom", storageDir: resolve("custom-home") });
     await context.close();
-    expect(close).toHaveBeenCalledOnce();
   });
 
-  it("closes the root service if project initialization fails", async () => {
-    const forProject = vi.fn().mockRejectedValue(new Error("initialization failed"));
-    const close = vi.fn().mockResolvedValue(undefined);
-    vi.mocked(createOpenMembraneService).mockReturnValue({ forProject, close } as unknown as OpenMembraneService);
-
-    await expect(createReviewUiContext()).rejects.toThrow("initialization failed");
-    expect(forProject).toHaveBeenCalledWith({ projectRoot: cwd() });
-    expect(close).toHaveBeenCalledOnce();
+  it("uses the client project root and environment when embedded", async () => {
+    const root = resolve("client-project");
+    const context = await createReviewUiContext({
+      clientOptions: { projectRoot: root, env: { OPENMEMBRANE_PROJECT_ID: "embedded", OPENMEMBRANE_HOME: "storage" } },
+    });
+    expect(context).toMatchObject({ projectId: "embedded", storageDir: resolve(root, "storage") });
   });
 });

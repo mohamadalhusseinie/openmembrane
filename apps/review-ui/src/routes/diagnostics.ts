@@ -1,19 +1,13 @@
-import type { ProjectService } from "@openmembrane/service";
+import type { OpenMembraneClient } from "@openmembrane/client";
+import { diagnosticsRequestSchema } from "@openmembrane/protocol";
 import type { RouteContext, RouteResponse } from "../router";
+import { projectFields, queryInput } from "./validation";
 
-export function createDiagnosticsRoutes(project: ProjectService) {
+export function createDiagnosticsRoutes(project: Pick<OpenMembraneClient, "getDiagnostics">) {
   return {
     async listDiagnostics(ctx: RouteContext): Promise<RouteResponse> {
-      const severity = ctx.query.get("severity") ?? undefined;
-      const code = ctx.query.get("code") ?? undefined;
-      const limitStr = ctx.query.get("limit");
-      const limit = limitStr ? parseInt(limitStr, 10) : 100;
-
-      const events = await project.getDiagnostics({
-        ...(severity ? { severity: severity as "debug" | "info" | "warning" | "error" } : {}),
-        ...(code ? { code } : {}),
-        ...(limit ? { limit } : {}),
-      });
+      const input = diagnosticsRequestSchema.omit(projectFields).parse(queryInput(ctx.query, ["limit"]));
+      const events = await project.getDiagnostics(input);
       return { status: 200, body: events.reverse() };
     },
   };

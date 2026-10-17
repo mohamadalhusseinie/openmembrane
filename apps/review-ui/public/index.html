@@ -42,7 +42,7 @@ body {
   margin: 0 auto;
 }
 h1 { font-size: 1.25rem; margin-bottom: 1rem; }
-.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
 .tab-btn {
   padding: 0.5rem 1rem;
   border: none;
@@ -129,6 +129,22 @@ tr.expandable:hover { background: var(--bg-secondary); }
 .toast { padding: 0.6rem 1rem; border-radius: 4px; font-size: 0.8rem; color: #fff; }
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
+.review-form { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.review-form label { display: grid; gap: 0.25rem; font-size: 0.8rem; }
+.review-form textarea, .review-form input, .review-form select {
+  width: 100%; padding: 0.5rem; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--bg); color: var(--text); font: inherit;
+}
+.review-form textarea { min-height: 7rem; resize: vertical; }
+.review-form .card-actions { flex-wrap: wrap; }
+.btn-primary { background: var(--accent); color: var(--bg); }
+.btn:hover:not(:disabled) { filter: brightness(0.9); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+.hint { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+.export-file { margin-top: 1rem; }
+.export-file pre { padding: 0.75rem; background: var(--bg-secondary); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -138,6 +154,8 @@ tr.expandable:hover { background: var(--bg-secondary); }
   <button class="tab-btn" onclick="switchTab('pending')" id="pending-tab-btn">Pending</button>
   <button class="tab-btn" onclick="switchTab('audit')">Audit</button>
   <button class="tab-btn" onclick="switchTab('diagnostics')">Diagnostics</button>
+  <button class="tab-btn" onclick="switchTab('stale')">Stale memories</button>
+  <button class="tab-btn" onclick="switchTab('export')">Export</button>
 </div>
 
 <div id="tab-memories" class="tab-content active">
@@ -197,10 +215,42 @@ tr.expandable:hover { background: var(--bg-secondary); }
   <div id="diagnostics-content"></div>
 </div>
 
-<div id="toast-container"></div>
+<div id="tab-stale" class="tab-content">
+  <p class="hint">Review older memories and edit or supersede rules that no longer apply.</p>
+  <form class="filter-row" onsubmit="event.preventDefault(); loadStaleMemories()">
+    <label>Older than <input id="stale-months" type="number" min="1" max="120" value="6" required> months</label>
+    <button class="btn btn-primary" type="submit">Review memories</button>
+  </form>
+  <div id="stale-content" aria-live="polite"></div>
+</div>
+
+<div id="tab-export" class="tab-content">
+  <p class="hint">Preview static instruction files before writing them. Confidential memories are excluded unless you explicitly include them.</p>
+  <form class="review-form" onsubmit="event.preventDefault(); exportMemories(true, this)">
+    <label>Target
+      <select name="target">
+        <option value="">All targets</option>
+        <option value="agents">AGENTS.md</option>
+        <option value="claude">CLAUDE.md</option>
+        <option value="copilot">Copilot instructions</option>
+        <option value="cursor">Cursor rules</option>
+        <option value="project_memory">Project memory</option>
+      </select>
+    </label>
+    <label>Output directory (relative to the project)<input name="outputDir" value="." required></label>
+    <label><span><input name="confidential" type="checkbox" style="width:auto"> Include confidential memories in exported files</span></label>
+    <div class="card-actions">
+      <button class="btn btn-primary" type="submit">Preview files</button>
+      <button class="btn" type="button" onclick="exportMemories(false, this.form)">Write files</button>
+    </div>
+  </form>
+  <div id="export-content" aria-live="polite"></div>
+</div>
+
+<div id="toast-container" role="status" aria-live="polite"></div>
 
 <script>
-const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false };
+const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false, stale: false, export: false };
 
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -213,6 +263,7 @@ function switchTab(name) {
     else if (name === 'pending') loadCandidates();
     else if (name === 'audit') loadAudit();
     else if (name === 'diagnostics') loadDiagnostics();
+    else if (name === 'stale') loadStaleMemories();
   }
 }
 
@@ -238,6 +289,34 @@ function badgeHtml(text, prefix) {
   return `<span class="${cls}">${safe}</span>`;
 }
 
+async function apiRequest(path, options) {
+  const res = await fetch(path, options);
+  const data = await res.json();
+  if (!res.ok) {
+    const message = typeof data.error === 'string' ? data.error : 'Request failed';
+    throw new Error(message + (data.diagnosticId ? ` (diagnostic: ${data.diagnosticId})` : ''));
+  }
+  return data;
+}
+
+function memoryReviewHtml(memory) {
+  return `<form class="review-form" data-memory-id="${escapeHtml(memory.id)}" onsubmit="event.preventDefault(); updateMemory(this)">
+    <span class="hint">ID: ${escapeHtml(memory.id)}</span>
+    <label>Content<textarea name="content" required>${escapeHtml(memory.content)}</textarea></label>
+    <label>Type<select name="type">${Array.from(document.getElementById('mem-type').options).filter(o => o.value).map(o =>
+      `<option value="${o.value}" ${o.value === memory.type ? 'selected' : ''}>${o.text}</option>`).join('')}</select></label>
+    <label>Scope<select name="scope">${Array.from(document.getElementById('mem-scope').options).filter(o => o.value).map(o =>
+      `<option value="${o.value}" ${o.value === memory.scope ? 'selected' : ''}>${o.text}</option>`).join('')}</select></label>
+    <label>Tags (comma-separated)<input name="tags" value="${escapeHtml((memory.tags || []).join(', '))}"></label>
+    <label>Reason for superseding (optional)<input name="reason"></label>
+    <label>Replacement memory ID (optional)<input name="replacementId"></label>
+    <div class="card-actions">
+      <button type="submit" class="btn btn-primary">Save changes</button>
+      <button type="button" class="btn btn-danger" onclick="supersedeMemory(this.form)">Supersede memory</button>
+    </div>
+  </form>`;
+}
+
 async function loadMemories() {
   const q = document.getElementById('mem-search').value;
   const type = document.getElementById('mem-type').value;
@@ -247,9 +326,7 @@ async function loadMemories() {
   if (type) params.set('type', type);
   if (scope) params.set('scope', scope);
   try {
-    const res = await fetch('/api/memories?' + params);
-    const data = await res.json();
-    const items = data.memories || data || [];
+    const items = await apiRequest('/api/memories?' + params);
     if (!items.length) {
       document.getElementById('memories-content').innerHTML = '<div class="empty">No memories found</div>';
       return;
@@ -259,20 +336,18 @@ async function loadMemories() {
       html += `<tr class="expandable" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='table-row'?'none':'table-row'">
         <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(m.scope)}</td><td>${truncate(m.content)}</td>
         <td>${escapeHtml(m.confidence)}</td><td>${escapeHtml((m.tags || []).join(', '))}</td><td>${formatDate(m.createdAt)}</td>
-      </tr><tr style="display:none"><td colspan="6" class="expanded-content">${escapeHtml(m.content)}</td></tr>`;
+      </tr><tr style="display:none"><td colspan="6"><details><summary>Review or edit memory</summary>${memoryReviewHtml(m)}</details><div class="expanded-content">${escapeHtml(m.content)}</div></td></tr>`;
     });
     html += '</tbody></table>';
     document.getElementById('memories-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('memories-content').innerHTML = '<div class="empty">Error loading memories</div>';
+    document.getElementById('memories-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }
 }
 
 async function loadCandidates() {
   try {
-    const res = await fetch('/api/candidates');
-    const data = await res.json();
-    const items = data.candidates || data || [];
+    const items = await apiRequest('/api/candidates');
     const btn = document.getElementById('pending-tab-btn');
     btn.innerHTML = items.length ? `Pending <span class="badge">${items.length}</span>` : 'Pending';
     if (!items.length) {
@@ -300,15 +375,13 @@ async function loadCandidates() {
     });
     document.getElementById('pending-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('pending-content').innerHTML = '<div class="empty">Error loading candidates</div>';
+    document.getElementById('pending-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }
 }
 
 async function loadAudit() {
   try {
-    const res = await fetch('/api/audit?limit=100');
-    const data = await res.json();
-    const items = data.events || data || [];
+    const items = await apiRequest('/api/audit?limit=100');
     if (!items.length) {
       document.getElementById('audit-content').innerHTML = '<div class="empty">No audit events</div>';
       return;
@@ -324,7 +397,7 @@ async function loadAudit() {
     });
     document.getElementById('audit-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('audit-content').innerHTML = '<div class="empty">Error loading audit log</div>';
+    document.getElementById('audit-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -333,9 +406,7 @@ async function loadDiagnostics() {
   const params = new URLSearchParams({ limit: '100' });
   if (severity) params.set('severity', severity);
   try {
-    const res = await fetch('/api/diagnostics?' + params);
-    const data = await res.json();
-    const items = data.diagnostics || data || [];
+    const items = await apiRequest('/api/diagnostics?' + params);
     if (!items.length) {
       document.getElementById('diagnostics-content').innerHTML = '<div class="empty">No diagnostics</div>';
       return;
@@ -349,48 +420,100 @@ async function loadDiagnostics() {
     });
     document.getElementById('diagnostics-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('diagnostics-content').innerHTML = '<div class="empty">Error loading diagnostics</div>';
+    document.getElementById('diagnostics-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }
 }
 
 async function approveCandidate(id) {
   try {
-    const res = await fetch(`/api/candidates/${id}/approve`, { method: 'POST' });
-    if (!res.ok) throw new Error();
+    await apiRequest(`/api/candidates/${encodeURIComponent(id)}/approve`, { method: 'POST' });
     showToast('Candidate approved', 'success');
     tabsLoaded.pending = false; loadCandidates();
-  } catch { showToast('Failed to approve', 'error'); }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function rejectCandidate(id) {
   const reason = window.prompt('Reason for rejection:');
   if (reason === null) return;
   try {
-    const res = await fetch(`/api/candidates/${id}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
-    if (!res.ok) throw new Error();
+    await apiRequest(`/api/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reason ? { reason } : {}) });
     showToast('Candidate rejected', 'success');
     tabsLoaded.pending = false; loadCandidates();
-  } catch { showToast('Failed to reject', 'error'); }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function approveAllCandidates() {
   try {
-    const res = await fetch('/api/candidates/approve-all', { method: 'POST' });
-    if (!res.ok) throw new Error();
-    showToast('All candidates approved', 'success');
+    const result = await apiRequest('/api/candidates/approve-all', { method: 'POST' });
+    showToast(`Approved ${result.approved}; skipped ${result.skipped.length}`, 'success');
     tabsLoaded.pending = false; loadCandidates();
-  } catch { showToast('Failed to approve all', 'error'); }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function rejectAllCandidates() {
   const reason = window.prompt('Reason for rejecting all:');
   if (reason === null) return;
   try {
-    const res = await fetch('/api/candidates/reject-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
-    if (!res.ok) throw new Error();
+    await apiRequest('/api/candidates/reject-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reason ? { reason } : {}) });
     showToast('All candidates rejected', 'success');
     tabsLoaded.pending = false; loadCandidates();
-  } catch { showToast('Failed to reject all', 'error'); }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadStaleMemories() {
+  const target = document.getElementById('stale-content');
+  target.textContent = 'Loading older memories...';
+  try {
+    const months = document.getElementById('stale-months').value;
+    const items = await apiRequest('/api/memories/stale?staleAfterMonths=' + encodeURIComponent(months));
+    const active = items.filter(m => m.status === 'active');
+    target.innerHTML = active.length
+      ? active.map(m => `<details class="card"><summary>${escapeHtml(m.content)} — updated ${formatDate(m.updatedAt)}</summary>${memoryReviewHtml(m)}</details>`).join('')
+      : '<div class="empty">No active memories older than this threshold. Try a shorter interval.</div>';
+  } catch (e) { target.innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`; }
+}
+
+async function mutateMemory(form, supersede) {
+  if (supersede && !window.confirm('Supersede this memory? It will no longer appear in active context.')) return;
+  const buttons = form.querySelectorAll('button');
+  buttons.forEach(button => { button.disabled = true; });
+  const fields = new FormData(form);
+  const input = supersede
+    ? { ...(fields.get('reason') ? { reason: fields.get('reason') } : {}), ...(fields.get('replacementId') ? { replacementId: fields.get('replacementId') } : {}) }
+    : { content: fields.get('content'), type: fields.get('type'), scope: fields.get('scope'), tags: String(fields.get('tags')).split(',').map(t => t.trim()).filter(Boolean) };
+  try {
+    const result = await apiRequest('/api/memories/' + encodeURIComponent(form.dataset.memoryId) + (supersede ? '/supersede' : ''), {
+      method: supersede ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+    showToast(result.kind ? `Team publication: ${result.kind}` : supersede ? 'Memory superseded' : 'Memory updated', 'success');
+    tabsLoaded.audit = false; tabsLoaded.export = false;
+    await Promise.all([loadMemories(), loadStaleMemories()]);
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { buttons.forEach(button => { button.disabled = false; }); }
+}
+
+function updateMemory(form) { return mutateMemory(form, false); }
+function supersedeMemory(form) { return mutateMemory(form, true); }
+
+async function exportMemories(preview, form) {
+  if (!preview && !window.confirm('Write static files to the selected directory? Existing generated files will be overwritten.')) return;
+  const target = document.getElementById('export-content');
+  const fields = new FormData(form);
+  const buttons = form.querySelectorAll('button');
+  buttons.forEach(button => { button.disabled = true; });
+  target.textContent = preview ? 'Rendering preview...' : 'Writing files...';
+  try {
+    const result = await apiRequest(preview ? '/api/export/preview' : '/api/export', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...(fields.get('target') ? { targets: [fields.get('target')] } : {}),
+        outputDir: fields.get('outputDir'), includeConfidential: fields.has('confidential'),
+      }),
+    });
+    target.innerHTML = `<p class="hint">${preview ? 'Preview only. No files were written.' : 'Files written.'}</p>` + result.files.map(file =>
+      `<details class="export-file" open><summary>${escapeHtml(file.path)} (${file.memoryCount} ${file.memoryCount === 1 ? 'memory' : 'memories'})</summary><pre>${escapeHtml(file.content)}</pre></details>`).join('');
+  } catch (e) { target.textContent = e.message; }
+  finally { buttons.forEach(button => { button.disabled = false; }); }
 }
 
 function showToast(message, type) {

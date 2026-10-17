@@ -1,28 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { printPendingReminder } from "../../../apps/mcp-server/src/cli/pendingReminder";
-import type { PendingCandidateStore } from "@openmembrane/core";
+import { printPendingReminderCount } from "../../../apps/mcp-server/src/cli/pendingReminder";
 
-function mockStore(count: number): PendingCandidateStore {
-  const items = Array.from({ length: count }, (_, i) => ({ id: `cand_${i}` }));
-  return {
-    list: async () => items,
-    findById: async () => undefined,
-    save: async () => {},
-    remove: async () => {},
-  } as unknown as PendingCandidateStore;
-}
-
-describe("printPendingReminder", () => {
+describe("printPendingReminderCount", () => {
   it("prints nothing when no candidates exist", async () => {
     const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    await printPendingReminder(mockStore(0), "test-project");
+    printPendingReminderCount(0);
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
   it("prints singular reminder for 1 candidate", async () => {
     const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    await printPendingReminder(mockStore(1), "test-project");
+    printPendingReminderCount(1);
     expect(spy).toHaveBeenCalledWith(
       expect.stringContaining("1 memory candidate is waiting for review")
     );
@@ -31,7 +20,7 @@ describe("printPendingReminder", () => {
 
   it("prints plural reminder for multiple candidates", async () => {
     const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    await printPendingReminder(mockStore(3), "test-project");
+    printPendingReminderCount(3);
     expect(spy).toHaveBeenCalledWith(
       expect.stringContaining("3 memory candidates are waiting for review")
     );

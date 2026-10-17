@@ -75,7 +75,7 @@ function send(res: ServerResponse, response: RouteResponse): void {
     "connection": "close",
     ...response.headers,
   });
-  res.end(JSON.stringify(response.body ?? {}));
+  res.end(JSON.stringify(response.body === undefined ? {} : response.body));
 }
 
 export async function startDaemon(options: DaemonOptions = {}): Promise<RunningDaemon> {

@@ -126,7 +126,17 @@ export const searchRequestSchema = projectRequestSchema.extend({
   types: z.array(z.enum(memoryTypes)).optional(), tags: z.array(text).optional(), limit: limit(200),
 });
 export const searchResponseSchema = z.array(memoryEntrySchema);
-export const candidatesRequestSchema = projectRequestSchema.extend({ limit: limit(200) });
+export const listMemoriesRequestSchema = projectRequestSchema.extend({
+  query: z.string().optional(), types: z.array(z.enum(memoryTypes)).optional(),
+  scopes: z.array(z.enum(memoryScopes)).optional(), limit: limit(200),
+});
+export const getMemoryRequestSchema = projectRequestSchema.extend({ memoryId: text });
+export const getMemoryResponseSchema = memoryEntrySchema.nullable();
+export const cliContextRequestSchema = projectRequestSchema.extend({
+  query: z.string().optional(), type: z.enum(memoryTypes).optional(), scope: z.enum(memoryScopes).optional(),
+});
+export const cliContextResponseSchema = contextResponseSchema;
+export const candidatesRequestSchema = projectRequestSchema.extend({ limit: limit(200).nullable() });
 export const candidatesResponseSchema = z.array(memoryCandidateSchema);
 export const approveCandidateRequestSchema = projectRequestSchema.extend({ candidateId: text });
 export const approveCandidateResponseSchema = memoryMutationResponseSchema;
@@ -153,6 +163,7 @@ export const staleMemoriesResponseSchema = z.array(memoryEntrySchema);
 export const exportTargets = ["agents", "claude", "copilot", "cursor", "project_memory"] as const;
 export const exportRequestSchema = projectRequestSchema.extend({
   targets: z.array(z.enum(exportTargets)).optional(), outputDir: text.optional(), includeConfidential: z.boolean().optional(),
+  preview: z.boolean().optional(),
 });
 export const exportResponseSchema = z.object({
   projectId: text,

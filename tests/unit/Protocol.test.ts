@@ -8,10 +8,10 @@ import { entry } from "./helpers";
 import { projectRoot, protocolFixtures } from "./protocolFixtures";
 
 describe("v1 protocol", () => {
-  it("defines all 19 endpoints with unique methods and versioned paths", () => {
-    expect(Object.keys(endpoints)).toHaveLength(19);
+  it("defines all 22 endpoints with unique methods and versioned paths", () => {
+    expect(Object.keys(endpoints)).toHaveLength(22);
     const routes = Object.values(endpoints).map((endpoint) => `${endpoint.method} ${endpoint.path}`);
-    expect(new Set(routes).size).toBe(19);
+    expect(new Set(routes).size).toBe(22);
     for (const endpoint of Object.values(endpoints)) expect(endpoint.path).toMatch(/^\/v1\//);
   });
 
