@@ -1,9 +1,9 @@
 # Local daemon protocol and client
 
 `@openmembrane/protocol` defines the additive `/v1` HTTP contract.
-`@openmembrane/client` supplies `OpenMembraneClient`; existing MCP, CLI, and
-review UI surfaces still use the in-process service. This change does not
-switch those production consumers. `apps/daemon` serves the contract via
+`@openmembrane/client` supplies `OpenMembraneClient`; CLI data commands and
+the review UI use it instead of opening storage. MCP still uses the
+in-process service pending its separate migration. `apps/daemon` serves the contract via
 the existing `OpenMembraneService`, with no HTTP framework dependency.
 
 ## Daemon lifecycle
@@ -19,10 +19,95 @@ The installed `openmembrane` executable provides:
 | `mcp`, or no arguments | Launch the existing MCP stdio server, unchanged. |
 
 From the repository, `npm run start -w @openmembrane/daemon` runs the
-foreground daemon. MCP, `ingest`, `context`, and the review UI are not
-daemon clients in this release. Do not use those in-process surfaces and
-the daemon to write the same project store concurrently; switching them
-to the daemon is separate follow-up work.
+foreground daemon. Start the daemon before using `ingest`, `context`,
+management commands, or the review UI. These clients do not auto-launch
+or fall back to local services. Do not use the in-process MCP surface and
+the daemon to write the same project store concurrently.
+
+## CLI and review UI operations
+
+All CLI data commands accept `--project <id>` and
+`--output text|json|markdown`. Ingest retains its JSON default; context and
+management commands default to text. CLI failures exit nonzero and retain
+the daemon's safe error code and diagnostic ID.
+Caller opt-outs (`OPENMEMBRANE_EXTRACTION_ENABLED=false` or
+`OPENMEMBRANE_EXTRACTION_PROVIDER=mock`) are carried to ingestion as
+`extractionEnabled: false`. The service then uses its local mock extractor
+for that request, even if the daemon has a remote provider configured.
+Callers cannot enable extraction or forward provider credentials through
+this field; remote provider configuration remains daemon-owned.
+Ingestion and management commands use a 30-minute request deadline instead
+of the general client's 30-second default. Use `--timeout-ms <ms>` for longer
+transcripts, slower providers, or large GitHub Team batches. The review UI
+uses the same default and accepts `--timeout-ms <ms>` at startup (or
+`timeoutMs` when embedded). A timeout does not cancel daemon processing or
+imply that nothing was saved; CLI and UI errors warn to inspect context and
+audit before retrying a mutation.
+
+| Command | Client operation |
+| --- | --- |
+| `ingest --file <path>` or `ingest --stdin` | `ingest` (transcript parsing stays in the CLI) |
+| `context [--query <query>] [--type <type>] [--scope <scope>]` | `getCliContext` |
+| `candidates list [--limit <n>]` | `listMemoryCandidates` |
+| `candidates approve <id>` / `reject <id> [--reason <text>]` | `approveMemoryCandidate` / `rejectMemoryCandidate` |
+| `candidates approve-all` / `reject-all [--reason <text>]` | `approveAllCandidates` / `rejectAllCandidates` |
+| `memory update <id> [--content <text>] [--type <type>] [--scope <scope>] [--tags <a,b>]` | `updateMemory` |
+| `memory supersede <id> [--reason <text>] [--replacement-id <id>]` | `supersedeMemory` |
+| `memory stale [--stale-after-months <n>]` | `reviewStaleMemories` |
+| `export [--targets <a,b>] [--output-dir <path>] [--include-confidential] [--preview]` | `exportStaticMemoryFiles` |
+| `diagnostics [--severity <level>] [--code <code>] [--limit <n>]` | `getDiagnostics` |
+| `audit [--limit <n>]` | `listAuditLog` |
+| `team configure --owner <owner> --repo <name> [--host <host>]` | `configureGitHubTeamMode` |
+| `team status` | `getCollaborationStatus` |
+
+The additive `POST /v1/context/cli` preserves the CLI's existing context
+ranking, filters and untruncated results, with a full pending-candidate
+count. If only the reminder lookup fails, the endpoint still returns the
+memories with `pendingCandidateCount: null` and a safe `pendingReminderError`
+(`code`, `safeMessage`, `diagnosticId`); the CLI prints context and warns on stderr
+instead of hiding memories or implying an empty review queue.
+`POST /v1/memories` preserves the UI's active-memory listing and
+search behavior. Unfiltered listings without a limit include all active entries.
+`GET /v1/memory/:id` returns a memory (including superseded entries) or
+JSON `null`. Candidate requests accept `limit: null` for complete review
+listings; existing omitted and numeric limits keep their previous meaning.
+`POST /v1/export` accepts `preview: true` to render the same files using
+the same confidentiality filters without writing anything.
+`GET /v1/audit` accepts `order: "append"` for newest-appended-first
+ordering before applying the limit. Omitted order (or `"timestamp"`) keeps
+newest-timestamp-first ordering for existing callers.
+
+The loopback review server binds one caller project and never forwards
+browser-supplied project/storage routing overrides. Its API preserves
+existing response shapes:
+
+| Review UI route | Behavior |
+| --- | --- |
+| `GET /api/memories` | Active memories; `q`, `type`, `scope`, `limit` filters |
+| `GET /api/memories/stale` | Stale review; optional `staleAfterMonths` |
+| `GET /api/memories/:id` | Memory detail, or 404 |
+| `PATCH /api/memories/:id` | Update content, type, scope, tags |
+| `POST /api/memories/:id/supersede` | Supersede with optional reason/replacement ID |
+| `GET /api/candidates` | Complete pending list |
+| `POST /api/candidates/:id/approve` / `reject` | Individual review |
+| `POST /api/candidates/approve-all` / `reject-all` | Bulk review; approval includes skipped IDs/reasons |
+| `GET /api/audit` | Newest-appended audit entries, optional `limit` |
+| `GET /api/diagnostics` | Diagnostics; `severity`, `code`, `limit` filters |
+| `POST /api/export/preview` | Render only, regardless of a supplied preview flag |
+| `POST /api/export` | Write generated files |
+
+Browser errors use `{ error: "<safe message>", code, diagnosticId }`;
+daemon diagnostic IDs and HTTP failure statuses are preserved. Invalid UI inputs are rejected
+before proxying. Unavailable daemons produce HTTP 503, not empty success
+responses. The daemon bearer token stays in the server process and is
+never exposed to browser JavaScript.
+Unsaved editor drafts remain in browser memory across memory/stale-list
+refreshes, including saves to other memories. They are not written to
+browser storage and disappear when the page is closed or reloaded.
+Host and Origin validation reject cross-site browser requests and
+non-loopback Host values before any daemon request is sent.
+
+## Project routing and lifecycle guarantees
 
 Project requests normalize their absolute root before validating the
 directory or deriving the default ID from its basename. Dot and parent
@@ -189,4 +274,4 @@ connection resets because a mutation might already have been applied.
 
 Token failures, malformed responses, and transport failures have distinct
 client error codes. Remote safe errors retain their code, safe message,
-and diagnostic ID; they do not trigger auto-launch.
+diagnostic ID, and HTTP failure `status`; they do not trigger auto-launch.

@@ -1,6 +1,6 @@
 import { basename, resolve } from "node:path";
 import { env } from "node:process";
-import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, createExtractor, loadExtractionConfig } from "@openmembrane/core";
+import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, MockMemoryExtractor, createExtractor, loadExtractionConfig } from "@openmembrane/core";
 import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryExtractor, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
 import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
 import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
@@ -30,6 +30,7 @@ export interface ProjectState {
   approvalService: MemoryApprovalService;
   updateService: MemoryUpdateService;
   ingestionService: IngestionService;
+  localIngestionService: IngestionService;
   exportService: StaticMemoryExportService;
   collaborationStore: CollaborationStore;
   githubTeamService: GitHubTeamService;
@@ -101,16 +102,15 @@ export async function createProjectState(
     },
   });
   let extractor = options.deferExtractionInitialization ? undefined : buildExtractor();
+  const pipelineStores = { memoryStore, pendingCandidateStore, auditLogStore };
   const pipeline = new MemoryPipeline({
+    ...pipelineStores,
     extractor: extractor ?? {
       extract(input) {
         extractor ??= buildExtractor();
         return extractor.extract(input);
       },
     },
-    memoryStore,
-    pendingCandidateStore,
-    auditLogStore
   });
   const approvalService = new MemoryApprovalService({
     memoryStore,
@@ -122,6 +122,9 @@ export async function createProjectState(
     auditLogStore
   });
   const ingestionService = new IngestionService({ pipeline });
+  const localIngestionService = new IngestionService({
+    pipeline: new MemoryPipeline({ ...pipelineStores, extractor: new MockMemoryExtractor() }),
+  });
   const exportService = new StaticMemoryExportService();
   const collaborationStore = new JsonCollaborationStore(storageDir);
   const githubTeamService = new GitHubTeamService({
@@ -144,6 +147,7 @@ export async function createProjectState(
     approvalService,
     updateService,
     ingestionService,
+    localIngestionService,
     exportService,
     collaborationStore,
     githubTeamService,

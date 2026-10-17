@@ -40,10 +40,11 @@ packages/storage/    — Local JSON persistence (memories, pending candidates, a
 packages/exporters/  — Static fallback file generation (AGENTS.md, CLAUDE.md, etc.)
 packages/shared/     — IDs, time helpers, generic result types
 packages/protocol/   — Versioned local-daemon HTTP schemas and shared endpoint resolution
-packages/client/     — Authenticated local-daemon client (not yet used by production surfaces)
+packages/client/     — Authenticated local-daemon client used by CLI and review UI
 apps/mcp-server/     — MCP server (tool registration, validation, error responses)
 apps/daemon/         — Per-user HTTP daemon, token authentication, project routing,
                        single-instance locking, and CLI lifecycle
+apps/review-ui/      — Loopback review UI proxying project operations to the daemon
 tests/               — All test files (unit and integration)
 ```
 
@@ -75,6 +76,7 @@ interface MemoryExtractor {
 - **Framework:** Vitest
 - **Run tests:** `npm test` (runs `vitest run`)
 - **Run typecheck + tests:** `npm run check`
+- **Storage boundary check:** `npm run check:storage-imports` (also included in `check` and CI)
 - **Test location:** `tests/unit/` for unit tests, `tests/` root for integration tests
 - **Test helpers:** `tests/unit/helpers.ts` provides `candidate()` and `entry()` factory functions with `Partial<>` overrides
 - Test files follow the naming convention `<Subject>.test.ts`
@@ -94,6 +96,8 @@ interface MemoryExtractor {
 
 - Follow existing patterns in the codebase. Check neighboring files before introducing new patterns.
 - Adapters and integrations must stay thin — no memory policy logic in adapters.
+- CLI and review UI use `@openmembrane/client`; they must not construct project services or stores.
+- Storage imports are restricted to `packages/storage`, `packages/service`, `apps/daemon`, and tests, including relative imports and dynamic imports.
 - MCP tools return safe user-facing errors with a diagnostic ID. Detailed diagnostics are stored locally.
 - Keep files focused — one clear responsibility per file.
 - DRY, YAGNI. Do not add features or abstractions that are not needed yet.

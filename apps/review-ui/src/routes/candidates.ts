@@ -1,50 +1,30 @@
-import type { ProjectService } from "@openmembrane/service";
+import type { OpenMembraneClient } from "@openmembrane/client";
+import { rejectAllRequestSchema } from "@openmembrane/protocol";
 import type { RouteContext, RouteResponse } from "../router";
+import { projectFields, bodyObject } from "./validation";
 
-export interface CandidateRouteHandlers {
-  listCandidates: (ctx: RouteContext) => Promise<RouteResponse>;
-  approveCandidate: (ctx: RouteContext) => Promise<RouteResponse>;
-  rejectCandidate: (ctx: RouteContext) => Promise<RouteResponse>;
-  approveAll: (ctx: RouteContext) => Promise<RouteResponse>;
-  rejectAll: (ctx: RouteContext) => Promise<RouteResponse>;
-}
-
-export function createCandidateRoutes(project: ProjectService): CandidateRouteHandlers {
+export function createCandidateRoutes(client: Pick<OpenMembraneClient, "listMemoryCandidates" | "approveMemoryCandidate" | "rejectMemoryCandidate" | "approveAllCandidates" | "rejectAllCandidates">) {
+  function rejectionInput(ctx: RouteContext) {
+    return rejectAllRequestSchema.omit(projectFields).parse(bodyObject(ctx.body));
+  }
   return {
-    async listCandidates(_ctx) {
-      const candidates = await project.listCandidates({ limit: Number.MAX_SAFE_INTEGER });
-      return { status: 200, body: candidates };
+    async listCandidates(_ctx: RouteContext): Promise<RouteResponse> {
+      return { status: 200, body: await client.listMemoryCandidates({ limit: null }) };
     },
-
-    async approveCandidate(ctx) {
-      try {
-        const result = await project.approveCandidate({ candidateId: ctx.params["id"]! });
-        return { status: 200, body: { ok: true, memory: result } };
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Approval failed";
-        return { status: 400, body: { error: message } };
-      }
+    async approveCandidate(ctx: RouteContext): Promise<RouteResponse> {
+      const memory = await client.approveMemoryCandidate({ candidateId: ctx.params.id! });
+      return { status: 200, body: { ok: true, memory } };
     },
-
-    async rejectCandidate(ctx) {
-      const reason = (ctx.body as { reason?: string } | undefined)?.reason;
-      try {
-        await project.rejectCandidate({ candidateId: ctx.params["id"]!, ...(reason !== undefined ? { reason } : {}) });
-        return { status: 200, body: { ok: true } };
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Rejection failed";
-        return { status: 400, body: { error: message } };
-      }
+    async rejectCandidate(ctx: RouteContext): Promise<RouteResponse> {
+      await client.rejectMemoryCandidate({ ...rejectionInput(ctx), candidateId: ctx.params.id! });
+      return { status: 200, body: { ok: true } };
     },
-
-    async approveAll(_ctx) {
-      const result = await project.approveAllCandidates({});
+    async approveAll(_ctx: RouteContext): Promise<RouteResponse> {
+      const result = await client.approveAllCandidates({});
       return { status: 200, body: { approved: result.approved.length, skipped: result.skipped } };
     },
-
-    async rejectAll(ctx) {
-      const reason = (ctx.body as { reason?: string } | undefined)?.reason;
-      const result = await project.rejectAllCandidates(reason !== undefined ? { reason } : {});
+    async rejectAll(ctx: RouteContext): Promise<RouteResponse> {
+      const result = await client.rejectAllCandidates(rejectionInput(ctx));
       return { status: 200, body: { rejected: result.rejectedCount } };
     },
   };

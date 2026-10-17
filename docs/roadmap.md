@@ -84,6 +84,10 @@ Implemented:
 - pending candidate approval and rejection view
 - memory search view
 - audit and diagnostics view
+- memory editing and superseding
+- stale-memory review
+- static-export preview and write
+- daemon-backed CLI and review UI
 
 ## Phase 7: GitHub Team
 

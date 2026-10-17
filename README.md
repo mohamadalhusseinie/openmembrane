@@ -47,7 +47,7 @@ openmembrane
 No cloud account is required for the default Local Private mode, which stores
 memory locally in git-ignored `.openmembrane/`.
 
-The optional local daemon has explicit lifecycle commands:
+The local daemon has explicit lifecycle commands:
 
 ```sh
 openmembrane serve   # foreground
@@ -57,10 +57,51 @@ openmembrane stop
 ```
 
 Bare `openmembrane` and `openmembrane mcp` both launch MCP stdio.
-MCP, `ingest`, `context`, and the review UI still use the in-process service;
-they do not connect to or auto-start the daemon yet. See
+CLI data commands and the review UI use the authenticated local daemon.
+Run `openmembrane start` first; these surfaces report an error if the daemon
+is unavailable and never fall back to opening stores themselves. MCP still
+uses the in-process service pending its separate migration; do not use MCP
+and the daemon to write the same store concurrently. See
 [Daemon Protocol](docs/daemon-protocol.md) for transport, authentication,
 and per-project request settings.
+
+### CLI and local review
+
+Run these commands from your project directory. `--project <id>` overrides
+`OPENMEMBRANE_PROJECT_ID`; `OPENMEMBRANE_HOME` selects project storage, not
+the per-user daemon endpoint.
+
+```sh
+openmembrane ingest --file session.txt --tool codex
+openmembrane context --query "deployment rules" --output markdown
+openmembrane candidates list --output json
+openmembrane candidates approve <id>
+openmembrane candidates reject <id> --reason "Obsolete"
+openmembrane candidates approve-all
+openmembrane candidates reject-all
+openmembrane memory update <id> --content "Updated project rule"
+openmembrane memory supersede <id> --reason "Replaced" --replacement-id <new-id>
+openmembrane memory stale --stale-after-months 6
+openmembrane export --targets agents,claude --preview
+openmembrane export --targets agents,claude --output-dir generated
+openmembrane diagnostics --severity warning --limit 100
+openmembrane audit --limit 100
+openmembrane team configure --owner my-team --repo private-memory
+openmembrane team status
+```
+
+All data commands support `--output text|json|markdown`. Ingest defaults to
+JSON for compatibility; the others default to text. `openmembrane --help`
+lists command-specific filters and options. Bulk approval skips candidates
+that cannot be approved, including secrets, and reports each skipped ID.
+GitHub Team mutations report publication/retry state rather than implying
+that an unmerged proposal is already active.
+
+From this repository, `npm run review-ui -- --no-open` starts the loopback
+review UI. It provides memory search, editing and superseding, candidate
+review (individual and bulk), audit, diagnostics, stale-memory review, and
+static-export preview/write. Preview never writes files. Export excludes
+confidential memories unless you explicitly opt in.
 
 ## Configuring Your AI Tool
 
@@ -227,7 +268,8 @@ Package responsibilities:
 
 - `packages/core`: domain types, extraction interface, policy checks, classification, deduplication, conflict detection, and pipeline orchestration.
 - `packages/storage`: local JSON persistence for saved memory, pending approvals, and audit events.
-- `packages/service`: in-process project-scoped operations, storage lifecycle, and GitHub Team synchronization shared by MCP, CLI, and Review UI.
+- `packages/service`: project-scoped operations, storage lifecycle, and GitHub Team synchronization owned by the daemon (and the not-yet-migrated MCP surface).
+- `packages/client`: authenticated local-daemon client used by the CLI and review UI.
 - `packages/exporters`: static fallback file generation for AI tools that read project instruction files.
 - `packages/shared`: small runtime helpers for IDs, time, and result types.
 - `apps/mcp-server`: local MCP server exposing saved memory and approval workflows to AI tools.

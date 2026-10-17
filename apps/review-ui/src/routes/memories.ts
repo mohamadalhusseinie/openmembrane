@@ -1,50 +1,36 @@
-import { OpenMembraneError } from "@openmembrane/core";
-import type { MemoryScope, MemoryType } from "@openmembrane/core";
-import type { ProjectService } from "@openmembrane/service";
+import type { OpenMembraneClient } from "@openmembrane/client";
+import { listMemoriesRequestSchema, staleMemoriesRequestSchema, supersedeMemoryRequestSchema, updateMemoryRequestSchema } from "@openmembrane/protocol";
 import type { RouteContext, RouteResponse } from "../router";
+import { bodyObject, projectFields, queryInput } from "./validation";
 
-export interface MemoryRouteHandlers {
-  listMemories: (ctx: RouteContext) => Promise<RouteResponse>;
-  getMemory: (ctx: RouteContext) => Promise<RouteResponse>;
-  supersedeMemory: (ctx: RouteContext) => Promise<RouteResponse>;
-}
-
-export function createMemoryRoutes(project: ProjectService): MemoryRouteHandlers {
+export function createMemoryRoutes(client: Pick<OpenMembraneClient, "listMemories" | "getMemory" | "updateMemory" | "supersedeMemory" | "reviewStaleMemories">) {
   return {
-    async listMemories(ctx) {
-      const type = ctx.query.get("type") ?? undefined;
-      const scope = ctx.query.get("scope") ?? undefined;
-      const q = ctx.query.get("q") ?? undefined;
-      const limitStr = ctx.query.get("limit");
-      const limit = limitStr ? parseInt(limitStr, 10) : undefined;
-
-      const memories = await project.listMemories({
-        ...(q ? { query: q } : {}),
-        ...(type ? { types: [type as MemoryType] } : {}),
-        ...(scope ? { scopes: [scope as MemoryScope] } : {}),
-        ...(limit ? { limit } : {}),
+    async listMemories(ctx: RouteContext): Promise<RouteResponse> {
+      const input = listMemoriesRequestSchema.omit(projectFields).parse({
+        ...queryInput(ctx.query, ["limit"]),
+        ...(ctx.query.has("q") ? { query: ctx.query.get("q") } : {}),
+        ...(ctx.query.has("type") ? { types: [ctx.query.get("type")] } : {}),
+        ...(ctx.query.has("scope") ? { scopes: [ctx.query.get("scope")] } : {}),
       });
-      return { status: 200, body: memories.filter((memory) => memory.status === "active") };
+      return { status: 200, body: await client.listMemories(input) };
     },
-
-    async getMemory(ctx) {
-      const memory = await project.getMemory(ctx.params["id"]!);
-      if (!memory) {
-        return { status: 404, body: { error: "Memory not found" } };
-      }
-      return { status: 200, body: memory };
+    async getMemory(ctx: RouteContext): Promise<RouteResponse> {
+      const memory = await client.getMemory({ memoryId: ctx.params.id! });
+      return memory === null
+        ? { status: 404, body: { error: "Memory not found" } }
+        : { status: 200, body: memory };
     },
-
-    async supersedeMemory(ctx) {
-      try {
-        const entry = await project.supersedeMemory({ memoryId: ctx.params["id"]! });
-        return { status: 200, body: entry };
-      } catch (error) {
-        if (error instanceof OpenMembraneError && error.code === "MEMORY_NOT_FOUND") {
-          return { status: 404, body: { error: "Memory not found" } };
-        }
-        throw error;
-      }
+    async updateMemory(ctx: RouteContext): Promise<RouteResponse> {
+      const input = updateMemoryRequestSchema.omit(projectFields).parse({ ...bodyObject(ctx.body), memoryId: ctx.params.id });
+      return { status: 200, body: await client.updateMemory(input) };
+    },
+    async supersedeMemory(ctx: RouteContext): Promise<RouteResponse> {
+      const input = supersedeMemoryRequestSchema.omit(projectFields).parse({ ...bodyObject(ctx.body), memoryId: ctx.params.id });
+      return { status: 200, body: await client.supersedeMemory(input) };
+    },
+    async staleMemories(ctx: RouteContext): Promise<RouteResponse> {
+      const input = staleMemoriesRequestSchema.omit(projectFields).parse(queryInput(ctx.query, ["staleAfterMonths"]));
+      return { status: 200, body: await client.reviewStaleMemories(input) };
     },
   };
 }

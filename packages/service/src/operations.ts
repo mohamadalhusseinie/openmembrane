@@ -27,6 +27,7 @@ export interface ProjectScopedInput {
 }
 
 export interface ProposeMemoryInput extends ProjectScopedInput {
+  extractionEnabled?: false | undefined;
   transcript?: string | undefined;
   summary?: string | undefined;
   tool?: string | undefined;
@@ -60,7 +61,7 @@ export interface ConfigureGitHubTeamModeInput extends ProjectScopedInput {
 export type GetCollaborationStatusInput = ProjectScopedInput;
 
 export interface ListMemoryCandidatesInput extends ProjectScopedInput {
-  limit?: number | undefined;
+  limit?: number | null | undefined;
 }
 
 export interface ApproveMemoryCandidateInput extends ProjectScopedInput {
@@ -73,6 +74,7 @@ export interface RejectMemoryCandidateInput extends ProjectScopedInput {
 }
 
 export interface ExportStaticMemoryFilesInput extends ProjectScopedInput {
+  preview?: boolean | undefined;
   targets?: ExportTarget[] | undefined;
   outputDir?: string | undefined;
   includeConfidential?: boolean | undefined;
@@ -86,6 +88,7 @@ export interface GetDiagnosticsInput extends ProjectScopedInput {
 
 export interface ListAuditLogInput extends ProjectScopedInput {
   limit?: number | undefined;
+  order?: "timestamp" | "append" | undefined;
 }
 
 export interface SupersedeMemoryInput extends ProjectScopedInput {
@@ -150,7 +153,8 @@ export function createProjectOperations(context: ProjectState) {
       if (input.metadata) {
         request.metadata = input.metadata;
       }
-      const result = await context.ingestionService.ingest(request, {
+      const ingestionService = input.extractionEnabled === false ? context.localIngestionService : context.ingestionService;
+      const result = await ingestionService.ingest(request, {
         preserveExistingConflicts: await isGitHubTeamMode(context, request.projectId),
       });
       return publishAcceptedInGitHubMode(context, request.projectId, result);
@@ -241,7 +245,7 @@ export function createProjectOperations(context: ProjectState) {
       const candidates = await context.pendingCandidateStore.list(projectId);
       return candidates
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-        .slice(0, input.limit ?? 50);
+        .slice(0, input.limit === null ? undefined : input.limit ?? 50);
     },
 
     approveMemoryCandidate: async (input: ApproveMemoryCandidateInput) => {
@@ -265,19 +269,13 @@ export function createProjectOperations(context: ProjectState) {
       const memories = await context.memoryStore.list(projectId);
       const outputDir = resolve(context.projectRoot, input.outputDir ?? ".");
 
-      const request = {
-        projectId,
-        memories,
-        outputDir
+      const options = {
+        ...(input.targets !== undefined ? { targets: input.targets } : {}),
+        ...(input.includeConfidential !== undefined ? { includeConfidential: input.includeConfidential } : {}),
       };
-      if (input.targets) {
-        Object.assign(request, { targets: input.targets });
-      }
-      if (input.includeConfidential !== undefined) {
-        Object.assign(request, { includeConfidential: input.includeConfidential });
-      }
-
-      return context.exportService.write(request);
+      return input.preview
+        ? context.exportService.preview(projectId, memories, options)
+        : context.exportService.write({ projectId, memories, outputDir, ...options });
     },
 
     getDiagnostics: async (input: GetDiagnosticsInput) => {
@@ -353,7 +351,10 @@ export function createProjectOperations(context: ProjectState) {
     listAuditLog: async (input: ListAuditLogInput) => {
       const projectId = resolveProjectId(context, input.projectId);
       const events = await context.auditLogStore.list(projectId);
-      return events.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, input.limit ?? 100);
+      const ordered = input.order === "append"
+        ? events.reverse()
+        : events.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      return ordered.slice(0, input.limit ?? 100);
     },
 
     approveAllCandidates: async (input: ApproveAllCandidatesInput) => {

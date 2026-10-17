@@ -68,7 +68,10 @@ export class OpenMembraneService {
             if (options.types) query.types = options.types;
             if (options.scopes) query.scopes = options.scopes;
             if (options.limit !== undefined) query.limit = options.limit;
-            if (options.query) return state.memoryStore.search(resolved.projectId, options.query, query);
+            if (options.query) {
+              const matches = await state.memoryStore.search(resolved.projectId, options.query, { ...query, limit: null });
+              return matches.filter((memory) => memory.status === "active").slice(0, options.limit ?? 20);
+            }
             const memories = await state.memoryStore.list(resolved.projectId);
             return memories.filter((memory) =>
               memory.status === "active" &&
@@ -100,10 +103,7 @@ export class OpenMembraneService {
           async pendingCandidateCount() {
             return (await state.pendingCandidateStore.list(resolved.projectId)).length;
           },
-          async listReviewAuditLog(limit) {
-            const events = await state.auditLogStore.list(resolved.projectId);
-            return events.slice(-limit).reverse();
-          },
+          listReviewAuditLog: (limit) => operations.listAuditLog({ limit, order: "append" }),
           async retryEligiblePublications() {
             await state.githubTeamService.retryEligiblePublications(resolved.projectId);
           },

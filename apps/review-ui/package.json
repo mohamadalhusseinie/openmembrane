@@ -8,9 +8,10 @@
     "build": "tsup src/index.ts --format esm --dts"
   },
   "devDependencies": {
+    "@openmembrane/client": "*",
+    "@openmembrane/protocol": "*",
     "@openmembrane/core": "*",
     "@openmembrane/shared": "*",
-    "@openmembrane/service": "*",
-    "@openmembrane/storage": "*"
+    "zod": "^4.4.3"
   }
 }

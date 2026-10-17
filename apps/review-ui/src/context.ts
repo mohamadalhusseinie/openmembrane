@@ -1,11 +1,12 @@
 import { cwd } from "node:process";
-import { createOpenMembraneService } from "@openmembrane/service";
-import type { ProjectService } from "@openmembrane/service";
+import { basename, resolve } from "node:path";
+import { OpenMembraneClient } from "@openmembrane/client";
+import type { OpenMembraneClientOptions } from "@openmembrane/client";
 
 export interface ReviewUiContext {
   projectId: string;
   storageDir: string;
-  project: ProjectService;
+  project: OpenMembraneClient;
   close: () => Promise<void>;
 }
 
@@ -14,19 +15,22 @@ export interface ReviewUiOptions {
   open?: boolean;
   home?: string;
   project?: string;
+  timeoutMs?: number;
+  clientOptions?: OpenMembraneClientOptions;
 }
 
 export async function createReviewUiContext(options: ReviewUiOptions = {}): Promise<ReviewUiContext> {
-  const service = createOpenMembraneService({ deferExtractionInitialization: true });
-  try {
-    const project = await service.forProject({
-      projectRoot: cwd(),
-      ...(options.project !== undefined ? { projectId: options.project } : {}),
-      ...(options.home !== undefined ? { storageDir: options.home } : {}),
-    });
-    return { projectId: project.projectId, storageDir: project.storageDir, project, close: () => service.close() };
-  } catch (error) {
-    await service.close();
-    throw error;
-  }
+  const projectRoot = options.clientOptions?.projectRoot ?? cwd();
+  const env = { ...(options.clientOptions?.env ?? process.env) };
+  if (options.project !== undefined) env.OPENMEMBRANE_PROJECT_ID = options.project;
+  if (options.home !== undefined) env.OPENMEMBRANE_HOME = options.home;
+  return {
+    projectId: env.OPENMEMBRANE_PROJECT_ID ?? basename(projectRoot),
+    storageDir: resolve(projectRoot, env.OPENMEMBRANE_HOME ?? ".openmembrane"),
+    project: new OpenMembraneClient({
+      ...options.clientOptions, projectRoot, env,
+      requestTimeoutMs: options.timeoutMs ?? options.clientOptions?.requestTimeoutMs ?? 30 * 60_000,
+    }),
+    close: async () => {},
+  };
 }

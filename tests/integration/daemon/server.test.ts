@@ -97,6 +97,9 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     expect((await call("getProjectRules", {})).rules.length).toBeGreaterThan(0);
     expect((await call("getRelevantContext", { query: "alpha fixtures" })).memories.length).toBeGreaterThan(0);
     expect((await call("searchMemory", { query: "alpha fixtures" })).length).toBeGreaterThan(0);
+    expect((await call("listMemories", {})).length).toBeGreaterThan(0);
+    expect(await call("getMemory", { memoryId })).toMatchObject({ id: memoryId });
+    expect((await call("getCliContext", {})).pendingCandidateCount).toBe(4);
     expect((await call("listMemoryCandidates", {})).length).toBe(4);
     expect((await call("approveMemoryCandidate", { candidateId: "approve candidate" })).status).toBe("active");
     expect(await call("rejectMemoryCandidate", { candidateId: "reject-candidate", reason: "Obsolete" })).toMatchObject({ rejected: true });

@@ -109,6 +109,7 @@ export const rememberRequestSchema = projectRequestSchema.extend({
 }).refine((input) => (input.items?.length ?? 0) > 0 || (input.content !== undefined && input.type !== undefined),
   "Provide content and type, or non-empty items.");
 export const ingestRequestSchema = projectRequestSchema.extend({
+  extractionEnabled: z.literal(false).optional(),
   transcript: text.max(MAX_TRANSCRIPT_LENGTH).optional(), summary: text.max(MAX_SUMMARY_LENGTH).optional(),
   tool: text.optional(), sessionId: text.optional(),
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -126,7 +127,24 @@ export const searchRequestSchema = projectRequestSchema.extend({
   types: z.array(z.enum(memoryTypes)).optional(), tags: z.array(text).optional(), limit: limit(200),
 });
 export const searchResponseSchema = z.array(memoryEntrySchema);
-export const candidatesRequestSchema = projectRequestSchema.extend({ limit: limit(200) });
+export const listMemoriesRequestSchema = projectRequestSchema.extend({
+  query: z.string().optional(), types: z.array(z.enum(memoryTypes)).optional(),
+  scopes: z.array(z.enum(memoryScopes)).optional(), limit: limit(200),
+});
+export const getMemoryRequestSchema = projectRequestSchema.extend({ memoryId: text });
+export const getMemoryResponseSchema = memoryEntrySchema.nullable();
+export const cliContextRequestSchema = projectRequestSchema.extend({
+  query: z.string().optional(), type: z.enum(memoryTypes).optional(), scope: z.enum(memoryScopes).optional(),
+});
+export const cliContextResponseSchema = z.union([
+  contextResponseSchema,
+  z.object({
+    memories: z.array(contextMemorySchema),
+    pendingCandidateCount: z.null(),
+    pendingReminderError: errorResponseSchema.shape.error,
+  }),
+]);
+export const candidatesRequestSchema = projectRequestSchema.extend({ limit: limit(200).nullable() });
 export const candidatesResponseSchema = z.array(memoryCandidateSchema);
 export const approveCandidateRequestSchema = projectRequestSchema.extend({ candidateId: text });
 export const approveCandidateResponseSchema = memoryMutationResponseSchema;
@@ -153,6 +171,7 @@ export const staleMemoriesResponseSchema = z.array(memoryEntrySchema);
 export const exportTargets = ["agents", "claude", "copilot", "cursor", "project_memory"] as const;
 export const exportRequestSchema = projectRequestSchema.extend({
   targets: z.array(z.enum(exportTargets)).optional(), outputDir: text.optional(), includeConfidential: z.boolean().optional(),
+  preview: z.boolean().optional(),
 });
 export const exportResponseSchema = z.object({
   projectId: text,
@@ -175,7 +194,9 @@ export const auditEventSchema = z.object({
   ] satisfies [AuditEvent["type"], ...AuditEvent["type"][]]),
   entityId: text.optional(), createdAt: text, details: z.record(z.string(), z.unknown()).optional(),
 });
-export const auditRequestSchema = projectRequestSchema.extend({ limit: limit(500) });
+export const auditRequestSchema = projectRequestSchema.extend({
+  limit: limit(500), order: z.enum(["timestamp", "append"]).optional(),
+});
 export const auditResponseSchema = z.array(auditEventSchema);
 export const healthRequestSchema = z.object({});
 export const healthResponseSchema = z.object({}).strict();

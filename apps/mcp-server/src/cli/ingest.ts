@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { cwd } from "node:process";
-import { createOpenMembraneService } from "@openmembrane/service";
+import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import type { IngestCommand } from "./parseArgs";
 import { parseSessionContent } from "./parsers/index";
-import { printProjectPendingReminder } from "./pendingReminder";
+import { printPendingReminderCount } from "./pendingReminder";
+import { formatResult } from "./formatters";
 
 export async function runIngest(cmd: IngestCommand): Promise<void> {
   let content: string;
@@ -41,18 +41,20 @@ export async function runIngest(cmd: IngestCommand): Promise<void> {
     return;
   }
 
-  const service = createOpenMembraneService();
+  const client = new OpenMembraneClient({ requestTimeoutMs: cmd.timeoutMs ?? 30 * 60_000 });
+  const input = { ...(cmd.project ? { projectId: cmd.project } : {}) };
+  const result = await client.ingest({ ...input, transcript, tool: cmd.tool }).catch((error: unknown) => {
+    if (error instanceof OpenMembraneClientError && error.code === "E_REQUEST_TIMEOUT") {
+      process.stderr.write("Warning: Ingestion may still be processing in the daemon. Check context and audit before retrying; a timeout does not mean nothing was saved.\n");
+    }
+    throw error;
+  });
+  process.stdout.write(formatResult(result, cmd.output ?? "json") + "\n");
   try {
-    const project = await service.forProject({ projectRoot: cwd(), ...(cmd.project ? { projectId: cmd.project } : {}) });
-    const result = await project.proposeMemoryFromSession({
-      transcript,
-      tool: cmd.tool
-    });
-
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-    await printProjectPendingReminder(project);
-  } finally {
-    await service.close();
+    printPendingReminderCount((await client.listMemoryCandidates({ ...input, limit: null })).length);
+  } catch (error) {
+    if (!(error instanceof OpenMembraneClientError)) throw error;
+    process.stderr.write(`Warning: Ingestion completed, but the pending reminder is unavailable [${error.code}]${error.diagnosticId ? ` (diagnostic: ${error.diagnosticId})` : ""}.\n`);
   }
 }
 

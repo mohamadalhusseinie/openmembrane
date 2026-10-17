@@ -5,14 +5,16 @@ export class OpenMembraneClientError extends Error {
   readonly safeMessage: string;
   readonly diagnosticId?: string;
   readonly origin: "client" | "daemon";
+  readonly status?: number;
 
-  constructor(code: string, safeMessage: string, options: { cause?: unknown; diagnosticId?: string; origin?: "client" | "daemon" } = {}) {
+  constructor(code: string, safeMessage: string, options: { cause?: unknown; diagnosticId?: string; origin?: "client" | "daemon"; status?: number } = {}) {
     super(safeMessage, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "OpenMembraneClientError";
     this.code = code;
     this.safeMessage = safeMessage;
     this.origin = options.origin ?? "client";
     if (options.diagnosticId !== undefined) this.diagnosticId = options.diagnosticId;
+    if (options.status !== undefined) this.status = options.status;
   }
 }
 

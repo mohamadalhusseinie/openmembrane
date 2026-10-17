@@ -8,10 +8,10 @@ import { entry } from "./helpers";
 import { projectRoot, protocolFixtures } from "./protocolFixtures";
 
 describe("v1 protocol", () => {
-  it("defines all 19 endpoints with unique methods and versioned paths", () => {
-    expect(Object.keys(endpoints)).toHaveLength(19);
+  it("defines all 22 endpoints with unique methods and versioned paths", () => {
+    expect(Object.keys(endpoints)).toHaveLength(22);
     const routes = Object.values(endpoints).map((endpoint) => `${endpoint.method} ${endpoint.path}`);
-    expect(new Set(routes).size).toBe(19);
+    expect(new Set(routes).size).toBe(22);
     for (const endpoint of Object.values(endpoints)) expect(endpoint.path).toMatch(/^\/v1\//);
   });
 
@@ -65,6 +65,25 @@ describe("v1 protocol", () => {
     const local = { mode: "local_private", proposals: { proposed: 0, active: 0, rejected: 0, syncFailed: 0, conflict: 0 }, retries: [] };
     expect(collaborationStatusResponseSchema.parse(local)).toEqual(local);
     expect(endpoints.configureGitHubTeamMode.response.parse({ kind: "rejected", code: "GITHUB_AUTH_REQUIRED", message: "Authenticate." })).toEqual({ kind: "rejected", code: "GITHUB_AUTH_REQUIRED", message: "Authenticate." });
+  });
+
+  it("requires an explicit diagnostic when the CLI pending reminder is unavailable", () => {
+    const response = {
+      memories: [entry()], pendingCandidateCount: null,
+      pendingReminderError: { code: "STORAGE_ERROR", safeMessage: "Could not load pending candidates.", diagnosticId: "diag_pending" },
+    };
+    expect(endpoints.getCliContext.response.parse(JSON.parse(JSON.stringify(response)))).toEqual(response);
+    expect(endpoints.getCliContext.response.safeParse({ memories: [], pendingCandidateCount: null }).success).toBe(false);
+    expect(endpoints.getCliContext.response.parse({ memories: [], pendingCandidateCount: 0 })).toEqual({
+      memories: [], pendingCandidateCount: 0,
+    });
+  });
+
+  it("allows ingestion callers to restrict extraction but never enable a provider", () => {
+    expect(ingestRequestSchema.parse({ projectRoot, transcript: "Rule: Use ESM.", extractionEnabled: false })).toMatchObject({
+      extractionEnabled: false,
+    });
+    expect(ingestRequestSchema.safeParse({ projectRoot, transcript: "Rule: Use ESM.", extractionEnabled: true }).success).toBe(false);
   });
 });
 

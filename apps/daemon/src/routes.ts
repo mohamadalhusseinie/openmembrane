@@ -11,7 +11,7 @@ import type { RouteResponse } from "../../review-ui/src/router";
 import type { DaemonLogger } from "./logging";
 
 type ProjectEndpoint = Exclude<EndpointName, "health">;
-type Handlers = { [K in ProjectEndpoint]: (project: ProjectService, input: EndpointRequest<K>) => Promise<unknown> };
+type Handlers = { [K in ProjectEndpoint]: (project: ProjectService, input: EndpointRequest<K>, logger: DaemonLogger) => Promise<unknown> };
 
 const handlers: Handlers = {
   remember: (project, input) => project.remember(input),
@@ -19,6 +19,31 @@ const handlers: Handlers = {
   getProjectRules: (project, input) => project.getProjectRules(input),
   getRelevantContext: (project, input) => project.getRelevantContext(input),
   searchMemory: (project, input) => project.searchMemory(input),
+  listMemories: (project, input) => project.listMemories({
+    ...(input.query !== undefined ? { query: input.query } : {}),
+    ...(input.types !== undefined ? { types: input.types } : {}),
+    ...(input.scopes !== undefined ? { scopes: input.scopes } : {}),
+    ...(input.limit !== undefined ? { limit: input.limit } : {}),
+  }),
+  getMemory: async (project, input) => (await project.getMemory(input.memoryId)) ?? null,
+  getCliContext: async (project, input, logger) => {
+    const memories = await project.getCliContext({
+      ...(input.query !== undefined ? { query: input.query } : {}),
+      ...(input.type !== undefined ? { type: input.type } : {}),
+      ...(input.scope !== undefined ? { scope: input.scope } : {}),
+    });
+    try {
+      return { memories, pendingCandidateCount: await project.pendingCandidateCount() };
+    } catch (error) {
+      const normalized = normalizeOpenMembraneError(error);
+      const diagnosticId = createId("diag");
+      await logger.write("pending_reminder_failed", diagnosticId, normalized.code);
+      return {
+        memories, pendingCandidateCount: null,
+        pendingReminderError: { code: normalized.code, safeMessage: normalized.safeMessage, diagnosticId },
+      };
+    }
+  },
   listMemoryCandidates: (project, input) => project.listMemoryCandidates(input),
   approveMemoryCandidate: (project, input) => project.approveMemoryCandidate(input),
   rejectMemoryCandidate: (project, input) => project.rejectMemoryCandidate(input),
@@ -35,12 +60,12 @@ const handlers: Handlers = {
 };
 
 const collaborationOperations = new Set<ProjectEndpoint>([
-  "remember", "ingest", "getProjectRules", "getRelevantContext", "searchMemory",
+  "remember", "ingest", "getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext",
   "approveMemoryCandidate", "approveAllCandidates", "updateMemory", "supersedeMemory",
   "reviewStaleMemories", "exportStaticMemoryFiles", "getCollaborationStatus",
 ]);
 
-const retrievalOperations = new Set<ProjectEndpoint>(["getProjectRules", "getRelevantContext", "searchMemory"]);
+const retrievalOperations = new Set<ProjectEndpoint>(["getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext"]);
 
 export async function safeError(logger: DaemonLogger, status: number, code: string, safeMessage: string): Promise<RouteResponse> {
   const diagnosticId = createId("diag");
@@ -119,7 +144,7 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
             const unavailable = await project.checkCollaborationAvailability();
             if (unavailable) return safeError(logger, 503, unavailable.code, unavailable.message);
           }
-          const result = await handlers[name](project, input as EndpointRequest<K>);
+          const result = await handlers[name](project, input as EndpointRequest<K>, logger);
           if (name === "configureGitHubTeamMode") {
             const configured = endpoints.configureGitHubTeamMode.response.parse(result);
             if (configured.kind === "rejected") return safeError(logger, 422, configured.code, configured.message);
@@ -144,6 +169,8 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
       }
     });
   }
-  for (const name of Object.keys(handlers) as ProjectEndpoint[]) register(name);
+  const names = (Object.keys(handlers) as ProjectEndpoint[])
+    .sort((left, right) => Number("idField" in endpoints[left]) - Number("idField" in endpoints[right]));
+  for (const name of names) register(name);
   return router;
 }

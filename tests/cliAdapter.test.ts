@@ -1,117 +1,200 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
-import { createOpenMembraneContext } from "../apps/mcp-server/src/context";
-import type { IngestCommand, ContextCommand } from "../apps/mcp-server/src/cli/parseArgs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PrivateTeamRunner, setupSurfaceDaemon } from "./integration/surfaces/helpers";
+import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
+import { OpenMembraneClient } from "@openmembrane/client";
+import { MemoryApprovalService } from "@openmembrane/core";
 
-const tempDirs: string[] = [];
-
+const fixtures: Awaited<ReturnType<typeof setupSurfaceDaemon>>[] = [];
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(fixtures.splice(0).map((fixture) => fixture.close()));
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
-/**
- * Integration tests for CLI adapter commands.
- *
- * These tests exercise the full pipeline (ingest -> store -> retrieve)
- * via the CLI handler functions, using temp storage.
- *
- * Note: We test the handler logic directly rather than spawning child
- * processes, since the handlers are the thin adapter layer and the
- * entry point routing is tested in unit tests.
- */
-describe("CLI adapter integration", () => {
-  async function setupContext() {
-    const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
-    tempDirs.push(storageDir);
-    return await createOpenMembraneContext({
-      defaultProjectId: "test-project",
-      storageDir
-    });
-  }
+async function setup(options: Parameters<typeof setupSurfaceDaemon>[0] = {}) {
+  vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "mock");
+  vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "false");
+  const fixture = await setupSurfaceDaemon(options);
+  fixtures.push(fixture);
+  return fixture;
+}
 
-  describe("ingest -> context round-trip", () => {
-    it("ingests a text transcript and retrieves memories via context", async () => {
-      const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
-      tempDirs.push(storageDir);
+describe("CLI subprocess and real daemon", { timeout: 90_000 }, () => {
+  it("exercises ingestion, context, every management operation, and all output formats", async () => {
+    const { cli, client, root, projectRoot } = await setup();
+    expect(await client.health()).toEqual({});
+    const transcript = join(root, "session.txt");
+    await writeFile(transcript, "rule: This project must use strict TypeScript mode.");
+    const ingested = JSON.parse((await cli(["ingest", "--file", transcript, "--tool", "codex"])).stdout);
+    expect(ingested.savedCount).toBe(1);
+    const chat = JSON.stringify([{ role: "assistant", content: "Project instructions:\nrule: This project must deploy only after integration verification." }]);
+    expect(JSON.parse((await cli(["ingest", "--stdin", "--format", "openai-chat", "--output", "json"], chat)).stdout).savedCount).toBe(1);
+    expect((await cli(["ingest", "--stdin", "--output", "markdown"], "rule: Database backups must be verified before migration.")).stdout).toContain("```json");
+    expect((await cli(["ingest", "--stdin", "--output", "text"], "rule: Release artifacts must be signed before publication.")).stdout).toContain("savedCount: 1");
 
-      const context = await createOpenMembraneContext({
-        defaultProjectId: "test-project",
-        storageDir
-      });
+    const context = await cli(["context", "--output", "json"]);
+    const memories = JSON.parse(context.stdout);
+    expect(memories.some((memory: { content: string }) => memory.content.includes("strict TypeScript"))).toBe(true);
+    expect(context.stderr).toContain("4 memory candidates are waiting");
+    expect((await cli(["context", "--query", "TypeScript", "--output", "markdown"])).stdout).toContain("## coding rule");
+    expect((await cli(["context", "--type", "coding_rule", "--scope", "frontend"])).stdout).toContain("Found");
 
-      // Use wording that triggers high confidence ("must") for auto_save
-      const ingestResult = await context.ingestionService.ingest({
-        projectId: "test-project",
-        transcript: "rule: This project must use strict TypeScript mode.",
-        tool: "codex"
-      });
+    expect(JSON.parse((await cli(["candidates", "list", "--output", "json"])).stdout)).toHaveLength(4);
+    expect(JSON.parse((await cli(["candidates", "approve", "approve candidate", "--output", "json"])).stdout).status).toBe("active");
+    expect(JSON.parse((await cli(["candidates", "reject", "reject-candidate", "--reason", "Obsolete", "--output", "json"])).stdout).rejected).toBe(true);
+    const bulk = JSON.parse((await cli(["candidates", "approve-all", "--output", "json"])).stdout);
+    expect(bulk.approved).toHaveLength(1);
+    expect(bulk.skipped).toMatchObject([{ candidateId: "secret-candidate" }]);
+    expect(JSON.parse((await cli(["candidates", "reject-all", "--output", "json"])).stdout).rejectedCount).toBe(1);
 
-      expect(ingestResult.savedCount).toBeGreaterThanOrEqual(1);
-
-      // Retrieve context
-      const memories = await context.memoryStore.list("test-project");
-      const active = memories.filter((m) => m.status === "active");
-      expect(active.length).toBeGreaterThanOrEqual(1);
-      expect(active.some((m) => m.content.includes("strict TypeScript"))).toBe(true);
-
-      context.close?.();
+    const updated = JSON.parse((await cli(["memory", "update", "old memory", "--content", "The frontend must use strict ESM TypeScript modules.", "--type", "coding_rule", "--scope", "frontend", "--tags", "esm,typescript", "--output", "json"])).stdout);
+    expect(updated).toMatchObject({ scope: "frontend", tags: ["esm", "typescript"] });
+    const stale = JSON.parse((await cli(["memory", "stale", "--stale-after-months", "6", "--output", "json"])).stdout);
+    expect(Array.isArray(stale)).toBe(true);
+    expect(JSON.parse((await cli(["memory", "supersede", "old memory", "--reason", "Replaced", "--replacement-id", ingested.saved[0].id, "--output", "json"])).stdout)).toMatchObject({
+      status: "superseded", supersededBy: ingested.saved[0].id,
     });
 
-    it("ingests an OpenAI chat format transcript", async () => {
-      const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
-      tempDirs.push(storageDir);
+    const preview = JSON.parse((await cli(["export", "--targets", "agents", "--preview", "--output", "json"])).stdout);
+    expect(preview.files[0].content).toContain("strict TypeScript");
+    expect(preview.files[0].content).not.toContain("Private deployment architecture");
+    await expect(stat(join(projectRoot, "AGENTS.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await cli(["export", "--targets", "agents", "--output-dir", "generated", "--include-confidential"]);
+    expect(await readFile(join(projectRoot, "generated", "AGENTS.md"), "utf8")).toContain("Private deployment architecture");
+    const diagnostics = JSON.parse((await cli(["diagnostics", "--severity", "info", "--code", "EXTRACTION_MOCK_FALLBACK", "--limit", "2", "--output", "json"])).stdout);
+    expect(diagnostics).toHaveLength(1);
+    expect(JSON.parse((await cli(["audit", "--limit", "2", "--output", "json"])).stdout)).toHaveLength(2);
+    expect((await cli(["audit", "--output", "markdown"])).stdout).toContain("```json");
+  });
 
-      const context = await createOpenMembraneContext({
-        defaultProjectId: "test-project",
-        storageDir
-      });
-
-      const chatJson = JSON.stringify([
-        { role: "user", content: "What testing framework should we use?" },
-        { role: "assistant", content: "rule: This project uses Vitest for all unit and integration tests." }
-      ]);
-
-      // Parse the chat format first
-      const { parseSessionContent } = await import("../apps/mcp-server/src/cli/parsers/index");
-      const transcript = parseSessionContent(chatJson, "openai-chat");
-
-      const result = await context.ingestionService.ingest({
-        projectId: "test-project",
-        transcript,
-        tool: "codex"
-      });
-
-      expect(result.savedCount).toBeGreaterThanOrEqual(1);
-
-      const memories = await context.memoryStore.list("test-project");
-      expect(memories.some((m) => m.content.includes("Vitest"))).toBe(true);
-
-      context.close?.();
+  it("configures GitHub Team and reports status through the daemon", async () => {
+    const { cli } = await setup({ runner: new PrivateTeamRunner() });
+    expect(JSON.parse((await cli(["team", "status", "--output", "json"])).stdout).mode).toBe("local_private");
+    expect(JSON.parse((await cli(["team", "configure", "--host", "github.example.test", "--owner", "team", "--repo", "memory", "--output", "json"])).stdout).kind).toBe("configured");
+    expect(JSON.parse((await cli(["team", "status", "--output", "json"])).stdout)).toMatchObject({
+      mode: "github_team", repository: { host: "github.example.test", owner: "team", name: "memory" },
     });
+  });
 
-    it("retrieves memories filtered by scope", async () => {
-      const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-cli-test-"));
-      tempDirs.push(storageDir);
+  it("returns context with a diagnostic warning when only the pending reminder fails", async () => {
+    const { cli, client, storageDir, root } = await setup();
+    await writeFile(join(storageDir, "pending", "coding_rule", "frontend", "approve candidate.json"), "{");
+    const result = await client.getCliContext();
+    expect(result.memories).toHaveLength(2);
+    expect(result.pendingCandidateCount).toBeNull();
+    expect(result).toMatchObject({
+      pendingReminderError: { code: "STORAGE_INVALID_JSON", diagnosticId: expect.any(String) },
+    });
+    const context = await cli(["context", "--output", "json"]);
+    expect(JSON.parse(context.stdout)).toHaveLength(2);
+    expect(context.stderr).toContain("Context retrieved, but the pending reminder is unavailable [STORAGE_INVALID_JSON]");
+    expect(context.stderr).toMatch(/diagnostic: diag_/);
+    expect(context.stderr).not.toContain(storageDir);
+    expect(await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8")).toContain("pending_reminder_failed");
+    await writeFile(join(storageDir, "memories", "coding_rule", "frontend", "old memory.json"), "{");
+    await expect(client.getCliContext()).rejects.toMatchObject({ code: "STORAGE_INVALID_JSON" });
+    await expect(cli(["context", "--output", "json"])).rejects.toMatchObject({
+      stdout: "", stderr: expect.stringContaining("STORAGE_INVALID_JSON"),
+    });
+  });
 
-      const context = await createOpenMembraneContext({
-        defaultProjectId: "test-project",
-        storageDir
-      });
+  it("honors caller extraction opt-outs when the daemon has remote extraction enabled", async () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "llm");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "unused-fixture-key");
+    const remoteExtract = vi.spyOn(LlmMemoryExtractor.prototype, "extract").mockResolvedValue([]);
+    const fixture = await setupSurfaceDaemon();
+    fixtures.push(fixture);
+    const remoteClient = new OpenMembraneClient({
+      ...fixture.clientOptions,
+      env: { ...fixture.env, OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" },
+    });
+    await remoteClient.ingest({ transcript: "Ordinary transcript for the remote extractor control." });
+    expect(remoteExtract).toHaveBeenCalledOnce();
+    remoteExtract.mockClear();
 
-      // Ingest two different scoped rules
-      await context.ingestionService.ingest({
-        projectId: "test-project",
-        transcript: "rule: The frontend uses React with TypeScript.\nrule: The backend uses Express with Node.js.",
-        tool: "codex"
-      });
+    for (const overrides of [
+      { OPENMEMBRANE_EXTRACTION_ENABLED: "false", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" },
+      { OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "mock" },
+    ]) {
+      const output = await fixture.cli(["ingest", "--stdin"], "rule: Use strict TypeScript before deployment.", overrides);
+      const result = JSON.parse(output.stdout);
+      expect(result.savedCount + result.pendingCount + result.rejectedCount).toBe(1);
+      expect(remoteExtract).not.toHaveBeenCalled();
+    }
+    await remoteClient.ingest({ transcript: "The daemon's configured extractor is still unchanged." });
+    expect(remoteExtract).toHaveBeenCalledOnce();
+  });
 
-      const allMemories = await context.memoryStore.list("test-project");
-      const active = allMemories.filter((m) => m.status === "active");
-      expect(active.length).toBeGreaterThanOrEqual(1);
+  it("awaits ingestion beyond 30 seconds and warns about uncertain completion on an explicit timeout", async () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "llm");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "unused-fixture-key");
+    const remoteExtract = vi.spyOn(LlmMemoryExtractor.prototype, "extract").mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 31_000));
+      return [];
+    });
+    const fixture = await setupSurfaceDaemon();
+    fixtures.push(fixture);
+    const overrides = { OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" };
+    const start = performance.now();
+    const completed = await fixture.cli(["ingest", "--stdin"], "Long-running extraction fixture.", overrides);
+    expect(JSON.parse(completed.stdout).savedCount).toBe(0);
+    expect(performance.now() - start).toBeGreaterThan(30_000);
+    remoteExtract.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return [];
+    });
+    await expect(fixture.cli(["ingest", "--stdin", "--timeout-ms", "500"], "Explicit timeout fixture.", overrides)).rejects.toMatchObject({
+      stdout: "", stderr: expect.stringContaining("Check context and audit before retrying"),
+    });
+    expect(remoteExtract).toHaveBeenCalledTimes(2);
+  });
 
-      context.close?.();
+  it("awaits long management mutations and warns when an explicit deadline expires", async () => {
+    const approveAll = vi.spyOn(MemoryApprovalService.prototype, "approveAll").mockImplementation(async projectId => {
+      await new Promise(resolve => setTimeout(resolve, 31_000));
+      return { projectId, approved: [], skipped: [] };
+    });
+    const { cli } = await setup();
+    const start = performance.now();
+    const completed = await cli(["candidates", "approve-all", "--output", "json"]);
+    expect(JSON.parse(completed.stdout).approved).toEqual([]);
+    expect(performance.now() - start).toBeGreaterThan(30_000);
+    approveAll.mockImplementation(async projectId => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return { projectId, approved: [], skipped: [] };
+    });
+    await expect(cli(["candidates", "approve-all", "--timeout-ms", "500"])).rejects.toMatchObject({
+      stdout: "", stderr: expect.stringContaining("may still be processing; check context and audit before retrying"),
+    });
+    expect(approveAll).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves untruncated context and caller project overrides", async () => {
+    const { cli, projectRoot } = await setup({ many: true });
+    const result = await cli(["context", "--output", "json"]);
+    expect(JSON.parse(result.stdout)).toHaveLength(207);
+    expect(result.stderr).toContain("209 memory candidates");
+    expect(JSON.parse((await cli(["context", "--project", "other-project", "--output", "json"])).stdout)).toEqual([]);
+    await expect(stat(join(projectRoot, ".openmembrane"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("reports safe daemon errors and fails rather than falling back to local stores", async () => {
+    const { cli, root } = await setup();
+    await expect(cli(["candidates", "approve", "secret-candidate"])).rejects.toMatchObject({
+      code: 1, stderr: expect.stringMatching(/SECRET_CANDIDATE.*diagnostic:/), stdout: "",
+    });
+    await expect(cli(["memory", "update", "missing", "--content", "Missing memories must produce safe errors."])).rejects.toMatchObject({
+      code: 1, stderr: expect.stringMatching(/MEMORY_NOT_FOUND.*diagnostic:/),
+    });
+    await expect(cli(["ingest", "--stdin"], "")).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining("Input is empty") });
+    const missingHome = join(root, "no-daemon");
+    await mkdir(missingHome);
+    await expect(cli(["context"], undefined, { HOME: missingHome, USERPROFILE: missingHome, XDG_RUNTIME_DIR: missingHome })).rejects.toMatchObject({
+      code: 1, stderr: expect.stringContaining("daemon is not running"), stdout: "",
     });
   });
 });

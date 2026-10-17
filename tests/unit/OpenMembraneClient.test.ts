@@ -133,6 +133,20 @@ describe("OpenMembraneClient with a local HTTP server", () => {
     expect(records[0]?.input).toEqual({ projectRoot: process.cwd() });
   });
 
+  it.each([
+    { OPENMEMBRANE_EXTRACTION_ENABLED: "false", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" },
+    { OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "mock" },
+  ])("forwards caller extraction opt-outs without forwarding provider credentials (%j)", async (env) => {
+    respond = (_req, res) => res.end(JSON.stringify(protocolFixtures.ingest.response));
+    const client = new OpenMembraneClient({
+      endpoint, daemonPaths, env: { ...env, OPENMEMBRANE_EXTRACTION_API_KEY: "unused-test-key" },
+    });
+    await client.ingest({ transcript: "rule: Use strict TypeScript." });
+    expect(records[0]?.input).toEqual({
+      projectRoot: process.cwd(), transcript: "rule: Use strict TypeScript.", extractionEnabled: false,
+    });
+  });
+
   it("rejects relative projects and invalid backend overrides before sending data", async () => {
     const client = new OpenMembraneClient({ endpoint, daemonPaths, env: {} });
     await expect(client.ingest({ projectRoot: "relative", summary: "Test" })).rejects.toThrow("absolute");
@@ -141,15 +155,19 @@ describe("OpenMembraneClient with a local HTTP server", () => {
     expect(records).toHaveLength(0);
   });
 
-  it.each(["VALIDATION_ERROR", E_DAEMON_NOT_RUNNING])("preserves remote %s errors and diagnostic IDs without launching", async (code) => {
+  it.each([
+    ["VALIDATION_ERROR", 400], ["UNAUTHORIZED", 401], ["FORBIDDEN", 403],
+    ["MEMORY_NOT_FOUND", 404], ["SECRET_CANDIDATE", 422],
+    ["STORAGE_ERROR", 500], [E_DAEMON_NOT_RUNNING, 503],
+  ])("preserves remote %s errors, HTTP status, and diagnostic IDs without launching", async (code, status) => {
     respond = (_req, res) => {
-      res.statusCode = 400;
+      res.statusCode = status;
       res.end(JSON.stringify({ error: { code, safeMessage: "Invalid request.", diagnosticId: "diag_123" } }));
     };
     const autoLaunch = vi.fn();
     const client = new OpenMembraneClient({ endpoint, daemonPaths, env: {}, autoLaunch });
     await expect(client.searchMemory()).rejects.toMatchObject({
-      code, message: "Invalid request.", safeMessage: "Invalid request.", diagnosticId: "diag_123", origin: "daemon",
+      code, status, message: "Invalid request.", safeMessage: "Invalid request.", diagnosticId: "diag_123", origin: "daemon",
     });
     expect(autoLaunch).not.toHaveBeenCalled();
   });

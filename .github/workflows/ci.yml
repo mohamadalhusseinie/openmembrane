@@ -37,5 +37,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run checks
+      - name: Check storage boundaries, types, and tests
         run: npm run check
