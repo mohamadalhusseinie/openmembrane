@@ -34,6 +34,8 @@ export type ConfigureGitHubTeamResult =
   | { kind: "configured"; config: CollaborationProjectConfig }
   | { kind: "rejected"; code: GitHubTeamConfigurationErrorCode; message: string };
 
+type GitHubTeamUnavailableResult = Extract<ConfigureGitHubTeamResult, { kind: "rejected" }>;
+
 export type GitHubTeamConfigurationErrorCode =
   | "GITHUB_CONFIGURATION_INVALID"
   | "GITHUB_CLI_UNAVAILABLE"
@@ -83,29 +85,35 @@ export class GitHubTeamService {
     return this.runProjectOperation(input.projectId, () => this.configureProject(input));
   }
 
+  async checkAvailability(
+    projectId: string,
+    host?: string,
+    operation = "check_github_availability",
+  ): Promise<GitHubTeamUnavailableResult | undefined> {
+    if (host === undefined) {
+      const config = await this.collaborationStore.getProjectConfig(projectId);
+      if (config?.mode !== "github_team") return undefined;
+      host = config.repository.host;
+    }
+    const ghVersion = await this.github.version();
+    if (!succeeded(ghVersion)) {
+      return this.reject(projectId, "GITHUB_CLI_UNAVAILABLE", "GitHub CLI is unavailable. Install GitHub CLI and try again.", operation);
+    }
+    const authStatus = await this.github.authStatus(host);
+    if (!succeeded(authStatus)) {
+      return this.reject(projectId, "GITHUB_AUTH_REQUIRED", "GitHub CLI is not authenticated for the selected host.", operation);
+    }
+    return undefined;
+  }
+
   private async configureProject(input: ConfigureGitHubTeamInput): Promise<ConfigureGitHubTeamResult> {
     const validation = validateConfigureInput(input);
     if (validation !== undefined) {
       return this.reject(input.projectId, "GITHUB_CONFIGURATION_INVALID", validation);
     }
 
-    const ghVersion = await this.github.version();
-    if (!succeeded(ghVersion)) {
-      return this.reject(
-        input.projectId,
-        "GITHUB_CLI_UNAVAILABLE",
-        "GitHub CLI is unavailable. Install GitHub CLI and try again.",
-      );
-    }
-
-    const authStatus = await this.github.authStatus(input.repository.host);
-    if (!succeeded(authStatus)) {
-      return this.reject(
-        input.projectId,
-        "GITHUB_AUTH_REQUIRED",
-        "GitHub CLI is not authenticated for the selected host.",
-      );
-    }
+    const unavailable = await this.checkAvailability(input.projectId, input.repository.host, "configure_github_team");
+    if (unavailable) return unavailable;
 
     const repository = repositoryAddress(input.repository);
     const viewResult = await this.github.repositoryView(repository);
@@ -698,7 +706,8 @@ export class GitHubTeamService {
     projectId: string,
     code: GitHubTeamConfigurationErrorCode,
     message: string,
-  ): Promise<ConfigureGitHubTeamResult> {
+    operation = "configure_github_team",
+  ): Promise<GitHubTeamUnavailableResult> {
     try {
       await this.diagnosticsLogStore.append({
         id: createId("diag"),
@@ -706,7 +715,7 @@ export class GitHubTeamService {
         severity: "error",
         code,
         message,
-        operation: "configure_github_team",
+        operation,
         source: "adapter",
         createdAt: this.now(),
       });

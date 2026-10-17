@@ -24,5 +24,5 @@
       "@openmembrane/extractor-anthropic": ["packages/extractor-anthropic/src/index.ts"]
     }
   },
-  "include": ["packages/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": ["packages/**/*.ts", "apps/daemon/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
 }

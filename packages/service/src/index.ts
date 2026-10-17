@@ -1,6 +1,7 @@
 export { OpenMembraneService, createOpenMembraneService } from "./OpenMembraneService";
 export type { ProjectService } from "./OpenMembraneService";
 export { resolveProjectRef } from "./factory";
+export { canonicalStoragePath } from "./storagePath";
 export type { ProjectRef, ProjectState, CreateServiceOptions } from "./factory";
 export type {
   ApproveAllCandidatesInput, ApproveMemoryCandidateInput, ConfigureGitHubTeamModeInput,
@@ -10,5 +11,5 @@ export type {
   RejectMemoryCandidateInput, RememberInput, ReviewStaleMemoriesInput,
   SearchMemoryInput, SupersedeMemoryInput, UpdateMemoryInput,
 } from "./operations";
-export { GitHubCli } from "./collaboration/GitHubCli";
+export { ExecFileCommandRunner, GitHubCli } from "./collaboration/GitHubCli";
 export type { CommandRunner } from "./collaboration/GitHubCli";

@@ -44,7 +44,7 @@ export interface GitHubPullRequestView {
 export class GitHubCli {
   private readonly runner: CommandRunner;
 
-  constructor(runner: CommandRunner = new ExecFileCommandRunner()) {
+  constructor(runner: CommandRunner = new ExecFileCommandRunner(), private readonly projectRoot?: string) {
     this.runner = runner;
   }
 
@@ -140,19 +140,22 @@ export class GitHubCli {
   }
 
   private runGh(args: readonly string[]): Promise<CommandResult> {
-    return this.runner.run({ executable: "gh", args });
+    return this.runner.run({ executable: "gh", args, ...(this.projectRoot === undefined ? {} : { cwd: this.projectRoot }) });
   }
 
   private runGit(args: readonly string[]): Promise<CommandResult> {
-    return this.runner.run({ executable: "git", args });
+    return this.runner.run({ executable: "git", args, ...(this.projectRoot === undefined ? {} : { cwd: this.projectRoot }) });
   }
 }
 
-class ExecFileCommandRunner implements CommandRunner {
+export class ExecFileCommandRunner implements CommandRunner {
+  constructor(private readonly environment?: () => NodeJS.ProcessEnv) {}
+
   async run(command: Command): Promise<CommandResult> {
     try {
       const { stdout, stderr } = await execFileAsync(command.executable, [...command.args], {
         ...(command.cwd === undefined ? {} : { cwd: command.cwd }),
+        ...(this.environment === undefined ? {} : { env: this.environment() }),
         encoding: "utf8",
         shell: false,
         windowsHide: true,

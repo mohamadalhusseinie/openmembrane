@@ -42,6 +42,8 @@ packages/shared/     — IDs, time helpers, generic result types
 packages/protocol/   — Versioned local-daemon HTTP schemas and shared endpoint resolution
 packages/client/     — Authenticated local-daemon client (not yet used by production surfaces)
 apps/mcp-server/     — MCP server (tool registration, validation, error responses)
+apps/daemon/         — Per-user HTTP daemon, token authentication, project routing,
+                       single-instance locking, and CLI lifecycle
 tests/               — All test files (unit and integration)
 ```
 

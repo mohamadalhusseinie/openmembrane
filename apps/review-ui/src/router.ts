@@ -16,6 +16,7 @@ export interface RouteResponse {
   status: number;
   body?: unknown;
   headers?: Record<string, string>;
+  afterResponse?: () => Promise<void>;
 }
 
 export type RouteHandler = (ctx: RouteContext) => RouteResponse | Promise<RouteResponse>;
@@ -35,11 +36,15 @@ export class Router {
   private readonly routes: RouteEntry[] = [];
 
   get(path: string, handler: RouteHandler): void {
-    this.routes.push({ method: "GET", segments: path.split("/").filter(Boolean), handler });
+    this.register("GET", path, handler);
   }
 
   post(path: string, handler: RouteHandler): void {
-    this.routes.push({ method: "POST", segments: path.split("/").filter(Boolean), handler });
+    this.register("POST", path, handler);
+  }
+
+  register(method: string, path: string, handler: RouteHandler): void {
+    this.routes.push({ method, segments: path.split("/").filter(Boolean), handler });
   }
 
   match(method: string, pathname: string): RouteMatch | undefined {

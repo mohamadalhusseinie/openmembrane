@@ -16,15 +16,19 @@ function expectError(result: ParseResult): string {
 }
 
 describe("parseArgs", () => {
-  describe("default / serve", () => {
-    it("returns serve when no args", () => {
+  describe("MCP and daemon lifecycle", () => {
+    it("returns mcp when no args", () => {
       const cmd = expectOk(parseArgs(argv()));
-      expect(cmd.command).toBe("serve");
+      expect(cmd.command).toBe("mcp");
     });
 
     it("returns serve for explicit 'serve' subcommand", () => {
       const cmd = expectOk(parseArgs(argv("serve")));
       expect(cmd.command).toBe("serve");
+    });
+
+    it.each(["mcp", "start", "stop", "status"])("recognizes %s", (command) => {
+      expect(expectOk(parseArgs(argv(command))).command).toBe(command);
     });
   });
 

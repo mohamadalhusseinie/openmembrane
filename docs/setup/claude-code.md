@@ -16,6 +16,10 @@ are separate from team sync.
 
 Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
 
+If upgrading an existing configuration, replace `args: ["serve"]` with
+`args: ["mcp"]` (or omit arguments). `serve` now runs the HTTP daemon,
+not MCP stdio. Restart Claude Code after updating the configuration.
+
 ### Project-level (`.mcp.json` in project root)
 
 ```json
@@ -23,7 +27,7 @@ Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommen
   "mcpServers": {
     "openmembrane": {
       "command": "openmembrane",
-      "args": ["serve"],
+      "args": ["mcp"],
       "env": {
         "OPENMEMBRANE_PROJECT_ID": "my-project"
       }
@@ -39,7 +43,7 @@ Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommen
   "mcpServers": {
     "openmembrane": {
       "command": "openmembrane",
-      "args": ["serve"],
+      "args": ["mcp"],
       "env": {
         "OPENMEMBRANE_HOME": "/path/to/.openmembrane"
       }
