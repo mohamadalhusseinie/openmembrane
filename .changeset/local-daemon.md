@@ -17,3 +17,5 @@ Normalize storage dot segments before canonicalizing daemon queue keys, keeping 
 Continue listener shutdown, request draining, store closure, and lock release when recovery-guard creation fails, without deleting unprotected shared discovery files.
 
 Treat unreaped Linux zombie and dead processes as exited when verifying lock and recovery-guard ownership, allowing a replacement daemon to recover their stale files.
+
+Require fully qualified Windows drive or UNC paths in daemon requests, rejecting rooted paths that would otherwise select the daemon's current drive.

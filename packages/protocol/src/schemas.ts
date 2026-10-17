@@ -10,7 +10,10 @@ import type { AuditEvent, MemorySource } from "@openmembrane/core";
 const text = z.string().min(1);
 const count = z.number().int().nonnegative();
 const limit = (max: number) => z.number().int().positive().max(max).optional();
-export const absolutePathSchema = text.refine(isAbsolute, "An absolute path is required.");
+export const absolutePathSchema = text.refine((path) =>
+  isAbsolute(path) && (process.platform !== "win32" ||
+    /^(?:[a-z]:[\\/]|[\\/]{2}[^\\/]+[\\/][^\\/]+(?:[\\/]|$))/i.test(path)),
+"A fully qualified absolute path is required.");
 export const projectRequestSchema = z.object({
   projectRoot: absolutePathSchema,
   projectId: text.refine((value) => value.trim().length > 0).optional(),

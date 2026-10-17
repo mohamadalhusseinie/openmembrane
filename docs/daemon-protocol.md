@@ -27,6 +27,9 @@ to the daemon is separate follow-up work.
 Project requests normalize their absolute root before validating the
 directory or deriving the default ID from its basename. Dot and parent
 segments therefore do not split memory visibility or bypass root-ID validation.
+On Windows, request paths must include a drive and root separator or a UNC
+server/share. Drive-dependent rooted paths such as `\project` are rejected
+for both `projectRoot` and `storageDir` instead of using the daemon's drive.
 Storage queue keys also resolve dot segments before filesystem canonicalization,
 matching the service's storage resolution. A symlink followed by `..` cannot
 give concurrent writers to the same store different serialization queues.

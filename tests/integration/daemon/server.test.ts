@@ -173,6 +173,21 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     expect(await client().health()).toEqual({});
   });
 
+  it.skipIf(process.platform !== "win32")("rejects drive-dependent roots and storage paths at the daemon boundary", async () => {
+    const { daemon, token, alpha, client } = await setup();
+    const rooted = alpha.slice(parse(alpha).root.length - 1);
+    for (const input of [{ projectRoot: rooted }, { projectRoot: alpha, storageDir: rooted }]) {
+      const response = await sendRequest({
+        endpoint: daemon.endpoint, method: endpoints.searchMemory.method, path: endpoints.searchMemory.path,
+        body: JSON.stringify(input), token, timeoutMs: 1000,
+      });
+      expect(response.status).toBe(400);
+      expect(errorResponseSchema.parse(response.value).error.code).toBe("VALIDATION_ERROR");
+    }
+    await expect(client(rooted).searchMemory({})).rejects.toThrow("fully qualified");
+    expect(await client(alpha).searchMemory({})).toEqual([]);
+  });
+
   it("isolates two project directories and honors client overrides, not daemon environment", async () => {
     const { alpha, beta, root, client } = await setup();
     vi.stubEnv("OPENMEMBRANE_HOME", join(root, "daemon-storage"));

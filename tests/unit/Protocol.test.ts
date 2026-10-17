@@ -47,6 +47,17 @@ describe("v1 protocol", () => {
     expect(memoryMutationResponseSchema.safeParse({ ...entry(), sensitivity: "secret" }).success).toBe(false);
   });
 
+  it.skipIf(process.platform !== "win32")("rejects drive-dependent rooted paths but accepts drive and UNC absolute paths", () => {
+    for (const path of ["\\project", "/project", "\\", "/", "D:project", "\\\\server"]) {
+      expect(absolutePathSchema.safeParse(path).success, path).toBe(false);
+      expect(endpoints.searchMemory.request.safeParse({ projectRoot: path }).success, path).toBe(false);
+      expect(endpoints.searchMemory.request.safeParse({ projectRoot, storageDir: path }).success, path).toBe(false);
+    }
+    for (const path of ["D:\\project", "D:/project", "D:\\", "\\\\server\\share", "\\\\server\\share\\project"]) {
+      expect(absolutePathSchema.safeParse(path).success, path).toBe(true);
+    }
+  });
+
   it("round-trips safe errors and local collaboration status", () => {
     const error = { error: { code: "VALIDATION_ERROR", safeMessage: "Invalid request.", diagnosticId: "diag_1" } };
     expect(errorResponseSchema.parse(JSON.parse(JSON.stringify(error)))).toEqual(error);
