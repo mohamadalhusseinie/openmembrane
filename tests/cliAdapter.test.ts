@@ -2,11 +2,14 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PrivateTeamRunner, setupSurfaceDaemon } from "./integration/surfaces/helpers";
+import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
+import { OpenMembraneClient } from "@openmembrane/client";
 
 const fixtures: Awaited<ReturnType<typeof setupSurfaceDaemon>>[] = [];
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((fixture) => fixture.close()));
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 async function setup(options: Parameters<typeof setupSurfaceDaemon>[0] = {}) {
@@ -94,6 +97,34 @@ describe("CLI subprocess and real daemon", { timeout: 90_000 }, () => {
     await expect(cli(["context", "--output", "json"])).rejects.toMatchObject({
       stdout: "", stderr: expect.stringContaining("STORAGE_INVALID_JSON"),
     });
+  });
+
+  it("honors caller extraction opt-outs when the daemon has remote extraction enabled", async () => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "llm");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_ENABLED", "true");
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_API_KEY", "unused-fixture-key");
+    const remoteExtract = vi.spyOn(LlmMemoryExtractor.prototype, "extract").mockResolvedValue([]);
+    const fixture = await setupSurfaceDaemon();
+    fixtures.push(fixture);
+    const remoteClient = new OpenMembraneClient({
+      ...fixture.clientOptions,
+      env: { ...fixture.env, OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" },
+    });
+    await remoteClient.ingest({ transcript: "Ordinary transcript for the remote extractor control." });
+    expect(remoteExtract).toHaveBeenCalledOnce();
+    remoteExtract.mockClear();
+
+    for (const overrides of [
+      { OPENMEMBRANE_EXTRACTION_ENABLED: "false", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" },
+      { OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "mock" },
+    ]) {
+      const output = await fixture.cli(["ingest", "--stdin"], "rule: Use strict TypeScript before deployment.", overrides);
+      const result = JSON.parse(output.stdout);
+      expect(result.savedCount + result.pendingCount + result.rejectedCount).toBe(1);
+      expect(remoteExtract).not.toHaveBeenCalled();
+    }
+    await remoteClient.ingest({ transcript: "The daemon's configured extractor is still unchanged." });
+    expect(remoteExtract).toHaveBeenCalledOnce();
   });
 
   it("preserves untruncated context and caller project overrides", async () => {

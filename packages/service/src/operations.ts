@@ -27,6 +27,7 @@ export interface ProjectScopedInput {
 }
 
 export interface ProposeMemoryInput extends ProjectScopedInput {
+  extractionEnabled?: false | undefined;
   transcript?: string | undefined;
   summary?: string | undefined;
   tool?: string | undefined;
@@ -152,7 +153,8 @@ export function createProjectOperations(context: ProjectState) {
       if (input.metadata) {
         request.metadata = input.metadata;
       }
-      const result = await context.ingestionService.ingest(request, {
+      const ingestionService = input.extractionEnabled === false ? context.localIngestionService : context.ingestionService;
+      const result = await ingestionService.ingest(request, {
         preserveExistingConflicts: await isGitHubTeamMode(context, request.projectId),
       });
       return publishAcceptedInGitHubMode(context, request.projectId, result);

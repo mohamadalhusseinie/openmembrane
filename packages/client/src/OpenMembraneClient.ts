@@ -53,6 +53,8 @@ export class OpenMembraneClient {
       ...(this.env.OPENMEMBRANE_PROJECT_ID ? { projectId: this.env.OPENMEMBRANE_PROJECT_ID } : {}),
       ...(this.env.OPENMEMBRANE_STORAGE_BACKEND ? { storageBackend: this.env.OPENMEMBRANE_STORAGE_BACKEND } : {}),
       ...input,
+      ...(name === "ingest" && (this.env.OPENMEMBRANE_EXTRACTION_ENABLED === "false" || this.env.OPENMEMBRANE_EXTRACTION_PROVIDER === "mock")
+        ? { extractionEnabled: false } : {}),
     } : input);
     try {
       return await this.invoke(name, request);

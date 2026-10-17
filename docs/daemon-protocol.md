@@ -30,6 +30,12 @@ All CLI data commands accept `--project <id>` and
 `--output text|json|markdown`. Ingest retains its JSON default; context and
 management commands default to text. CLI failures exit nonzero and retain
 the daemon's safe error code and diagnostic ID.
+Caller opt-outs (`OPENMEMBRANE_EXTRACTION_ENABLED=false` or
+`OPENMEMBRANE_EXTRACTION_PROVIDER=mock`) are carried to ingestion as
+`extractionEnabled: false`. The service then uses its local mock extractor
+for that request, even if the daemon has a remote provider configured.
+Callers cannot enable extraction or forward provider credentials through
+this field; remote provider configuration remains daemon-owned.
 
 | Command | Client operation |
 | --- | --- |

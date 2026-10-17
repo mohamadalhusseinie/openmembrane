@@ -78,6 +78,13 @@ describe("v1 protocol", () => {
       memories: [], pendingCandidateCount: 0,
     });
   });
+
+  it("allows ingestion callers to restrict extraction but never enable a provider", () => {
+    expect(ingestRequestSchema.parse({ projectRoot, transcript: "Rule: Use ESM.", extractionEnabled: false })).toMatchObject({
+      extractionEnabled: false,
+    });
+    expect(ingestRequestSchema.safeParse({ projectRoot, transcript: "Rule: Use ESM.", extractionEnabled: true }).success).toBe(false);
+  });
 });
 
 describe("shared per-user daemon paths", () => {

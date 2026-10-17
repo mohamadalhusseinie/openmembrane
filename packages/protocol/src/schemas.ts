@@ -109,6 +109,7 @@ export const rememberRequestSchema = projectRequestSchema.extend({
 }).refine((input) => (input.items?.length ?? 0) > 0 || (input.content !== undefined && input.type !== undefined),
   "Provide content and type, or non-empty items.");
 export const ingestRequestSchema = projectRequestSchema.extend({
+  extractionEnabled: z.literal(false).optional(),
   transcript: text.max(MAX_TRANSCRIPT_LENGTH).optional(), summary: text.max(MAX_SUMMARY_LENGTH).optional(),
   tool: text.optional(), sessionId: text.optional(),
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),

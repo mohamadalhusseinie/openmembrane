@@ -133,6 +133,20 @@ describe("OpenMembraneClient with a local HTTP server", () => {
     expect(records[0]?.input).toEqual({ projectRoot: process.cwd() });
   });
 
+  it.each([
+    { OPENMEMBRANE_EXTRACTION_ENABLED: "false", OPENMEMBRANE_EXTRACTION_PROVIDER: "llm" },
+    { OPENMEMBRANE_EXTRACTION_ENABLED: "true", OPENMEMBRANE_EXTRACTION_PROVIDER: "mock" },
+  ])("forwards caller extraction opt-outs without forwarding provider credentials (%j)", async (env) => {
+    respond = (_req, res) => res.end(JSON.stringify(protocolFixtures.ingest.response));
+    const client = new OpenMembraneClient({
+      endpoint, daemonPaths, env: { ...env, OPENMEMBRANE_EXTRACTION_API_KEY: "unused-test-key" },
+    });
+    await client.ingest({ transcript: "rule: Use strict TypeScript." });
+    expect(records[0]?.input).toEqual({
+      projectRoot: process.cwd(), transcript: "rule: Use strict TypeScript.", extractionEnabled: false,
+    });
+  });
+
   it("rejects relative projects and invalid backend overrides before sending data", async () => {
     const client = new OpenMembraneClient({ endpoint, daemonPaths, env: {} });
     await expect(client.ingest({ projectRoot: "relative", summary: "Test" })).rejects.toThrow("absolute");
