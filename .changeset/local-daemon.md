@@ -15,3 +15,5 @@ Use a fixed timezone for POSIX process identity and normalize project roots befo
 Normalize storage dot segments before canonicalizing daemon queue keys, keeping symlink-parent path spellings serialized with writes to the same service store.
 
 Continue listener shutdown, request draining, store closure, and lock release when recovery-guard creation fails, without deleting unprotected shared discovery files.
+
+Treat unreaped Linux zombie and dead processes as exited when verifying lock and recovery-guard ownership, allowing a replacement daemon to recover their stale files.

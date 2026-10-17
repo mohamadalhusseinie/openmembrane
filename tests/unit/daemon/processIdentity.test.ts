@@ -54,3 +54,13 @@ it.skipIf(process.platform !== "darwin")("keeps uncached macOS process identity 
   expect(first).toMatch(/^darwin:.+/);
   expect(second).toBe(first);
 });
+
+it.each(["Z", "X", "x"])("treats Linux process state %s as exited before reading boot identity", async (state) => {
+  linuxProcess();
+  const { readProcessIdentity } = await import("../../../apps/daemon/src/processIdentity");
+  vi.mocked(readFile).mockResolvedValueOnce(
+    `123 (process (nested) name) ${state} ${Array.from({ length: 18 }, () => "0").join(" ")} 99`,
+  );
+  expect(await readProcessIdentity(process.pid + 1)).toBeUndefined();
+  expect(readFile).toHaveBeenCalledTimes(1);
+});

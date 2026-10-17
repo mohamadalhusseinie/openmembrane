@@ -11,7 +11,9 @@ async function lookup(pid: number): Promise<string | undefined> {
   try {
     if (process.platform === "linux") {
       const record = await readFile(`/proc/${pid}/stat`, "utf8");
-      const start = record.slice(record.lastIndexOf(")") + 1).trim().split(/\s+/)[19];
+      const fields = record.slice(record.lastIndexOf(")") + 1).trim().split(/\s+/);
+      if (fields[0] === "Z" || fields[0] === "X" || fields[0] === "x") return undefined;
+      const start = fields[19];
       if (start === undefined || !/^\d+$/.test(start)) throw new Error("Invalid process start record.");
       const boot = (await readFile("/proc/sys/kernel/random/boot_id", "utf8")).trim();
       return `linux:${boot}:${start}`;

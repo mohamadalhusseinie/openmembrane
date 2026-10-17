@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { acquireLock, readLock } from "../../../apps/daemon/src/lock";
+import { acquireLock, processAlive, readLock } from "../../../apps/daemon/src/lock";
 import { readProcessIdentity } from "../../../apps/daemon/src/processIdentity";
 
 it("elects only one successor when concurrent starters encounter an interrupted stale-lock recovery", async () => {
@@ -96,3 +99,48 @@ it("uses a bounded startup grace for legacy recovery guards without process-star
     await rm(runDir, { recursive: true, force: true });
   }
 });
+
+it.skipIf(process.platform !== "linux")("recovers a lock and recovery guard owned by a real unreaped child", async () => {
+  const runDir = await mkdtemp(join(tmpdir(), "om-zombie-"));
+  const parent = spawn(process.execPath, ["-e", `
+    const { spawn } = require("node:child_process");
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 2000)"], { stdio: "ignore" });
+    child.once("spawn", () => {
+      process.stdout.write(String(child.pid) + "\\n", () => process.kill(process.pid, "SIGSTOP"));
+    });
+    child.once("exit", () => process.exit(0));
+  `], { stdio: ["ignore", "pipe", "inherit"] });
+  const exited = once(parent, "exit");
+  let childPid: number | undefined;
+  try {
+    let output = "";
+    parent.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => output, { timeout: 5000 }).toMatch(/^\d+\n$/);
+    childPid = Number(output.trim());
+    const identity = await readProcessIdentity(childPid);
+    expect(identity).toMatch(/^linux:/);
+    await expect.poll(async () => {
+      const record = await readFile(`/proc/${childPid}/stat`, "utf8");
+      return record.slice(record.lastIndexOf(")") + 1).trim().split(/\s+/)[0];
+    }, { timeout: 5000 }).toBe("Z");
+    expect(processAlive(childPid)).toBe(true);
+    expect(await readProcessIdentity(childPid)).toBeUndefined();
+    const stale = JSON.stringify({
+      pid: childPid, instanceId: randomUUID(), endpoint: null, processIdentity: identity,
+    });
+    await writeFile(join(runDir, "daemon.lock"), stale);
+    await writeFile(join(runDir, `recovery-${createHash("sha256").update(stale).digest("hex")}`), stale);
+    const replacement = await acquireLock(runDir);
+    expect((await readLock(runDir))?.instanceId).toBe(replacement.record.instanceId);
+    await replacement.release();
+  } finally {
+    if (childPid !== undefined && processAlive(childPid)) process.kill(childPid, "SIGKILL");
+    if (parent.exitCode === null && parent.signalCode === null) parent.kill("SIGCONT");
+    await Promise.race([exited, delay(3000)]);
+    if (parent.exitCode === null && parent.signalCode === null) {
+      parent.kill("SIGKILL");
+      await exited;
+    }
+    await rm(runDir, { recursive: true, force: true });
+  }
+}, 15_000);

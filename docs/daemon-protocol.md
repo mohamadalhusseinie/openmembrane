@@ -42,7 +42,10 @@ Process-start identity distinguishes an unrelated process reusing an old
 PID from the actual owner, even if the live daemon is slow or its listener
 is closed for cleanup. POSIX `ps` lookups use the C locale and UTC timezone,
 so callers with different timezone settings derive the same identity.
-Recovery guards use the same identity. Legacy
+Recovery guards use the same identity.
+Linux zombie and dead process states are treated as exited, even while the
+PID and start ticks remain visible until the parent reaps the process.
+Legacy
 published locks without process-start identity use authenticated
 `/v1/daemon/identity` verification; a timeout is indeterminate and fails
 with `DAEMON_OWNERSHIP_UNCERTAIN` without reclaiming the lock.
