@@ -250,6 +250,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 <script>
 const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false, stale: false, export: false };
+const memoryDrafts = new Map();
 
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -298,8 +299,8 @@ async function apiRequest(path, options) {
   return data;
 }
 
-function memoryReviewHtml(memory) {
-  return `<form class="review-form" data-memory-id="${escapeHtml(memory.id)}" onsubmit="event.preventDefault(); updateMemory(this)">
+function memoryReviewHtml(memory, view) {
+  return `<form class="review-form" data-memory-id="${escapeHtml(memory.id)}" data-view="${view}" oninput="this.dataset.dirty='true'" onsubmit="event.preventDefault(); updateMemory(this)">
     <span class="hint">ID: ${escapeHtml(memory.id)}</span>
     <label>Content<textarea name="content" required>${escapeHtml(memory.content)}</textarea></label>
     <label>Type<select name="type">${Array.from(document.getElementById('mem-type').options).filter(o => o.value).map(o =>
@@ -316,6 +317,30 @@ function memoryReviewHtml(memory) {
   </form>`;
 }
 
+function renderMemoryList(target, html) {
+  target.querySelectorAll('form.review-form[data-dirty="true"]').forEach(form => {
+    const row = form.closest('tr');
+    memoryDrafts.set(`${form.dataset.view}:${form.dataset.memoryId}`, {
+      fields: Array.from(new FormData(form).entries()),
+      expanded: row ? !row.hidden : form.closest('details').open,
+    });
+  });
+  target.innerHTML = html;
+  target.querySelectorAll('form.review-form').forEach(form => {
+    const draft = memoryDrafts.get(`${form.dataset.view}:${form.dataset.memoryId}`);
+    if (!draft) return;
+    draft.fields.forEach(([name, value]) => { form.elements.namedItem(name).value = value; });
+    form.dataset.dirty = 'true';
+    const row = form.closest('tr');
+    if (row) {
+      row.hidden = !draft.expanded;
+      row.previousElementSibling.querySelector('.memory-toggle').setAttribute('aria-expanded', String(draft.expanded));
+    } else {
+      form.closest('details').open = draft.expanded;
+    }
+  });
+}
+
 async function loadMemories() {
   const q = document.getElementById('mem-search').value;
   const type = document.getElementById('mem-type').value;
@@ -327,7 +352,7 @@ async function loadMemories() {
   try {
     const items = await apiRequest('/api/memories?' + params);
     if (!items.length) {
-      document.getElementById('memories-content').innerHTML = '<div class="empty">No memories found</div>';
+      renderMemoryList(document.getElementById('memories-content'), '<div class="empty">No memories found</div>');
       return;
     }
     let html = '<table><thead><tr><th>Type</th><th>Scope</th><th>Content</th><th>Confidence</th><th>Tags</th><th>Created</th></tr></thead><tbody>';
@@ -335,12 +360,12 @@ async function loadMemories() {
       html += `<tr>
         <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(m.scope)}</td><td><button type="button" class="memory-toggle" aria-expanded="false" aria-controls="memory-editor-${i}" aria-label="Review or edit memory: ${escapeHtml(m.content)}" onclick="toggleMemoryEditor(this)">${truncate(m.content)}</button></td>
         <td>${escapeHtml(m.confidence)}</td><td>${escapeHtml((m.tags || []).join(', '))}</td><td>${formatDate(m.createdAt)}</td>
-      </tr><tr id="memory-editor-${i}" hidden><td colspan="6">${memoryReviewHtml(m)}<div class="expanded-content">${escapeHtml(m.content)}</div></td></tr>`;
+      </tr><tr id="memory-editor-${i}" hidden><td colspan="6">${memoryReviewHtml(m, 'memories-content')}<div class="expanded-content">${escapeHtml(m.content)}</div></td></tr>`;
     });
     html += '</tbody></table>';
-    document.getElementById('memories-content').innerHTML = html;
+    renderMemoryList(document.getElementById('memories-content'), html);
   } catch (e) {
-    document.getElementById('memories-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+    renderMemoryList(document.getElementById('memories-content'), `<div class="empty">${escapeHtml(e.message)}</div>`);
   }
 }
 
@@ -467,22 +492,22 @@ async function rejectAllCandidates() {
 
 async function loadStaleMemories() {
   const target = document.getElementById('stale-content');
-  target.textContent = 'Loading older memories...';
+  renderMemoryList(target, 'Loading older memories...');
   try {
     const months = document.getElementById('stale-months').value;
     const items = await apiRequest('/api/memories/stale?staleAfterMonths=' + encodeURIComponent(months));
     const active = items.filter(m => m.status === 'active');
-    target.innerHTML = active.length
-      ? active.map(m => `<details class="card"><summary>${escapeHtml(m.content)} — updated ${formatDate(m.updatedAt)}</summary>${memoryReviewHtml(m)}</details>`).join('')
-      : '<div class="empty">No active memories older than this threshold. Try a shorter interval.</div>';
-  } catch (e) { target.innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`; }
+    renderMemoryList(target, active.length
+      ? active.map(m => `<details class="card"><summary>${escapeHtml(m.content)} — updated ${formatDate(m.updatedAt)}</summary>${memoryReviewHtml(m, 'stale-content')}</details>`).join('')
+      : '<div class="empty">No active memories older than this threshold. Try a shorter interval.</div>');
+  } catch (e) { renderMemoryList(target, `<div class="empty">${escapeHtml(e.message)}</div>`); }
 }
 
 async function mutateMemory(form, supersede) {
   if (supersede && !window.confirm('Supersede this memory? It will no longer appear in active context.')) return;
-  const buttons = form.querySelectorAll('button');
-  buttons.forEach(button => { button.disabled = true; });
+  const controls = form.querySelectorAll('button, input, textarea, select');
   const fields = new FormData(form);
+  controls.forEach(control => { control.disabled = true; });
   const input = supersede
     ? { ...(fields.get('reason') ? { reason: fields.get('reason') } : {}), ...(fields.get('replacementId') ? { replacementId: fields.get('replacementId') } : {}) }
     : { content: fields.get('content'), type: fields.get('type'), scope: fields.get('scope'), tags: String(fields.get('tags')).split(',').map(t => t.trim()).filter(Boolean) };
@@ -498,11 +523,13 @@ async function mutateMemory(form, supersede) {
       showToast(`These changes were not saved: ${result.message} Your edits remain in this form.`, 'error');
       return;
     }
+    delete form.dataset.dirty;
+    memoryDrafts.delete(`${form.dataset.view}:${form.dataset.memoryId}`);
     showToast(result.kind ? `Team publication: ${result.kind}` : supersede ? 'Memory superseded' : 'Memory updated', 'success');
     tabsLoaded.audit = false; tabsLoaded.export = false;
     await Promise.all([loadMemories(), loadStaleMemories()]);
   } catch (e) { showToast(e.message, 'error'); }
-  finally { buttons.forEach(button => { button.disabled = false; }); }
+  finally { controls.forEach(control => { control.disabled = false; }); }
 }
 
 function updateMemory(form) { return mutateMemory(form, false); }

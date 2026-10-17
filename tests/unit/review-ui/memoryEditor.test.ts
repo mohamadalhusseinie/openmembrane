@@ -9,10 +9,10 @@ async function setupUi() {
   const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
   if (script === undefined) throw new Error("Expected the review UI script.");
   const elements = new Map<string, {
-    value: string; options: Array<{ value: string; text: string }>; innerHTML: string; hidden: boolean;
+    value: string; options: Array<{ value: string; text: string }>; innerHTML: string; hidden: boolean; querySelectorAll: () => [];
   }>();
   for (const id of ["mem-search", "mem-type", "mem-scope", "memories-content", "memory-editor-0"]) {
-    elements.set(id, { value: "", options: [], innerHTML: "", hidden: true });
+    elements.set(id, { value: "", options: [], innerHTML: "", hidden: true, querySelectorAll: () => [] });
   }
   const getElementById = (id: string) => {
     const element = elements.get(id);
@@ -29,6 +29,64 @@ async function setupUi() {
 }
 
 describe("review UI memory editor", () => {
+  it.each([false, true])("preserves other editors and cross-tab drafts after a mutation (supersede: %s)", async (supersede) => {
+    const { context } = await setupUi();
+    function form(id: string, view: string, content: string, dirty: boolean, expanded = true) {
+      const controls = new Map([
+        ["content", { value: content, disabled: false }], ["type", { value: "coding_rule", disabled: false }],
+        ["scope", { value: "frontend", disabled: false }], ["tags", { value: "draft", disabled: false }],
+        ["reason", { value: "Unsaved reason", disabled: false }], ["replacementId", { value: "replacement", disabled: false }],
+      ]);
+      const row = { hidden: !expanded, previousElementSibling: { querySelector: () => ({ setAttribute: vi.fn() }) } };
+      const details = { open: expanded };
+      const dataset: Record<string, string> = { memoryId: id, view, ...(dirty ? { dirty: "true" } : {}) };
+      return {
+        dataset,
+        controls, elements: { namedItem: (name: string) => controls.get(name) },
+        closest: (selector: string) => selector === "tr" ? (view === "memories-content" ? row : null) : details,
+        querySelectorAll: () => [...controls.values()],
+      };
+    }
+    const saving = form("saved", "memories-content", "Saved edit", true);
+    const other = form("other", "memories-content", "Unsaved other edit", true);
+    const stale = form("stale", "stale-content", "Unsaved stale edit", true);
+    const savedAfter = form("saved", "memories-content", "Saved edit", false, false);
+    const otherAfter = form("other", "memories-content", "Old other content", false, false);
+    const staleAfter = form("stale", "stale-content", "Old stale content", false, false);
+    function target(oldForms: typeof saving[], newForms: typeof saving[]) {
+      let forms = oldForms;
+      return {
+        querySelectorAll: (selector: string) => selector.includes("data-dirty") ? forms.filter(item => item.dataset.dirty === "true") : forms,
+        set innerHTML(_value: string) { forms = newForms; },
+      };
+    }
+    context.memoryTarget = target([saving, other], [savedAfter, otherAfter]);
+    context.staleTarget = target([stale], [staleAfter]);
+    context.form = saving;
+    context.FormData = class {
+      constructor(private readonly source: typeof saving) {}
+      get(name: string) { return this.source.controls.get(name)?.value; }
+      entries() { return [...this.source.controls].map(([name, control]) => [name, control.value]); }
+    };
+    context.apiRequest = vi.fn().mockResolvedValue(entry());
+    context.showToast = vi.fn();
+    context.window = { confirm: () => true };
+    context.supersede = supersede;
+    context.loadMemories = () => runInContext("renderMemoryList(memoryTarget, '')", context);
+    context.loadStaleMemories = () => runInContext("renderMemoryList(staleTarget, '')", context);
+    await runInContext("mutateMemory(form, supersede)", context);
+    expect(otherAfter.controls.get("content")?.value).toBe("Unsaved other edit");
+    expect(staleAfter.controls.get("content")?.value).toBe("Unsaved stale edit");
+    expect(otherAfter.controls.get("reason")?.value).toBe("Unsaved reason");
+    expect(otherAfter.controls.get("replacementId")?.value).toBe("replacement");
+    expect(otherAfter.dataset.dirty).toBe("true");
+    expect(staleAfter.dataset.dirty).toBe("true");
+    expect(otherAfter.closest("tr")).toMatchObject({ hidden: false });
+    expect(staleAfter.closest("details")).toMatchObject({ open: true });
+    expect(savedAfter.dataset.dirty).toBeUndefined();
+    expect(saving.querySelectorAll().every(control => !control.disabled)).toBe(true);
+  });
+
   it("renders native expansion buttons and keeps visibility and expanded state in sync", async () => {
     const { context, getElementById } = await setupUi();
     const rendered = getElementById("memories-content").innerHTML;

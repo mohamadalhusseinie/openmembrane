@@ -101,6 +101,9 @@ daemon diagnostic IDs and HTTP failure statuses are preserved. Invalid UI inputs
 before proxying. Unavailable daemons produce HTTP 503, not empty success
 responses. The daemon bearer token stays in the server process and is
 never exposed to browser JavaScript.
+Unsaved editor drafts remain in browser memory across memory/stale-list
+refreshes, including saves to other memories. They are not written to
+browser storage and disappear when the page is closed or reloaded.
 Host and Origin validation reject cross-site browser requests and
 non-loopback Host values before any daemon request is sent.
 
