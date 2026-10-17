@@ -14,13 +14,13 @@ function mockContext(query = new URLSearchParams()) {
 }
 
 describe("review UI history routes", () => {
-  it("gets the most recent audit entries through the service", async () => {
+  it("requests newest-appended audit entries through the daemon", async () => {
     const events = [{ id: "audit_new" }, { id: "audit_old" }];
     const listAuditLog = vi.fn().mockResolvedValue(events);
     const routes = createAuditRoutes({ listAuditLog });
 
     expect((await routes.listAudit(mockContext(new URLSearchParams("limit=2")))).body).toEqual(events);
-    expect(listAuditLog).toHaveBeenCalledWith({ limit: 2 });
+    expect(listAuditLog).toHaveBeenCalledWith({ limit: 2, order: "append" });
   });
 
   it("preserves diagnostics filtering and response order", async () => {

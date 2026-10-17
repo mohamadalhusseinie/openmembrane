@@ -6,11 +6,13 @@ import { createReviewUiContext } from "../../../apps/review-ui/src/context";
 import { createReviewServer } from "../../../apps/review-ui/src/server";
 import { diagnosticsResponseSchema, exportResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
 import { setupSurfaceDaemon } from "./helpers";
+import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 async function setup(many = false) {
@@ -82,6 +84,28 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     const { request } = await setup(true);
     expect(await (await request("/api/memories")).json()).toHaveLength(207);
     expect(await (await request("/api/candidates")).json()).toHaveLength(209);
+  });
+
+  it("limits audit entries by append order rather than timestamps", async () => {
+    const { request, client } = await setup();
+    expect(await (await request("/api/audit?limit=2")).json()).toMatchObject([
+      { id: "latest-append" }, { id: "same-time-append" },
+    ]);
+    expect(await client.listAuditLog({ limit: 2 })).toMatchObject([
+      { id: "older-append" }, { id: "same-time-append" },
+    ]);
+  });
+
+  it.each([
+    ["STORAGE_ERROR", 500], ["GITHUB_UNAVAILABLE", 503],
+  ])("preserves daemon %s HTTP failures in proxy responses", async (code, status) => {
+    const { request } = await setup();
+    vi.spyOn(OpenMembraneClient.prototype, "listMemories").mockRejectedValue(new OpenMembraneClientError(
+      code, "A safe daemon failure.", { origin: "daemon", status, diagnosticId: "diag_daemon" },
+    ));
+    const response = await request("/api/memories");
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error: "A safe daemon failure.", code, diagnosticId: "diag_daemon" });
   });
 
   it("preserves safe diagnostic errors and rejects invalid inputs before mutation", async () => {

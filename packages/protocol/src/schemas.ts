@@ -186,7 +186,9 @@ export const auditEventSchema = z.object({
   ] satisfies [AuditEvent["type"], ...AuditEvent["type"][]]),
   entityId: text.optional(), createdAt: text, details: z.record(z.string(), z.unknown()).optional(),
 });
-export const auditRequestSchema = projectRequestSchema.extend({ limit: limit(500) });
+export const auditRequestSchema = projectRequestSchema.extend({
+  limit: limit(500), order: z.enum(["timestamp", "append"]).optional(),
+});
 export const auditResponseSchema = z.array(auditEventSchema);
 export const healthRequestSchema = z.object({});
 export const healthResponseSchema = z.object({}).strict();

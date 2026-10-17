@@ -98,8 +98,9 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
         const invalid = error instanceof ZodError || error instanceof SyntaxError || error instanceof URIError;
         const diagnosticId = clientError?.diagnosticId ?? createId("diag");
         const code = clientError?.code ?? (invalid ? "VALIDATION_ERROR" : "REVIEW_UI_ERROR");
-        const status = invalid ? 400 : code === "MEMORY_NOT_FOUND" || code === "CANDIDATE_NOT_FOUND" ? 404
-          : clientError?.origin === "daemon" ? 422 : clientError ? 503 : 500;
+        const status = invalid ? 400 : clientError?.status ??
+          (code === "MEMORY_NOT_FOUND" || code === "CANDIDATE_NOT_FOUND" ? 404
+            : clientError?.origin === "daemon" ? 422 : clientError ? 503 : 500);
         if (!clientError?.diagnosticId) process.stderr.write(`Review UI request failed [${code}] (diagnostic: ${diagnosticId})\n`);
         res.writeHead(status, { "Content-Type": "application/json" });
         res.end(JSON.stringify({

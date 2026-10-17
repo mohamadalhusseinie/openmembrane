@@ -141,15 +141,19 @@ describe("OpenMembraneClient with a local HTTP server", () => {
     expect(records).toHaveLength(0);
   });
 
-  it.each(["VALIDATION_ERROR", E_DAEMON_NOT_RUNNING])("preserves remote %s errors and diagnostic IDs without launching", async (code) => {
+  it.each([
+    ["VALIDATION_ERROR", 400], ["UNAUTHORIZED", 401], ["FORBIDDEN", 403],
+    ["MEMORY_NOT_FOUND", 404], ["SECRET_CANDIDATE", 422],
+    ["STORAGE_ERROR", 500], [E_DAEMON_NOT_RUNNING, 503],
+  ])("preserves remote %s errors, HTTP status, and diagnostic IDs without launching", async (code, status) => {
     respond = (_req, res) => {
-      res.statusCode = 400;
+      res.statusCode = status;
       res.end(JSON.stringify({ error: { code, safeMessage: "Invalid request.", diagnosticId: "diag_123" } }));
     };
     const autoLaunch = vi.fn();
     const client = new OpenMembraneClient({ endpoint, daemonPaths, env: {}, autoLaunch });
     await expect(client.searchMemory()).rejects.toMatchObject({
-      code, message: "Invalid request.", safeMessage: "Invalid request.", diagnosticId: "diag_123", origin: "daemon",
+      code, status, message: "Invalid request.", safeMessage: "Invalid request.", diagnosticId: "diag_123", origin: "daemon",
     });
     expect(autoLaunch).not.toHaveBeenCalled();
   });

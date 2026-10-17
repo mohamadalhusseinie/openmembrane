@@ -87,6 +87,7 @@ export interface GetDiagnosticsInput extends ProjectScopedInput {
 
 export interface ListAuditLogInput extends ProjectScopedInput {
   limit?: number | undefined;
+  order?: "timestamp" | "append" | undefined;
 }
 
 export interface SupersedeMemoryInput extends ProjectScopedInput {
@@ -348,7 +349,10 @@ export function createProjectOperations(context: ProjectState) {
     listAuditLog: async (input: ListAuditLogInput) => {
       const projectId = resolveProjectId(context, input.projectId);
       const events = await context.auditLogStore.list(projectId);
-      return events.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, input.limit ?? 100);
+      const ordered = input.order === "append"
+        ? events.reverse()
+        : events.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      return ordered.slice(0, input.limit ?? 100);
     },
 
     approveAllCandidates: async (input: ApproveAllCandidatesInput) => {

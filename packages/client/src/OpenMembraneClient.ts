@@ -126,6 +126,7 @@ export class OpenMembraneClient {
       throw new OpenMembraneClientError(error.data.error.code, error.data.error.safeMessage, {
         diagnosticId: error.data.error.diagnosticId,
         origin: "daemon",
+        ...(result.status >= 400 && result.status <= 599 ? { status: result.status } : {}),
       });
     }
     if (result.status < 200 || result.status >= 300) {

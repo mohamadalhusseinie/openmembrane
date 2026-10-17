@@ -55,6 +55,11 @@ export async function setupSurfaceDaemon(options: { runner?: CommandRunner; many
     await stores.memoryStore.save(entry({ projectId, id: "old memory", updatedAt: "2020-01-01T00:00:00.000Z" }));
     await stores.memoryStore.save(entry({ projectId, id: "confidential", sensitivity: "confidential", content: "Private deployment architecture must stay confidential." }));
     await stores.memoryStore.save(entry({ projectId, id: "superseded", status: "superseded" }));
+    for (const event of [
+      { id: "older-append", createdAt: "2026-02-01T00:00:00Z" },
+      { id: "same-time-append", createdAt: "2026-02-01T00:00:00Z" },
+      { id: "latest-append", createdAt: "2025-01-01T00:00:00Z" },
+    ]) await stores.auditLogStore.append({ ...event, projectId, type: "memory_saved" });
     if (options.many) {
       for (let index = 0; index < 205; index++) {
         await stores.memoryStore.save(entry({ projectId, id: `memory-${index}`, content: `Memory fixture ${index} records a distinct project convention.` }));

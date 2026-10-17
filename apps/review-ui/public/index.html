@@ -79,8 +79,7 @@ table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
 th { font-weight: 600; background: var(--bg-secondary); position: sticky; top: 0; }
 .table-wrap { overflow-x: auto; }
-tr.expandable { cursor: pointer; }
-tr.expandable:hover { background: var(--bg-secondary); }
+.memory-toggle { cursor: pointer; border: none; background: none; color: var(--accent); font: inherit; text-align: left; text-decoration: underline; }
 .expanded-content { white-space: pre-wrap; word-break: break-word; padding: 0.5rem; background: var(--bg-secondary); }
 .badge {
   display: inline-block;
@@ -333,16 +332,22 @@ async function loadMemories() {
     }
     let html = '<table><thead><tr><th>Type</th><th>Scope</th><th>Content</th><th>Confidence</th><th>Tags</th><th>Created</th></tr></thead><tbody>';
     items.forEach((m, i) => {
-      html += `<tr class="expandable" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='table-row'?'none':'table-row'">
-        <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(m.scope)}</td><td>${truncate(m.content)}</td>
+      html += `<tr>
+        <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(m.scope)}</td><td><button type="button" class="memory-toggle" aria-expanded="false" aria-controls="memory-editor-${i}" aria-label="Review or edit memory: ${escapeHtml(m.content)}" onclick="toggleMemoryEditor(this)">${truncate(m.content)}</button></td>
         <td>${escapeHtml(m.confidence)}</td><td>${escapeHtml((m.tags || []).join(', '))}</td><td>${formatDate(m.createdAt)}</td>
-      </tr><tr style="display:none"><td colspan="6"><details><summary>Review or edit memory</summary>${memoryReviewHtml(m)}</details><div class="expanded-content">${escapeHtml(m.content)}</div></td></tr>`;
+      </tr><tr id="memory-editor-${i}" hidden><td colspan="6">${memoryReviewHtml(m)}<div class="expanded-content">${escapeHtml(m.content)}</div></td></tr>`;
     });
     html += '</tbody></table>';
     document.getElementById('memories-content').innerHTML = html;
   } catch (e) {
     document.getElementById('memories-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function toggleMemoryEditor(button) {
+  const row = document.getElementById(button.getAttribute('aria-controls'));
+  row.hidden = !row.hidden;
+  button.setAttribute('aria-expanded', String(!row.hidden));
 }
 
 async function loadCandidates() {

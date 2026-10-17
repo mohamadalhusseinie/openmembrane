@@ -100,10 +100,7 @@ export class OpenMembraneService {
           async pendingCandidateCount() {
             return (await state.pendingCandidateStore.list(resolved.projectId)).length;
           },
-          async listReviewAuditLog(limit) {
-            const events = await state.auditLogStore.list(resolved.projectId);
-            return events.slice(-limit).reverse();
-          },
+          listReviewAuditLog: (limit) => operations.listAuditLog({ limit, order: "append" }),
           async retryEligiblePublications() {
             await state.githubTeamService.retryEligiblePublications(resolved.projectId);
           },

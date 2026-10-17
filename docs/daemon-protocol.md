@@ -56,6 +56,9 @@ JSON `null`. Candidate requests accept `limit: null` for complete review
 listings; existing omitted and numeric limits keep their previous meaning.
 `POST /v1/export` accepts `preview: true` to render the same files using
 the same confidentiality filters without writing anything.
+`GET /v1/audit` accepts `order: "append"` for newest-appended-first
+ordering before applying the limit. Omitted order (or `"timestamp"`) keeps
+newest-timestamp-first ordering for existing callers.
 
 The loopback review server binds one caller project and never forwards
 browser-supplied project/storage routing overrides. Its API preserves
@@ -71,13 +74,13 @@ existing response shapes:
 | `GET /api/candidates` | Complete pending list |
 | `POST /api/candidates/:id/approve` / `reject` | Individual review |
 | `POST /api/candidates/approve-all` / `reject-all` | Bulk review; approval includes skipped IDs/reasons |
-| `GET /api/audit` | Recent audit entries, optional `limit` |
+| `GET /api/audit` | Newest-appended audit entries, optional `limit` |
 | `GET /api/diagnostics` | Diagnostics; `severity`, `code`, `limit` filters |
 | `POST /api/export/preview` | Render only, regardless of a supplied preview flag |
 | `POST /api/export` | Write generated files |
 
 Browser errors use `{ error: "<safe message>", code, diagnosticId }`;
-daemon diagnostic IDs are preserved. Invalid UI inputs are rejected
+daemon diagnostic IDs and HTTP failure statuses are preserved. Invalid UI inputs are rejected
 before proxying. Unavailable daemons produce HTTP 503, not empty success
 responses. The daemon bearer token stays in the server process and is
 never exposed to browser JavaScript.
@@ -251,4 +254,4 @@ connection resets because a mutation might already have been applied.
 
 Token failures, malformed responses, and transport failures have distinct
 client error codes. Remote safe errors retain their code, safe message,
-and diagnostic ID; they do not trigger auto-launch.
+diagnostic ID, and HTTP failure `status`; they do not trigger auto-launch.
