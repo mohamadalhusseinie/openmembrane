@@ -512,8 +512,8 @@ async function loadStaleMemories() {
 
 async function mutateMemory(form, supersede) {
   const key = `${form.dataset.view}:${form.dataset.memoryId}`;
-  if (pendingMemoryMutations.has(key)) {
-    showToast('This editor already has a pending request. Wait for it to finish before trying again.', 'error');
+  if (Array.from(pendingMemoryMutations.values()).some(pending => pending.form.dataset.memoryId === form.dataset.memoryId)) {
+    showToast('This memory already has a pending request. Wait for it to finish before trying again.', 'error');
     return;
   }
   if (supersede && !window.confirm('Supersede this memory? It will no longer appear in active context.')) return;

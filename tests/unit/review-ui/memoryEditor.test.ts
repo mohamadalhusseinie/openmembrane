@@ -55,10 +55,10 @@ describe("review UI memory editor", () => {
     }
     const saving = form("saved", "memories-content", "Saved edit", true);
     const other = form("other", "memories-content", "Unsaved other edit", true);
-    const stale = form("stale", "stale-content", "Unsaved stale edit", true);
+    const stale = form("saved", "stale-content", "Unsaved stale edit", true);
     const savedAfter = form("saved", "memories-content", "Saved edit", false, false);
     const otherAfter = form("other", "memories-content", "Old other content", false, false);
-    const staleAfter = form("stale", "stale-content", "Old stale content", false, false);
+    const staleAfter = form("saved", "stale-content", "Old stale content", false, false);
     function target(oldForms: typeof saving[], newForms: typeof saving[]) {
       let forms = oldForms;
       return {
@@ -69,6 +69,7 @@ describe("review UI memory editor", () => {
     context.memoryTarget = target([saving, other], [savedAfter, otherAfter]);
     context.staleTarget = target([stale], [staleAfter]);
     context.form = saving;
+    context.crossTabForm = stale;
     class FormData {
       private readonly fields: Map<string, string>;
       constructor(source: typeof saving) {
@@ -85,6 +86,9 @@ describe("review UI memory editor", () => {
     context.loadStaleMemories = () => runInContext("renderMemoryList(staleTarget, '')", context);
     context.apiRequest = vi.fn(async () => {
       expect([...new FormData(saving).entries()]).toEqual([]);
+      await runInContext("mutateMemory(crossTabForm, false)", context);
+      await runInContext("mutateMemory(crossTabForm, true)", context);
+      expect(context.apiRequest).toHaveBeenCalledTimes(1);
       await context.loadMemories();
       await context.loadStaleMemories();
       expect(savedAfter.querySelectorAll().every(control => control.disabled)).toBe(true);
@@ -107,6 +111,7 @@ describe("review UI memory editor", () => {
     expect(staleAfter.closest("details")).toMatchObject({ open: true });
     expect(savedAfter.dataset.dirty).toBe(outcome === "success" ? undefined : "true");
     expect(context.apiRequest).toHaveBeenCalledTimes(1);
+    expect(context.showToast).toHaveBeenCalledWith(expect.stringContaining("This memory already has a pending request"), "error");
     expect(savedAfter.querySelectorAll().every(control => !control.disabled)).toBe(true);
     expect(saving.querySelectorAll().every(control => !control.disabled)).toBe(true);
   });
