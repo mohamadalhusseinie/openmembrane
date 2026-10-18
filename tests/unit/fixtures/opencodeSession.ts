@@ -40,5 +40,5 @@ export const model: Parameters<NonNullable<Hooks["experimental.chat.system.trans
     output: { text: true, audio: false, image: false, video: false, pdf: false },
   },
   cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-  limit: { context: 1000, output: 1000 }, status: "active", options: {}, headers: {},
+  limit: { context: 32_000, output: 4_000 }, status: "active", options: {}, headers: {},
 };

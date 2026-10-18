@@ -56,9 +56,9 @@ describe("OpenCode reference adapter", () => {
     const { hooks, daemon } = fixture();
     const output = { system: ["Host instructions"] };
     await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
-    expect(daemon.getProjectRules).toHaveBeenCalledExactlyOnceWith(project);
+    expect(daemon.getProjectRules).toHaveBeenCalledExactlyOnceWith({ ...project, limit: 10 });
     expect(daemon.getRelevantContext).toHaveBeenCalledExactlyOnceWith({
-      ...project, query: "The project must use isolated Vitest fixtures for integration tests.",
+      ...project, query: "The project must use isolated Vitest fixtures for integration tests.", limit: 5,
     });
     expect(output.system).toHaveLength(1);
     expect(output.system[0]).toMatch(/^Host instructions\n\nOpenMembrane project memory:/);
@@ -88,6 +88,32 @@ describe("OpenCode reference adapter", () => {
       expect(output.system.at(-1)).toContain("OpenMembrane project memory:");
     },
   );
+
+  it("bounds injected UTF-8 bytes by model capacity and omits whole entries that do not fit", async () => {
+    const { hooks, daemon } = fixture();
+    const content = "\u754c".repeat(60);
+    daemon.getProjectRules.mockResolvedValue({
+      rules: [entry({ id: "long", content: "A".repeat(3_000) }), entry({ id: "short", content })],
+      pendingCandidateCount: 0,
+    });
+    daemon.getRelevantContext.mockResolvedValue({ memories: [], pendingCandidateCount: 0 });
+    const output = { system: ["Host prompt"] };
+    const small = { ...model, limit: { context: 4_096, output: 1_024 } };
+    await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model: small }, output);
+    const injected = output.system[0]!.slice("Host prompt\n\n".length);
+    expect(Buffer.byteLength(injected, "utf8")).toBeLessThanOrEqual(Math.floor(small.limit.context / 10));
+    expect(injected).not.toContain("A".repeat(3_000));
+    expect(injected).toContain(content);
+  });
+
+  it("leaves a full system prompt unchanged when no memory fits", async () => {
+    const { hooks } = fixture();
+    const output = { system: ["H".repeat(1_000)] };
+    await hooks["experimental.chat.system.transform"]?.({
+      sessionID: sessionId, model: { ...model, limit: { context: 1_024, output: 256 } },
+    }, output);
+    expect(output.system).toEqual(["H".repeat(1_000)]);
+  });
 
   it("ignores auxiliary model requests and unrelated events", async () => {
     const { hooks, daemon, messages } = fixture();
@@ -167,12 +193,20 @@ describe("OpenCode reference adapter", () => {
     expect(log).toHaveBeenCalled();
   });
 
-  it("waits for active ingestion on disposal", async () => {
+  it.each([false, true])("waits for active ingestion on disposal, deleted during ingestion: %s", async (deleted) => {
     const { hooks, daemon } = fixture();
     let finish = () => {};
     daemon.ingest.mockImplementation(() => new Promise((resolve) => { finish = () => resolve(ingestion); }));
     const pending = hooks.event?.(idle);
     await vi.waitFor(() => expect(daemon.ingest).toHaveBeenCalled());
+    if (deleted) {
+      await hooks.event?.({ event: {
+        type: "session.deleted", properties: { info: {
+          id: sessionId, projectID: "project", directory: project.projectRoot,
+          title: "Fixture", version: "1", time: { created: 1, updated: 2 },
+        } },
+      } });
+    }
     let disposed = false;
     const disposing = hooks.dispose?.().then(() => { disposed = true; });
     await Promise.resolve();
@@ -180,6 +214,8 @@ describe("OpenCode reference adapter", () => {
     finish();
     await Promise.all([pending, disposing]);
     expect(disposed).toBe(true);
+    await hooks.event?.(idle);
+    expect(daemon.ingest).toHaveBeenCalledOnce();
   });
 });
 

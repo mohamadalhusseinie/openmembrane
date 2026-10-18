@@ -62,6 +62,11 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   sessions; `session.created` alone would not. Requests without a session ID
   (for example, auxiliary model calls) are left untouched. This experimental
   hook should be checked when upgrading OpenCode.
+  Retrieval requests at most 10 rules and 5 relevant memories. Whole entries are
+  included only while they fit a conservative UTF-8 byte budget: 10% of the
+  model context, capped at 8,000 bytes, with space reserved for the existing
+  system text and configured model output. This is prompt-size management,
+  not memory classification or save policy.
 - `client.session.messages({ path: { id: sessionID }, query: { directory } })`
   returns `{ data: [{ info, parts }], error? }`. User and assistant **text parts**
   are serialized in order as `role: text`. Binary attachments, reasoning, tool
@@ -71,7 +76,8 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   triggers `POST /v1/ingest` via the client with `tool: "opencode"`, `sessionId`,
   and the transcript. There is no documented `session.ended` event: idle is the
   completion boundary, not deletion. `session.deleted` clears session state;
-  `dispose` waits for in-flight ingestion. Abrupt process termination cannot
+  `dispose` stops accepting new work and waits for in-flight ingestion,
+  including requests belonging to deleted sessions. Abrupt process termination cannot
   guarantee delivery.
 - Ingestion is serialized per session. Identical successful snapshots are not
   resubmitted within the plugin lifetime; changed snapshots are submitted in

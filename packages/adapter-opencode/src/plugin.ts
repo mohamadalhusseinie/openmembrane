@@ -47,6 +47,8 @@ export function sessionTranscript(messages: Messages): string {
 
 export function createHooks(input: Host, daemon: DaemonClient, project: Project): Hooks {
   const sessions = new Map<string, { tail: Promise<void>; hash?: string }>();
+  const pending = new Set<Promise<void>>();
+  let disposed = false;
 
   async function warn(operation: string, error: unknown): Promise<void> {
     const extra = error instanceof OpenMembraneClientError
@@ -70,21 +72,34 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project)
   }
 
   return {
-    "experimental.chat.system.transform": async ({ sessionID }, output) => {
-      if (sessionID === undefined) return;
+    "experimental.chat.system.transform": async ({ sessionID, model }, output) => {
+      if (disposed || sessionID === undefined) return;
       try {
         const history = await messages(sessionID);
         const user = [...history].reverse().find(({ info }) => info.role === "user");
         const query = user?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n").trim()
           || basename(project.projectRoot) || "Project context";
         const [rules, context] = await Promise.all([
-          daemon.getProjectRules(project),
-          daemon.getRelevantContext({ ...project, query }),
+          daemon.getProjectRules({ ...project, limit: 10 }),
+          daemon.getRelevantContext({ ...project, query, limit: 5 }),
         ]);
         const memories = new Map([...rules.rules, ...context.memories].map((memory) => [memory.id, memory]));
-        if (memories.size > 0) {
-          const block = "OpenMembrane project memory:\n" +
-            [...memories.values()].map((memory) => `- [${memory.type}] ${memory.content}`).join("\n");
+        const budget = Math.max(0, Math.min(
+          8_000,
+          Math.floor(model.limit.context / 10),
+          model.limit.context - model.limit.output - Buffer.byteLength(output.system.join("\n\n"), "utf8") - 2,
+        ));
+        const lines = ["OpenMembrane project memory:"];
+        let bytes = Buffer.byteLength(lines[0]!, "utf8");
+        for (const memory of memories.values()) {
+          const line = `- [${memory.type}] ${memory.content}`;
+          const size = Buffer.byteLength(line, "utf8") + 1;
+          if (bytes + size > budget) continue;
+          lines.push(line);
+          bytes += size;
+        }
+        if (lines.length > 1) {
+          const block = lines.join("\n");
           const last = output.system.at(-1);
           if (last === undefined) output.system.push(block);
           else output.system[output.system.length - 1] = `${last}\n\n${block}`;
@@ -94,6 +109,7 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project)
       }
     },
     event: async ({ event }) => {
+      if (disposed) return;
       if (event.type === "session.deleted") {
         sessions.delete(event.properties.info.id);
         return;
@@ -118,10 +134,17 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project)
           await warn("session ingestion", error);
         }
       });
-      await current.tail;
+      const task = current.tail;
+      pending.add(task);
+      try {
+        await task;
+      } finally {
+        pending.delete(task);
+      }
     },
     dispose: async () => {
-      await Promise.all([...sessions.values()].map((state) => state.tail));
+      disposed = true;
+      await Promise.all(pending);
       sessions.clear();
     },
   };
