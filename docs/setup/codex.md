@@ -19,8 +19,10 @@ are preserved, and `config.toml` is not modified.
 
 Native hooks are used instead of a filesystem watcher because Codex now
 provides a session-end lifecycle event with a transcript path and session ID.
-A detached worker handles daemon startup and ingestion outside Codex's
-three-second shutdown budget. No prompting is required to capture a session.
+The hook snapshots the transcript in memory before returning, so archive/delete
+cannot remove it before capture. A detached worker handles conversion, daemon
+startup and ingestion outside Codex's three-second shutdown budget.
+No prompting is required to capture a session.
 Extraction must be configured as for
 [ordinary ingestion](../../README.md#automatic-memory-capture).
 Privacy policy and deduplication stay in the daemon.

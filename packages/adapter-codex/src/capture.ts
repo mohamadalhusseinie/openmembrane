@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareTranscriptChunks } from "@openmembrane/core";
 import { launchWorker, runCli } from "../../adapter-hooks/src/process";
+import { object } from "../../adapter-hooks/src/settings";
 import { parseHookInput, sessionTranscript } from "./transcript";
 
 async function main(): Promise<void> {
@@ -15,13 +16,20 @@ async function main(): Promise<void> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
   const input = Buffer.concat(chunks).toString("utf8");
-  const payload = parseHookInput(input);
   if (!worker) {
-    // SessionEnd allows only three seconds: defer file reads and daemon startup.
-    await launchWorker(fileURLToPath(import.meta.url), ["--ingest", cli, logPath], payload.cwd, input, logPath);
+    const payload = parseHookInput(input);
+    // Codex may remove the rollout as soon as SessionEnd returns.
+    const transcript = await readFile(payload.transcriptPath, "utf8");
+    await launchWorker(fileURLToPath(import.meta.url), ["--ingest", cli, logPath], payload.cwd,
+      JSON.stringify({ event: input, transcript }), logPath);
     return;
   }
-  const transcript = sessionTranscript(await readFile(payload.transcriptPath, "utf8"));
+  const snapshot: unknown = JSON.parse(input);
+  if (!object(snapshot) || typeof snapshot.event !== "string" || typeof snapshot.transcript !== "string") {
+    throw new Error("Invalid ingestion snapshot.");
+  }
+  const payload = parseHookInput(snapshot.event);
+  const transcript = sessionTranscript(snapshot.transcript);
   if (!transcript) return;
   await runCli(cli, ["start"], payload.cwd);
   for (const chunk of prepareTranscriptChunks(transcript)) {

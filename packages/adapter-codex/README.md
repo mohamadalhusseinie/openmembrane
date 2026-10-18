@@ -31,8 +31,9 @@ Windows hooks explicitly invoke PowerShell with encoded, literal arguments;
 POSIX hooks quote each argument. Paths with spaces or shell metacharacters
 are supported.
 
-The three-second `SessionEnd` limit is used only to hand the payload to a
-detached worker. The worker reads Codex `response_item` user/assistant message
+Within the three-second `SessionEnd` limit, the hook reads a stable in-memory
+snapshot before handing it to a detached worker. Codex can remove the rollout
+immediately after the hook returns. The worker converts `response_item` user/assistant message
 text, excludes reasoning, tool output, system/developer instructions and
 duplicate `event_msg` records, starts the daemon, and pipes text to:
 

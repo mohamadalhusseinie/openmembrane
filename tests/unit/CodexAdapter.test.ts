@@ -21,7 +21,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })));
 });
 
-export function message(role: string, text: string): string {
+function message(role: string, text: string): string {
   return JSON.stringify({ type: "response_item", payload: {
     type: "message", role, content: [{ type: role === "assistant" ? "output_text" : "input_text", text }],
   } });
@@ -133,15 +133,20 @@ describe("Codex transcript capture", () => {
     }]) expect(() => parseHookInput(JSON.stringify(input))).toThrow("Expected");
   });
 
-  async function capture(directory: string, transcript: string, fail = ""): Promise<{ code: number | null; stderr: string }> {
+  async function capture(directory: string, transcript: string, fail = "", delayWorker = false): Promise<{ code: number | null; stderr: string }> {
     const path = join(directory, "session.jsonl");
     await writeFile(path, transcript);
     const loader = pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
+    const delay = join(directory, "delay.mjs");
+    if (delayWorker) await writeFile(delay, "if (process.argv[2] === '--ingest') await new Promise(resolve => setTimeout(resolve, 750));");
     return new Promise((accept, reject) => {
       const child = spawn(process.execPath, [
         resolve("packages", "adapter-codex", "src", "capture.ts"), cli, join(directory, "capture.log"),
       ], {
-        env: { ...process.env, NODE_OPTIONS: `--import=${loader}`, CAPTURE_RESULT: join(directory, "result.jsonl"), FAIL_CAPTURE: fail },
+        env: {
+          ...process.env, NODE_OPTIONS: `--import=${loader}${delayWorker ? ` --import=${pathToFileURL(delay).href}` : ""}`,
+          CAPTURE_RESULT: join(directory, "result.jsonl"), FAIL_CAPTURE: fail,
+        },
         stdio: ["pipe", "ignore", "pipe"],
       });
       let stderr = "";
@@ -153,6 +158,24 @@ describe("Codex transcript capture", () => {
       }));
     });
   }
+
+  it("captures a stable snapshot when Codex deletes the rollout after SessionEnd returns", async () => {
+    const directory = await temporary();
+    expect(await capture(directory, message("user", "rule: Keep strict TypeScript."), "", true)).toEqual({ code: 0, stderr: "" });
+    await unlink(join(directory, "session.jsonl"));
+    await expect.poll(async () => {
+      try {
+        return (await readFile(join(directory, "result.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+      }
+    }, { timeout: 15_000 }).toEqual([
+      { args: ["start"], cwd: directory, input: "" },
+      { args: ["ingest", "--stdin", "--tool", "codex", "--format", "text", "--session-id", "codex-session"],
+        cwd: directory, input: "user:\nrule: Keep strict TypeScript." },
+    ]);
+  });
 
   it("passes stable session identity and redacts complete secrets before chunking", async () => {
     const directory = await temporary();
