@@ -16,14 +16,24 @@ export async function runCli(cli: string, args: string[], cwd: string, input?: s
   });
 }
 
-export async function launchWorker(script: string, args: string[], cwd: string, input: string, logPath: string): Promise<void> {
+export async function launchWorker(
+  script: string, args: string[], cwd: string, input: string | undefined, logPath: string, inputFile?: number,
+): Promise<void> {
   const log = await open(logPath, "a", 0o600);
   try {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(process.execPath, [script, ...args], {
-        cwd, detached: true, stdio: ["pipe", "ignore", log.fd], windowsHide: true,
+        cwd, detached: true, stdio: [input === undefined ? "ignore" : "pipe", "ignore", log.fd,
+          ...(inputFile === undefined ? [] : [inputFile])], windowsHide: true,
       });
       child.once("error", reject);
+      if (input === undefined) {
+        child.once("spawn", () => {
+          child.unref();
+          resolve();
+        });
+        return;
+      }
       const stdin = child.stdin;
       if (!stdin) {
         reject(new Error("Could not open ingestion input."));

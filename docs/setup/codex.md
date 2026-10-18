@@ -25,8 +25,9 @@ the global CLI or Node installation.
 
 Native hooks are used instead of a filesystem watcher because Codex now
 provides a session-end lifecycle event with a transcript path and session ID.
-The hook snapshots the transcript in memory before returning, so archive/delete
-cannot remove it before capture. A detached worker handles conversion, daemon
+The hook passes an open transcript file descriptor to the worker before returning,
+so archive/delete cannot remove its input. The handoff does not copy the rollout
+within the shutdown deadline. A detached worker handles reading, conversion, daemon
 startup and ingestion outside Codex's three-second shutdown budget.
 No prompting is required to capture a session.
 Extraction must be configured as for

@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { closeSync, readFileSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareTranscriptChunks } from "@openmembrane/core";
 import { launchWorker, runCli } from "../../adapter-hooks/src/process";
-import { object } from "../../adapter-hooks/src/settings";
 import { parseHookInput, sessionTranscript } from "./transcript";
 
 async function main(): Promise<void> {
@@ -13,29 +13,36 @@ async function main(): Promise<void> {
   if (!cli || !isAbsolute(cli) || !logPath || !isAbsolute(logPath)) {
     throw new Error("Missing installed CLI or log path; reinstall the adapter.");
   }
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
-  const input = Buffer.concat(chunks).toString("utf8");
   if (!worker) {
-    const payload = parseHookInput(input);
-    // Codex may remove the rollout as soon as SessionEnd returns.
-    const transcript = await readFile(payload.transcriptPath, "utf8");
-    await launchWorker(fileURLToPath(import.meta.url), ["--ingest", cli, logPath], payload.cwd,
-      JSON.stringify({ event: input, transcript }), logPath);
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+    const payload = parseHookInput(Buffer.concat(chunks).toString("utf8"));
+    // An inherited descriptor survives rollout deletion without copying it during SessionEnd.
+    const file = await open(payload.transcriptPath, "r");
+    try {
+      await launchWorker(fileURLToPath(import.meta.url),
+        ["--ingest", cli, logPath, payload.cwd, payload.sessionId], payload.cwd, undefined, logPath, file.fd);
+    } finally {
+      await file.close();
+    }
     return;
   }
-  const snapshot: unknown = JSON.parse(input);
-  if (!object(snapshot) || typeof snapshot.event !== "string" || typeof snapshot.transcript !== "string") {
-    throw new Error("Invalid ingestion snapshot.");
+  const cwd = process.argv[5];
+  const sessionId = process.argv[6];
+  if (!cwd || !isAbsolute(cwd) || !sessionId?.trim()) throw new Error("Invalid ingestion worker arguments.");
+  let content: string;
+  try {
+    content = readFileSync(3, "utf8");
+  } finally {
+    closeSync(3);
   }
-  const payload = parseHookInput(snapshot.event);
-  const transcript = sessionTranscript(snapshot.transcript);
+  const transcript = sessionTranscript(content);
   if (!transcript) return;
-  await runCli(cli, ["start"], payload.cwd);
+  await runCli(cli, ["start"], cwd);
   for (const chunk of prepareTranscriptChunks(transcript)) {
     if (chunk.trim()) await runCli(cli, [
-      "ingest", "--stdin", "--tool", "codex", "--format", "text", "--session-id", payload.sessionId,
-    ], payload.cwd, chunk);
+      "ingest", "--stdin", "--tool", "codex", "--format", "text", "--session-id", sessionId,
+    ], cwd, chunk);
   }
 }
 

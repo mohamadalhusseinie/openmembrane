@@ -1,6 +1,27 @@
 import { isAbsolute } from "node:path";
 import { object } from "../../adapter-hooks/src/settings";
 
+function legacyContext(text: string): boolean {
+  const trimmed = text.trim();
+  return [
+    ["# AGENTS.md instructions", "</INSTRUCTIONS>"],
+    ["<environment_context>", "</environment_context>"],
+    ["<skill>", "</skill>"],
+    ["<user_shell_command>", "</user_shell_command>"],
+    ["<turn_aborted>", "</turn_aborted>"],
+    ["<subagent_notification>", "</subagent_notification>"],
+    ["<recommended_plugins>", "</recommended_plugins>"],
+    ["<goal_context>", "</goal_context>"],
+    ["<codex_internal_context", "</codex_internal_context>"],
+  ].some(([start, end]) => start !== undefined && end !== undefined && trimmed.startsWith(start) && trimmed.endsWith(end)) ||
+    /^<external_([^>\s]+)>[\s\S]*<\/external_\1>$/.test(trimmed) ||
+    /^<hook_prompt\s+hook_run_id=(?:"[^"]*"|'[^']*')>[\s\S]*<\/hook_prompt>$/.test(trimmed) ||
+    trimmed.startsWith("Warning: The maximum number of unified exec processes you can keep open is") ||
+    (trimmed.startsWith("Warning: apply_patch was requested via ") &&
+      trimmed.endsWith("Use the apply_patch tool instead of exec_command.")) ||
+    trimmed.startsWith("Warning: Your account was flagged for potentially high-risk cyber activity");
+}
+
 function userText(message: Record<string, unknown>, index: number, text: string): boolean {
   const metadata = message.internal_chat_message_metadata_passthrough;
   if (object(metadata)) {
@@ -14,10 +35,7 @@ function userText(message: Record<string, unknown>, index: number, text: string)
       if (part.harness_injected === true || typeof part.source_tool_namespace === "string") return false;
     }
   }
-  const trimmed = text.trim();
-  return !(trimmed.startsWith("# AGENTS.md instructions") && trimmed.endsWith("</INSTRUCTIONS>")) &&
-    !(trimmed.startsWith("<user_shell_command>") && trimmed.endsWith("</user_shell_command>")) &&
-    !(trimmed.startsWith("<environment_context>") && trimmed.endsWith("</environment_context>"));
+  return !legacyContext(text);
 }
 
 export function parseHookInput(content: string): { cwd: string; transcriptPath: string; sessionId: string } {

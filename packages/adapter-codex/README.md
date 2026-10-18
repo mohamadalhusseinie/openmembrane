@@ -36,9 +36,11 @@ Windows hooks explicitly invoke PowerShell with encoded, literal arguments;
 POSIX hooks quote each argument. Paths with spaces or shell metacharacters
 are supported.
 
-Within the three-second `SessionEnd` limit, the hook reads a stable in-memory
-snapshot before handing it to a detached worker. Codex can remove the rollout
-immediately after the hook returns. The worker converts `response_item` user/assistant message
+Within the three-second `SessionEnd` limit, the hook opens the rollout and
+passes its file descriptor to a detached worker, with only project/session
+identifiers as arguments and no worker stdin pipe. No transcript-sized read, serialization or pipe write occurs
+before returning. The inherited descriptor remains valid if Codex removes the
+rollout immediately after the hook returns. The worker converts `response_item` user/assistant message
 text, excludes reasoning, tool output, system/developer instructions and
 duplicate `event_msg` records, starts the daemon, and pipes text to:
 
@@ -57,7 +59,7 @@ decisions when the same session is captured again.
 
 User-role contextual fragments are not conversation: per-part kind/provenance
 annotations exclude injected instructions and tool/harness context. Legacy
-AGENTS.md, user-shell-command and environment-context wrappers are excluded
+instruction, skill, shell, environment and other known Codex context wrappers are excluded
 when annotations are unavailable. Explicitly annotated genuine user text is
 retained, including quotations of these wrappers.
 Rollback events remove discarded user turns and their assistant messages

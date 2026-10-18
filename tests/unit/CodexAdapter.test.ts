@@ -157,6 +157,29 @@ describe("Codex installation", () => {
 });
 
 describe("Codex transcript capture", () => {
+  it.each([
+    "<skill>Injected skill</skill>",
+    "<turn_aborted>Interrupted</turn_aborted>",
+    "<subagent_notification>Agent output</subagent_notification>",
+    "<recommended_plugins>Plugin instructions</recommended_plugins>",
+    "<goal_context>Goal context</goal_context>",
+    "<external_notes>External context</external_notes>",
+    "<codex_internal_context extra=\"true\">Internal context</codex_internal_context>",
+    "<hook_prompt hook_run_id=\"id\">Hook instructions</hook_prompt>",
+    "Warning: The maximum number of unified exec processes you can keep open is 64.",
+    "Warning: apply_patch was requested via exec_command. Use the apply_patch tool instead of exec_command.",
+    "Warning: Your account was flagged for potentially high-risk cyber activity.",
+  ])("excludes legacy context from transcript and rollback boundaries: %s", (context) => {
+    const text = [message("user", "Keep"), message("user", "Discard"), message("user", context),
+      '{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":1}}'].join("\n");
+    expect(sessionTranscript(text)).toBe("user:\nKeep");
+    const quotation = JSON.stringify({ type: "response_item", payload: {
+      type: "message", role: "user", content: [{ type: "input_text", text: context }],
+      internal_chat_message_metadata_passthrough: { content_item_kinds: ["user.text"] },
+    } });
+    expect(sessionTranscript(quotation)).toBe(`user:\n${context}`);
+  });
+
   it("applies rollback markers to real user turns before emitting effective history", async () => {
     const fixture = await readFile(resolve("tests", "unit", "fixtures", "codex", "rollback.jsonl"), "utf8");
     expect(sessionTranscript(fixture)).toBe([
@@ -200,7 +223,7 @@ describe("Codex transcript capture", () => {
     await writeFile(path, transcript);
     const loader = pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
     const delay = join(directory, "delay.mjs");
-    if (delayWorker) await writeFile(delay, "if (process.argv[2] === '--ingest') await new Promise(resolve => setTimeout(resolve, 750));");
+    if (delayWorker) await writeFile(delay, "if (process.argv[2] === '--ingest') await new Promise(resolve => setTimeout(resolve, 4000));");
     return new Promise((accept, reject) => {
       const child = spawn(process.execPath, [
         resolve("packages", "adapter-codex", "src", "capture.ts"), cli, join(directory, "capture.log"),
@@ -221,9 +244,13 @@ describe("Codex transcript capture", () => {
     });
   }
 
-  it("captures a stable snapshot when Codex deletes the rollout after SessionEnd returns", async () => {
+  it("hands a large rollout off within three seconds and survives deletion before the delayed worker reads it", { timeout: 15_000 }, async () => {
     const directory = await temporary();
-    expect(await capture(directory, message("user", "rule: Keep strict TypeScript."), "", true)).toEqual({ code: 0, stderr: "" });
+    const transcript = JSON.stringify({ type: "session_meta", payload: { padding: "x".repeat(8 * 1024 * 1024) } }) +
+      "\n" + message("user", "rule: Keep strict TypeScript.");
+    const started = performance.now();
+    expect(await capture(directory, transcript, "", true)).toEqual({ code: 0, stderr: "" });
+    expect(performance.now() - started).toBeLessThan(3000);
     await unlink(join(directory, "session.jsonl"));
     await expect.poll(async () => {
       try {
