@@ -44,6 +44,8 @@ or API key.
 MCP keeps its `{ error: { code, message, diagnosticId } }` envelope and session
 nudge tracker. Daemon errors preserve their diagnostic IDs and safe messages;
 the daemon owns diagnostic persistence and GitHub publication retries.
+Project-operation failures are recorded in project diagnostics with the same
+ID returned to MCP, so the CLI and review UI can look them up.
 Client/startup failures receive an ID correlated on MCP stderr, without writing
 protocol noise to stdout or opening local stores. Inspect project diagnostics
 using the CLI/UI and daemon failures in the local daemon log.

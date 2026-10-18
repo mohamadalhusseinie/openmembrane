@@ -215,7 +215,7 @@ describe("packaged openmembrane lifecycle", () => {
     const client = new Client({ name: "thin-mcp-integration", version: "1.0.0" });
     const call = async (name: string, input: Record<string, unknown> = {}) => {
       const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: input }));
-      expect(result.isError).not.toBe(true);
+      expect(result.isError, JSON.stringify(result.content)).not.toBe(true);
       const block = result.content[0];
       if (block?.type !== "text") throw new Error("Expected JSON tool content.");
       return JSON.parse(block.text);
@@ -248,6 +248,9 @@ describe("packaged openmembrane lifecycle", () => {
       expect(envelope.error).toMatchObject({ code: "CANDIDATE_NOT_FOUND", diagnosticId: expect.stringMatching(/^diag_/) });
       expect(await diagnosticLog(home)).toContain(envelope.error.diagnosticId);
       const daemon = new OpenMembraneClient({ daemonPaths: { homeDir: home, runtimeDir: home }, projectRoot: project, env });
+      expect(await daemon.getDiagnostics({ code: "CANDIDATE_NOT_FOUND" })).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: envelope.error.diagnosticId, projectId: "client-project", operation: "approveMemoryCandidate", source: "daemon" }),
+      ]));
       expect(await daemon.searchMemory({ query: "isolated" })).toHaveLength(1);
       expect((await readLock(paths.runDir))?.instanceId).toBe(first.instanceId);
       await client.close();

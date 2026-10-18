@@ -6,6 +6,9 @@ Make MCP a thin authenticated daemon client and reduce its surface to seven
 mid-session tools. The first tool call auto-starts the daemon if needed; later
 calls and MCP sessions reuse it. Tool discovery does not start the daemon.
 Safe error envelopes, daemon diagnostic IDs, and session nudges are preserved.
+Readiness polling tolerates the daemon's transient starting state. Project
+failures are persisted by the daemon using the returned diagnostic ID and are
+available through CLI/UI diagnostics.
 
 Breaking: the following MCP tools are removed. Their daemon endpoints remain,
 and all operations have CLI replacements shipping with this change:

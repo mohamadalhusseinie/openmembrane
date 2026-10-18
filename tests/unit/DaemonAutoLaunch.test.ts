@@ -51,4 +51,25 @@ describe("detached daemon auto-launch", () => {
     await expect(autoLaunchDaemon(vi.fn(), () => Promise.reject(remoteError))).rejects.toBe(remoteError);
     await expect(autoLaunchDaemon(vi.fn(), vi.fn(), { timeoutMs: 0 })).rejects.toMatchObject({ code: "E_CLIENT_CONFIG" });
   });
+
+  it("waits for a daemon reporting startup without suppressing other daemon errors", async () => {
+    const health = vi.fn()
+      .mockRejectedValueOnce(new OpenMembraneClientError("DAEMON_STARTING", "Starting.", { origin: "daemon", status: 503 }))
+      .mockResolvedValue({});
+    await autoLaunchDaemon(vi.fn(), health, { timeoutMs: 100, pollIntervalMs: 1 });
+    expect(health).toHaveBeenCalledTimes(2);
+    for (const code of ["DAEMON_STOPPING", "UNAUTHORIZED", "E_REQUEST_TIMEOUT"]) {
+      const error = new OpenMembraneClientError(code, "Terminal daemon error.", { origin: "daemon" });
+      await expect(autoLaunchDaemon(vi.fn(), () => Promise.reject(error))).rejects.toBe(error);
+    }
+  });
+
+  it("bounds repeated startup responses by the readiness deadline", async () => {
+    const starting = new OpenMembraneClientError("DAEMON_STARTING", "Starting.", { origin: "daemon", status: 503 });
+    const health = vi.fn().mockRejectedValue(starting);
+    await expect(autoLaunchDaemon(vi.fn(), health, { timeoutMs: 30, pollIntervalMs: 1 })).rejects.toMatchObject({
+      code: E_DAEMON_NOT_RUNNING, cause: starting,
+    });
+    expect(health).toHaveBeenCalled();
+  });
 });

@@ -47,8 +47,11 @@ export async function autoLaunchDaemon(
       await health(Math.max(1, deadline - Date.now()));
       return;
     } catch (error) {
-      if (!(error instanceof OpenMembraneClientError) || error.origin === "daemon" ||
-        (error.code !== E_DAEMON_NOT_RUNNING && error.code !== "E_REQUEST_TIMEOUT")) throw error;
+      const retryable = error instanceof OpenMembraneClientError &&
+        (error.origin === "daemon"
+          ? error.code === "DAEMON_STARTING"
+          : error.code === E_DAEMON_NOT_RUNNING || error.code === "E_REQUEST_TIMEOUT");
+      if (!retryable) throw error;
       cause = error;
     }
     const remaining = deadline - Date.now();

@@ -5,7 +5,7 @@ import { endpoints } from "@openmembrane/protocol";
 import type { EndpointName, EndpointRequest } from "@openmembrane/protocol";
 import type { OpenMembraneService, ProjectRef, ProjectService } from "@openmembrane/service";
 import { canonicalStoragePath } from "@openmembrane/service";
-import { createId } from "@openmembrane/shared";
+import { createId, nowIso } from "@openmembrane/shared";
 import { Router } from "../../review-ui/src/router";
 import type { RouteResponse } from "../../review-ui/src/router";
 import type { DaemonLogger } from "./logging";
@@ -67,9 +67,22 @@ const collaborationOperations = new Set<ProjectEndpoint>([
 
 const retrievalOperations = new Set<ProjectEndpoint>(["getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext"]);
 
-export async function safeError(logger: DaemonLogger, status: number, code: string, safeMessage: string): Promise<RouteResponse> {
+export async function safeError(
+  logger: DaemonLogger, status: number, code: string, safeMessage: string,
+  diagnostic?: { project: ProjectService; operation: string },
+): Promise<RouteResponse> {
   const diagnosticId = createId("diag");
   await logger.write("request_failed", diagnosticId, code);
+  if (diagnostic) {
+    try {
+      await diagnostic.project.recordDiagnostic({
+        id: diagnosticId, severity: "error", code, message: safeMessage,
+        operation: diagnostic.operation, source: "daemon", createdAt: nowIso(),
+      });
+    } catch (error) {
+      await logger.write("diagnostic_persistence_failed", diagnosticId, normalizeOpenMembraneError(error).code);
+    }
+  }
   return { status, body: { error: { code, safeMessage, diagnosticId } } };
 }
 
@@ -77,6 +90,13 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
   const router = new Router();
   const queues = new Map<string, Promise<void>>();
   router.get(endpoints.health.path, () => ({ status: 200, body: {} }));
+
+  function operationError(error: unknown, operation: ProjectEndpoint, project?: ProjectService): Promise<RouteResponse> {
+    const normalized = normalizeOpenMembraneError(error);
+    const status = normalized.code === "CANDIDATE_NOT_FOUND" || normalized.code === "MEMORY_NOT_FOUND"
+      ? 404 : normalized.code === "UNKNOWN_ERROR" || normalized.code === "STORAGE_ERROR" ? 500 : 422;
+    return safeError(logger, status, normalized.code, normalized.safeMessage, project ? { project, operation } : undefined);
+  }
 
   async function withStore<T>(ref: ProjectRef, operation: () => Promise<T>): Promise<T> {
     const path = await canonicalStoragePath(resolve(ref.projectRoot, ref.storageDir ?? ".openmembrane"));
@@ -140,32 +160,33 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
       try {
         return await withStore(ref, async () => {
           const project = await service.forProject(ref);
-          if (collaborationOperations.has(name)) {
-            const unavailable = await project.checkCollaborationAvailability();
-            if (unavailable) return safeError(logger, 503, unavailable.code, unavailable.message);
+          try {
+            if (collaborationOperations.has(name)) {
+              const unavailable = await project.checkCollaborationAvailability();
+              if (unavailable) return safeError(logger, 503, unavailable.code, unavailable.message, { project, operation: name });
+            }
+            const result = await handlers[name](project, input as EndpointRequest<K>, logger);
+            if (name === "configureGitHubTeamMode") {
+              const configured = endpoints.configureGitHubTeamMode.response.parse(result);
+              if (configured.kind === "rejected") return safeError(logger, 422, configured.code, configured.message, { project, operation: name });
+            }
+            const response: RouteResponse = { status: 200, body: definition.response.parse(result) };
+            if (retrievalOperations.has(name)) {
+              response.afterResponse = async () => {
+                try {
+                  await withStore(ref, () => project.retryEligiblePublications());
+                } catch {
+                  await logger.write("publication_retry_failed", createId("diag"), "GITHUB_PUBLICATION_FAILED");
+                }
+              };
+            }
+            return response;
+          } catch (error) {
+            return operationError(error, name, project);
           }
-          const result = await handlers[name](project, input as EndpointRequest<K>, logger);
-          if (name === "configureGitHubTeamMode") {
-            const configured = endpoints.configureGitHubTeamMode.response.parse(result);
-            if (configured.kind === "rejected") return safeError(logger, 422, configured.code, configured.message);
-          }
-          const response: RouteResponse = { status: 200, body: definition.response.parse(result) };
-          if (retrievalOperations.has(name)) {
-            response.afterResponse = async () => {
-              try {
-                await withStore(ref, () => project.retryEligiblePublications());
-              } catch {
-                await logger.write("publication_retry_failed", createId("diag"), "GITHUB_PUBLICATION_FAILED");
-              }
-            };
-          }
-          return response;
         });
       } catch (error) {
-        const normalized = normalizeOpenMembraneError(error);
-        const status = normalized.code === "CANDIDATE_NOT_FOUND" || normalized.code === "MEMORY_NOT_FOUND"
-          ? 404 : normalized.code === "UNKNOWN_ERROR" || normalized.code === "STORAGE_ERROR" ? 500 : 422;
-        return safeError(logger, status, normalized.code, normalized.safeMessage);
+        return operationError(error, name);
       }
     });
   }

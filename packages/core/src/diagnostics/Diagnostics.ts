@@ -10,7 +10,7 @@ export interface DiagnosticEvent {
   code: OpenMembraneErrorCode | string;
   message: string;
   operation?: string;
-  source?: "core" | "storage" | "mcp-server" | "exporter" | "adapter";
+  source?: "core" | "storage" | "mcp-server" | "daemon" | "exporter" | "adapter";
   entityId?: string;
   createdAt: string;
   details?: Record<string, unknown>;
