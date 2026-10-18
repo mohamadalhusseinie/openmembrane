@@ -1,6 +1,7 @@
 # OpenMembrane Local Private Setup: Claude Code
 
-Claude Code supports MCP servers natively. No adapter code is needed — just configuration.
+Claude Code supports MCP servers natively for retrieval and direct saves. The
+optional hooks adapter captures sessions automatically without model cooperation.
 
 This guide configures the current [Local Private mode](../deployment-modes.md#local-private).
 Local Private remains the default. [GitHub Team](../deployment-modes.md#github-team)
@@ -13,6 +14,41 @@ are separate from team sync.
 - `openmembrane` installed: `npm install -g openmembrane`
 
 ## Configuration
+
+### Automatic session capture
+
+```sh
+npx @openmembrane/adapter-claude-code install
+```
+
+Restart Claude Code. The installer registers a `SessionEnd` command hook in
+`~/.claude/settings.json` and adds marked retrieval instructions to
+`~/.claude/CLAUDE.md`. `CLAUDE_CONFIG_DIR` is respected. Existing hooks and
+instructions are preserved. Claude Code must support exec-form hooks
+(`command` plus `args`). The adapter includes the OpenMembrane CLI dependency;
+it starts the daemon when capture needs it.
+
+For opt-in per-turn capture, run install with `--incremental` (adds `Stop`).
+Running install again without this flag disables per-turn capture.
+To remove the adapter and restore the original configuration:
+
+```sh
+npx @openmembrane/adapter-claude-code uninstall
+```
+
+The handler reads `transcript_path` from hook stdin, converts Claude Code JSONL
+user/assistant text to a transcript, and pipes it to
+`openmembrane ingest --stdin --tool claude-code --format text` from the hook's
+`cwd`. Extraction and privacy policy remain in the daemon; configure extraction
+as for [ordinary ingestion](../../README.md#automatic-memory-capture). Ingestion
+continues in a detached process after Claude exits; failures are written to
+`openmembrane-capture.log` in the config directory. This does
+not itself configure MCP or authorize stored-memory egress to a provider.
+Keep the dependency installation/npx cache available, or rerun install if you
+clear it. See the [adapter README](../../packages/adapter-claude-code/README.md)
+for restoration and failure behavior.
+
+### MCP retrieval
 
 Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
 
