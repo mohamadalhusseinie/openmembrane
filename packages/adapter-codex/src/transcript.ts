@@ -32,24 +32,43 @@ export function parseHookInput(content: string): { cwd: string; transcriptPath: 
 }
 
 export function sessionTranscript(content: string): string {
-  return content.split(/\r?\n/).flatMap((line, index) => {
-    if (!line.trim()) return [];
+  const messages: string[] = [];
+  const userPositions: number[] = [];
+  for (const [index, line] of content.split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
     let record: unknown;
     try {
       record = JSON.parse(line);
     } catch {
       throw new Error(`Invalid Codex transcript JSON on line ${index + 1}.`);
     }
-    // Rollouts also contain event_msg copies, reasoning and tool records.
-    if (!object(record) || record.type !== "response_item") return [];
+    if (!object(record)) continue;
+    if (record.type === "event_msg" && object(record.payload) && record.payload.type === "thread_rolled_back") {
+      const count = record.payload.num_turns;
+      if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+        throw new Error(`Invalid rollback on transcript line ${index + 1}.`);
+      }
+      const remaining = Math.max(0, userPositions.length - count);
+      messages.length = userPositions[remaining] ?? messages.length;
+      userPositions.length = remaining;
+      continue;
+    }
+    // Other event_msg records duplicate messages or describe runtime activity.
+    if (record.type !== "response_item") continue;
     const message = record.payload;
     if (!object(message) || message.type !== "message" ||
-        (message.role !== "user" && message.role !== "assistant")) return [];
+        (message.role !== "user" && message.role !== "assistant")) continue;
     if (!Array.isArray(message.content)) throw new Error(`Missing message content on transcript line ${index + 1}.`);
+    if (message.role === "user" && message.content.some((part: unknown, partIndex: number) =>
+      object(part) && userText(message, partIndex, typeof part.text === "string" ? part.text : ""))) {
+      // Image-only user messages still delimit turns even though no text is sent.
+      userPositions.push(messages.length);
+    }
     const text = message.content.flatMap((part: unknown, partIndex: number) =>
       object(part) && (part.type === "input_text" || part.type === "output_text") && typeof part.text === "string" &&
         (message.role !== "user" || userText(message, partIndex, part.text))
         ? [part.text] : []).join("\n");
-    return text.trim() ? [`${message.role}:\n${text}`] : [];
-  }).join("\n\n");
+    if (text.trim()) messages.push(`${message.role}:\n${text}`);
+  }
+  return messages.join("\n\n");
 }

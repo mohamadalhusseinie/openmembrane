@@ -11,6 +11,7 @@ async function optionalRead(path: string): Promise<string | null> {
 }
 
 interface State {
+  instructionsName?: string;
   settings: string | null;
   instructions: string | null;
   installedSettings: string;
@@ -37,17 +38,28 @@ export async function installHooks(
   instructionsName: string,
   updateSettings: (content: string | null, install: boolean) => string,
   updateInstructions: (content: string, install: boolean) => string,
+  allowedInstructionsNames: readonly string[] = [instructionsName],
 ): Promise<void> {
   directory = resolve(directory);
   const settingsPath = join(directory, settingsName);
-  const instructionsPath = join(directory, instructionsName);
   const statePath = join(directory, "openmembrane-adapter-state.json");
   const capturePath = join(directory, "openmembrane-capture.mjs");
-  const [settings, instructions, stateText] = await Promise.all([
-    optionalRead(settingsPath), optionalRead(instructionsPath), optionalRead(statePath),
-  ]);
+  const stateText = await optionalRead(statePath);
   const state = stateText === null ? null : parseState(stateText);
   if (!install && state === null) return;
+  if (state && "instructionsName" in state) {
+    if (typeof state.instructionsName !== "string" || !allowedInstructionsNames.includes(state.instructionsName)) {
+      throw new Error("Invalid OpenMembrane instructions filename in installer state.");
+    }
+    if (install && state.instructionsName !== instructionsName) {
+      throw new Error("The effective instructions file changed. Uninstall and reinstall the adapter to move its retrieval instructions.");
+    }
+    instructionsName = state.instructionsName;
+  }
+  const instructionsPath = join(directory, instructionsName);
+  const [settings, instructions] = await Promise.all([
+    optionalRead(settingsPath), optionalRead(instructionsPath),
+  ]);
   if (install && state === null && await optionalRead(capturePath) !== null) {
     throw new Error("openmembrane-capture.mjs already exists without installer state; move it before installing.");
   }
@@ -61,6 +73,7 @@ export async function installHooks(
   if (install) {
     await copyFile(runtime, capturePath);
     await writeFile(statePath, JSON.stringify({
+      instructionsName,
       settings: state && settings !== state.installedSettings
         ? settings === null ? null : updateSettings(settings, false)
         : state ? state.settings : settings,

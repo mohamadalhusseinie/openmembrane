@@ -15,6 +15,8 @@ Restart Codex, open `/hooks`, and review/trust the OpenMembrane hook.
 Hooks must be enabled; the installer does not override `features.hooks = false`
 or managed restrictions. It adds a `SessionEnd` command in
 `~/.codex/hooks.json` and startup retrieval instructions in `~/.codex/AGENTS.md`.
+If a nonempty `AGENTS.override.md` is active, instructions go there instead;
+the filename is recorded so uninstall restores the same file.
 `CODEX_HOME` overrides this directory. Existing settings and instructions
 are preserved, and `config.toml` is not modified.
 Installation requires and validates the global CLI (using `npm root --global`)

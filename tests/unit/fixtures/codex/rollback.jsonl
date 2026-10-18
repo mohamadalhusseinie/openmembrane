@@ -1,0 +1,12 @@
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"rule: Keep this first rule."}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Keeping the first rule."}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"rule: Discard this rule."}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Discard this answer too."}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\n<INSTRUCTIONS>\nDo not count this as a user turn.\n</INSTRUCTIONS>"}]}}
+{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":1}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_image","image_url":"ignored"}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Discard image-only turn answer."}]}}
+{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":1}}
+{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":0}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"rule: Use this replacement rule."}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Keeping the replacement."}]}}

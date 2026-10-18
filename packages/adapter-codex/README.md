@@ -27,6 +27,10 @@ are unsupported; upgrade rather than expecting a watcher fallback.
 
 The installer preserves existing `hooks.json` configuration and adds a marked
 retrieval section to `AGENTS.md` under `$CODEX_HOME` (default `~/.codex`).
+If a nonempty `AGENTS.override.md` takes precedence, that file receives the
+section instead. The chosen filename is recorded for reversible uninstall.
+If the effective filename changes later, uninstall and reinstall to move
+the retrieval section; reinstall detects this rather than silently shadowing it.
 It never modifies `config.toml`. Repeated install/uninstall is idempotent.
 Windows hooks explicitly invoke PowerShell with encoded, literal arguments;
 POSIX hooks quote each argument. Paths with spaces or shell metacharacters
@@ -56,6 +60,8 @@ annotations exclude injected instructions and tool/harness context. Legacy
 AGENTS.md, user-shell-command and environment-context wrappers are excluded
 when annotations are unavailable. Explicitly annotated genuine user text is
 retained, including quotations of these wrappers.
+Rollback events remove discarded user turns and their assistant messages
+before extraction; contextual fragments do not count as user turns.
 
 The worker uses the hook's absolute `cwd` for project resolution. Launch Codex
 from the project root and keep `OPENMEMBRANE_PROJECT_ID`, `OPENMEMBRANE_HOME`

@@ -28,6 +28,31 @@ function message(role: string, text: string): string {
 }
 
 describe("Codex installation", () => {
+  it("installs into the effective override and restores the recorded file even after selection changes", async () => {
+    const directory = await temporary();
+    const original = "# Local override without trailing newline";
+    await writeFile(join(directory, "AGENTS.md"), "# Base instructions");
+    await writeFile(join(directory, "AGENTS.override.md"), original);
+    await installAdapter(true, directory, cli, cli);
+    expect(await readFile(join(directory, "AGENTS.override.md"), "utf8")).toContain("openmembrane:start");
+    expect(await readFile(join(directory, "AGENTS.md"), "utf8")).toBe("# Base instructions");
+    await installAdapter(true, directory, cli, cli);
+    await installAdapter(false, directory);
+    expect(await readFile(join(directory, "AGENTS.override.md"), "utf8")).toBe(original);
+    await installAdapter(true, directory, cli, cli);
+    await writeFile(join(directory, "AGENTS.override.md"), "");
+    await installAdapter(false, directory);
+    expect(await readFile(join(directory, "AGENTS.override.md"), "utf8")).toBe("");
+    expect(await readFile(join(directory, "AGENTS.md"), "utf8")).toBe("# Base instructions");
+    await installAdapter(true, directory, cli, cli);
+    expect(await readFile(join(directory, "AGENTS.md"), "utf8")).toContain("openmembrane:start");
+    await writeFile(join(directory, "AGENTS.override.md"), "# New override");
+    await expect(installAdapter(true, directory, cli, cli)).rejects.toThrow("effective instructions file changed");
+    await installAdapter(false, directory);
+    expect(await readFile(join(directory, "AGENTS.md"), "utf8")).toBe("# Base instructions");
+    expect(await readFile(join(directory, "AGENTS.override.md"), "utf8")).toBe("# New override");
+  });
+
   it("resolves the CLI only from the persistent global root and uninstalls without a CLI", async () => {
     const directory = await temporary();
     const globalRoot = join(directory, "global modules");
@@ -37,6 +62,7 @@ describe("Codex installation", () => {
     await writeFile(join(cliRoot, "cli.cjs"), "");
     expect(resolveGlobalCli(globalRoot)).toBe(join(cliRoot, "cli.cjs"));
     expect(() => resolveGlobalCli(join(directory, "missing"))).toThrow();
+    expect(() => resolveGlobalCli("")).toThrow("absolute");
     const config = join(directory, "config");
     await installAdapter(true, config, cli, resolveGlobalCli(globalRoot));
     await rm(cliRoot, { recursive: true, force: true });
@@ -131,6 +157,17 @@ describe("Codex installation", () => {
 });
 
 describe("Codex transcript capture", () => {
+  it("applies rollback markers to real user turns before emitting effective history", async () => {
+    const fixture = await readFile(resolve("tests", "unit", "fixtures", "codex", "rollback.jsonl"), "utf8");
+    expect(sessionTranscript(fixture)).toBe([
+      "user:\nrule: Keep this first rule.", "assistant:\nKeeping the first rule.",
+      "user:\nrule: Use this replacement rule.", "assistant:\nKeeping the replacement.",
+    ].join("\n\n"));
+    const all = fixture + '\n{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":100}}';
+    expect(sessionTranscript(all)).toBe("");
+    expect(() => sessionTranscript('{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":-1}}')).toThrow("Invalid rollback");
+  });
+
   it("filters contextual fragments by per-part annotations and legacy markers without dropping genuine user text", async () => {
     const fixture = await readFile(resolve("tests", "unit", "fixtures", "codex", "contextual.jsonl"), "utf8");
     expect(sessionTranscript(fixture)).toBe([
