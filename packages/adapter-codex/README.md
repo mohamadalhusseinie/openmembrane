@@ -50,6 +50,12 @@ requests. The daemon owns extraction, classification, privacy policy and
 deduplication. Stable session IDs preserve source identity and rejection
 decisions when the same session is captured again.
 
+User-role contextual fragments are not conversation: per-part kind/provenance
+annotations exclude injected instructions and tool/harness context. Legacy
+AGENTS.md, user-shell-command and environment-context wrappers are excluded
+when annotations are unavailable. Explicitly annotated genuine user text is
+retained, including quotations of these wrappers.
+
 The worker uses the hook's absolute `cwd` for project resolution. Launch Codex
 from the project root and keep `OPENMEMBRANE_PROJECT_ID`, `OPENMEMBRANE_HOME`
 and `OPENMEMBRANE_STORAGE_BACKEND` consistent between the Codex launch

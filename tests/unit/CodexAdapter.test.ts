@@ -115,6 +115,15 @@ describe("Codex installation", () => {
 });
 
 describe("Codex transcript capture", () => {
+  it("filters contextual fragments by per-part annotations and legacy markers without dropping genuine user text", async () => {
+    const fixture = await readFile(resolve("tests", "unit", "fixtures", "codex", "contextual.jsonl"), "utf8");
+    expect(sessionTranscript(fixture)).toBe([
+      "user:\nrule: Genuine user decision.",
+      "user:\nAnother genuine user message",
+      "user:\nPlease explain the <user_shell_command> format.\n# AGENTS.md instructions\n<INSTRUCTIONS>\nExplicit user quotation\n</INSTRUCTIONS>",
+    ].join("\n\n"));
+  });
+
   it("reads rollout messages once and excludes instruction, reasoning, tool and duplicate event records", () => {
     const content = [
       '{"type":"session_meta","payload":{"id":"session"}}',
