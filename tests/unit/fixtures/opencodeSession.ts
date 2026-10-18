@@ -29,6 +29,19 @@ export const sessionMessages: Messages = [
         text: "Understood. I will use isolated fixtures." },
     ],
   },
+  {
+    info: {
+      id: "msg_failed", sessionID: sessionId, role: "assistant", time: { created: 4 },
+      parentID: "msg_user", modelID: "fixture", providerID: "local", mode: "build",
+      path: { cwd: "/fixture", root: "/fixture" }, cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      error: { name: "UnknownError", data: { message: "Provider failed after partial output" } },
+    },
+    parts: [
+      { id: "part_failed", sessionID: sessionId, messageID: "msg_failed", type: "text",
+        text: "rule: The project requires obsolete build steps." },
+    ],
+  },
 ];
 
 export const expectedTranscript = "user:\nThe project must use isolated Vitest fixtures for integration tests.\nrule: Use pnpm.\n\n" +

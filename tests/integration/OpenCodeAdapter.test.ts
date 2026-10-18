@@ -50,6 +50,7 @@ describe("OpenCode adapter through the real daemon", () => {
       source: expect.objectContaining({ tool: "opencode", sessionId }),
     })]));
     expect([...memories, ...pending].some((memory) => memory.content.includes("obsolete fixtures"))).toBe(false);
+    expect([...memories, ...pending].some((memory) => memory.content.includes("obsolete build steps"))).toBe(false);
     expect(memories.length).toBeGreaterThan(0);
     await hooks.dispose?.();
     await daemon.close();

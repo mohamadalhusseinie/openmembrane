@@ -39,6 +39,7 @@ export async function detectProject(directory: string, env: NodeJS.ProcessEnv): 
 
 export function sessionTranscript(messages: Messages): string {
   return messages.flatMap(({ info, parts }) => {
+    if (info.role === "assistant" && info.error && info.error.name !== "MessageAbortedError") return [];
     const text = messageText(parts);
     return text.trim() ? [`${info.role}:\n${text}`] : [];
   }).join("\n\n");
@@ -70,9 +71,10 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project,
     }
   }
 
-  async function messages(sessionID: string): Promise<Messages> {
+  async function messages(sessionID: string, limit?: number): Promise<Messages> {
     const result = await input.client.session.messages({
-      path: { id: sessionID }, query: { directory: project.projectRoot },
+      path: { id: sessionID },
+      query: { directory: project.projectRoot, ...(limit === undefined ? {} : { limit }) },
     });
     if (("error" in result && result.error) || result.data === undefined) throw new Error("OpenCode session messages are unavailable.");
     return result.data;
@@ -82,7 +84,7 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project,
     "experimental.chat.system.transform": async ({ sessionID, model }, output) => {
       if (disposed || !options.allowMemoryEgress || sessionID === undefined) return;
       try {
-        const history = await messages(sessionID);
+        const history = await messages(sessionID, 20);
         const query = [...history].reverse()
           .filter(({ info }) => info.role === "user")
           .map(({ parts }) => messageText(parts).trim())

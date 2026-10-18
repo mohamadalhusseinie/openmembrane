@@ -65,10 +65,13 @@ describe("OpenCode reference adapter", () => {
   });
 
   it("injects rules and relevant context while preserving the host prompt, including resumed sessions", async () => {
-    const { hooks, daemon } = fixture();
+    const { hooks, daemon, messages } = fixture();
     const output = { system: ["Host instructions"] };
     await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
     expect(daemon.getProjectRules).toHaveBeenCalledExactlyOnceWith({ ...project, limit: 10 });
+    expect(messages).toHaveBeenCalledExactlyOnceWith({
+      path: { id: sessionId }, query: { directory: project.projectRoot, limit: 20 },
+    });
     expect(daemon.getRelevantContext).toHaveBeenCalledExactlyOnceWith({
       ...project, query: "The project must use isolated Vitest fixtures for integration tests.\nrule: Use pnpm.", limit: 5,
     });
@@ -88,6 +91,14 @@ describe("OpenCode reference adapter", () => {
     const output = { system: [] as string[] };
     await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
     expect(output.system.join("\n").split(memory.content)).toHaveLength(2);
+  });
+
+  it("preserves visible partial text from an intentionally aborted assistant message", () => {
+    const history = structuredClone(sessionMessages);
+    const failed = history.find(({ info }) => info.id === "msg_failed");
+    if (failed?.info.role !== "assistant") throw new Error("Expected failed assistant fixture.");
+    failed.info.error = { name: "MessageAbortedError", data: { message: "User stopped generation" } };
+    expect(sessionTranscript(history)).toContain("rule: The project requires obsolete build steps.");
   });
 
   it("uses the latest visible user text rather than an ignored-only status message", async () => {

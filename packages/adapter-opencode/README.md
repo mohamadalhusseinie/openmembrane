@@ -93,9 +93,13 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   are serialized in order with each role on its own line (`role:\ntext`), so
   explicit memory markers remain at the start of a line. Text marked `ignored`
   by OpenCode is outside the model conversation and is excluded from both the
-  transcript and relevance query. Binary attachments, reasoning, tool
+  transcript and relevance query. Failed assistant messages are excluded,
+  matching OpenCode replay; visible partial text from a user-aborted generation
+  is retained. Binary attachments, reasoning, tool
   payloads, and bookkeeping parts are not conversation text and are not included.
-  The latest user text is the relevance query, falling back to the project name.
+  Context retrieval reads at most 20 recent messages for the latest visible user
+  text, falling back to the project name when none is in that window. Only idle
+  ingestion requests the full history.
 - `event({ event: { type: "session.idle", properties: { sessionID } } })`
   triggers `POST /v1/ingest` via the client with `tool: "opencode"`, `sessionId`,
   and the transcript. There is no documented `session.ended` event: idle is the
