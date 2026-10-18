@@ -35,18 +35,23 @@ async function createPipeline(extractor: MemoryExtractor = new MockMemoryExtract
 }
 
 describe("MemoryPipeline", () => {
-  it("never exposes keys spanning transport boundaries to the configured extractor", async () => {
+  it.each(["private_key", "aws_access_key"])("never exposes %s secrets spanning transport boundaries to the configured extractor", async (kind) => {
     const extractor = { extract: vi.fn(async (_input: SessionInput): Promise<MemoryCandidate[]> => []) };
     const { pipeline } = await createPipeline(extractor);
-    const key = "-----BEGIN PRIVATE KEY-----\n" + "PRIVATE_KEY_MATERIAL".repeat(10_000) + "\n-----END PRIVATE KEY-----";
-    const transcript = "before\n" + "x".repeat(MAX_TRANSCRIPT_LENGTH - 100) + "\n" + key +
+    const key = kind === "private_key"
+      ? "-----BEGIN PRIVATE KEY-----\n" + "PRIVATE_KEY_MATERIAL".repeat(10_000) + "\n-----END PRIVATE KEY-----"
+      : "AKIAABCDEFGHIJKLMNOP";
+    const transcript = "before\n" + "x".repeat(MAX_TRANSCRIPT_LENGTH - 20) + " " + key +
       "\nafter\n" + "y".repeat(MAX_TRANSCRIPT_LENGTH);
+    expect(transcript.indexOf(key)).toBeLessThan(MAX_TRANSCRIPT_LENGTH);
+    expect(transcript.indexOf(key) + key.length).toBeGreaterThan(MAX_TRANSCRIPT_LENGTH);
     for (const chunk of prepareTranscriptChunks(transcript)) {
       expect(chunk.length).toBeLessThanOrEqual(MAX_TRANSCRIPT_LENGTH);
       await pipeline.process({ projectId: "project-a", transcript: chunk, tool: "claude-code", sessionId: "session-a" });
     }
     const received = extractor.extract.mock.calls.map(([input]) => input.transcript).join("");
-    expect(received).toBe(transcript.replace(key, "[REDACTED:private_key]"));
+    expect(received).toBe(transcript.replace(key, `[REDACTED:${kind}]`));
+    expect(received).not.toContain(key);
     expect(received).not.toContain("PRIVATE_KEY_MATERIAL");
     expect(received).not.toContain("BEGIN PRIVATE KEY");
   });
