@@ -1,0 +1,21 @@
+{
+  "name": "@openmembrane/adapter-codex",
+  "version": "1.0.2",
+  "description": "Automatic OpenMembrane session capture for Codex",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohamadalhusseinie/openmembrane.git",
+    "directory": "packages/adapter-codex"
+  },
+  "bin": { "openmembrane-codex": "./dist/index.js" },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": { "openmembrane": "^1.0.2" },
+  "devDependencies": { "@openmembrane/core": "*", "@openmembrane/adapter-hooks": "*" }
+}

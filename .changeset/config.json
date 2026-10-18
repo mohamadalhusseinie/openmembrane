@@ -12,6 +12,7 @@
       "@openmembrane/client",
       "@openmembrane/adapter-opencode",
       "@openmembrane/adapter-claude-code",
+      "@openmembrane/adapter-codex",
       "openmembrane"
     ]
   ],

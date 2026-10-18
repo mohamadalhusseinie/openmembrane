@@ -5,5 +5,6 @@ export default defineConfig({
   format: ["esm"],
   target: "node18",
   clean: true,
+  splitting: false,
   noExternal: [/^@openmembrane\//],
 });

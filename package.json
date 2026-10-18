@@ -8,7 +8,7 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build -w apps/mcp-server && npm run build -w @openmembrane/adapter-opencode && npm run build -w @openmembrane/adapter-claude-code",
+    "build": "npm run build -w apps/mcp-server && npm run build -w @openmembrane/adapter-opencode && npm run build -w @openmembrane/adapter-claude-code && npm run build -w @openmembrane/adapter-codex",
     "mcp:stdio": "tsx apps/mcp-server/src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",

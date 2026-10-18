@@ -10,6 +10,7 @@ No manual effort. No data leaves your machine unless you choose it. Safe, privat
 - [Configuring Your AI Tool](#configuring-your-ai-tool)
   - [Claude Desktop](#claude-desktop)
   - [Claude Code](#claude-code)
+  - [Codex](#codex)
   - [VS Code / GitHub Copilot](#vs-code--github-copilot)
   - [Cursor](#cursor)
   - [OpenCode](#opencode)
@@ -129,6 +130,18 @@ Edit `claude_desktop_config.json`:
 claude mcp add openmembrane -- npx openmembrane
 ```
 
+### Codex
+
+For automatic session capture with native hooks and startup retrieval
+instructions, follow [Codex setup](docs/setup/codex.md):
+
+```sh
+npx @openmembrane/adapter-codex install
+```
+
+Restart Codex and review/trust the hook with `/hooks`. MCP retrieval is
+configured separately and requires explicit permission for stored-memory egress.
+
 ### VS Code / GitHub Copilot
 
 Add to `.vscode/mcp.json` in your project:
@@ -204,6 +217,7 @@ Then wire the file into your tool's global configuration:
 |----------|------------------------------|
 | **OpenCode** | `"instructions": ["~/.config/openmembrane/instructions.md"]` in `~/.config/opencode/opencode.json` |
 | **Claude Code** | Append to `~/.claude/CLAUDE.md` |
+| **Codex** | Adapter-managed section in `~/.codex/AGENTS.md` |
 | **Cursor** | Add to Rules for AI in Cursor Settings |
 | **VS Code / Copilot** | Create `~/.copilot/instructions/openmembrane.instructions.md` with `applyTo: "**"` |
 

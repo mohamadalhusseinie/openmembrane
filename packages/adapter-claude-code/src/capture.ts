@@ -1,24 +1,9 @@
-import { spawn } from "node:child_process";
-import { open, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareTranscriptChunks } from "@openmembrane/core";
 import { parseHookInput, sessionTranscript } from "./transcript";
-
-async function run(cli: string, args: string[], cwd: string, input?: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(process.execPath, [cli, ...args], {
-      cwd, stdio: ["pipe", "ignore", "inherit"], windowsHide: true,
-    });
-    child.once("error", reject);
-    child.stdin.on("error", reject);
-    child.once("exit", (code, signal) => {
-      if (code === 0) resolve();
-      else reject(new Error(`OpenMembrane ${args[0]} failed (${signal ?? code}).`));
-    });
-    child.stdin.end(input);
-  });
-}
+import { launchWorker, runCli as run } from "../../adapter-hooks/src/process";
 
 async function main(): Promise<void> {
   if (process.argv[2] === "--ingest") {
@@ -50,29 +35,8 @@ async function main(): Promise<void> {
   const transcript = sessionTranscript(await readFile(payload.transcriptPath, "utf8"), payload.lastAssistantMessage);
   if (!transcript) return;
   await run(cli, ["start"], projectRoot);
-  const log = await open(logPath, "a", 0o600);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(process.execPath, [
-        fileURLToPath(import.meta.url), "--ingest", cli, projectRoot, payload.sessionId,
-      ], {
-        cwd: projectRoot, detached: true, stdio: ["pipe", "ignore", log.fd], windowsHide: true,
-      });
-      child.once("error", reject);
-      const stdin = child.stdin;
-      if (!stdin) {
-        reject(new Error("Could not open ingestion input."));
-        return;
-      }
-      stdin.once("error", reject);
-      stdin.end(transcript, () => {
-        child.unref();
-        resolve();
-      });
-    });
-  } finally {
-    await log.close();
-  }
+  await launchWorker(fileURLToPath(import.meta.url),
+    ["--ingest", cli, projectRoot, payload.sessionId], projectRoot, transcript, logPath);
 }
 
 main().catch(() => {
