@@ -136,6 +136,7 @@ For automatic session capture with native hooks and startup retrieval
 instructions, follow [Codex setup](docs/setup/codex.md):
 
 ```sh
+npm install -g openmembrane
 npx @openmembrane/adapter-codex install
 ```
 

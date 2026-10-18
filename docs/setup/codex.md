@@ -7,6 +7,7 @@ Install Node.js >= 18 and a current Codex release with `SessionEnd` hooks.
 ## Automatic capture
 
 ```sh
+npm install -g openmembrane
 npx @openmembrane/adapter-codex install
 ```
 
@@ -16,6 +17,9 @@ or managed restrictions. It adds a `SessionEnd` command in
 `~/.codex/hooks.json` and startup retrieval instructions in `~/.codex/AGENTS.md`.
 `CODEX_HOME` overrides this directory. Existing settings and instructions
 are preserved, and `config.toml` is not modified.
+Installation requires and validates the global CLI (using `npm root --global`)
+so capture never depends on a transient npx cache. Reinstall after relocating
+the global CLI or Node installation.
 
 Native hooks are used instead of a filesystem watcher because Codex now
 provides a session-end lifecycle event with a transcript path and session ID.
@@ -42,12 +46,6 @@ Add this to the active Codex `config.toml`:
 [mcp_servers.openmembrane]
 command = "openmembrane"
 args = ["mcp"]
-```
-
-Install the CLI globally if it is not already on PATH:
-
-```sh
-npm install -g openmembrane
 ```
 
 The first MCP tool call starts the local daemon if needed. The installed

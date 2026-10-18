@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { MAX_TRANSCRIPT_LENGTH } from "@openmembrane/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { hookCommand, updateInstructions, updateSettings } from "../../packages/adapter-codex/src/config";
-import { installAdapter } from "../../packages/adapter-codex/src/installer";
+import { installAdapter, resolveGlobalCli } from "../../packages/adapter-codex/src/installer";
 import { parseHookInput, sessionTranscript } from "../../packages/adapter-codex/src/transcript";
 
 const directories: string[] = [];
@@ -28,6 +28,22 @@ function message(role: string, text: string): string {
 }
 
 describe("Codex installation", () => {
+  it("resolves the CLI only from the persistent global root and uninstalls without a CLI", async () => {
+    const directory = await temporary();
+    const globalRoot = join(directory, "global modules");
+    const cliRoot = join(globalRoot, "openmembrane");
+    await mkdir(cliRoot, { recursive: true });
+    await writeFile(join(cliRoot, "package.json"), JSON.stringify({ name: "openmembrane", main: "cli.cjs" }));
+    await writeFile(join(cliRoot, "cli.cjs"), "");
+    expect(resolveGlobalCli(globalRoot)).toBe(join(cliRoot, "cli.cjs"));
+    expect(() => resolveGlobalCli(join(directory, "missing"))).toThrow();
+    const config = join(directory, "config");
+    await installAdapter(true, config, cli, resolveGlobalCli(globalRoot));
+    await rm(cliRoot, { recursive: true, force: true });
+    await installAdapter(false, config);
+    await expect(readFile(join(config, "hooks.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("preserves original bytes, custom hooks and instructions across repeated installs", async () => {
     const directory = await temporary();
     const original = '{\r\n  "description": "Keep", "hooks": {"SessionEnd":[{"hooks":[{"type":"command","command":"custom"}]}]}\r\n}';

@@ -5,6 +5,7 @@ Requires Node.js >= 18 and a Codex release supporting native `SessionEnd`
 command hooks and rollout JSONL transcripts.
 
 ```sh
+npm install -g openmembrane
 npx @openmembrane/adapter-codex install
 ```
 
@@ -64,9 +65,11 @@ settings are not inherited by hooks.
 
 Capture failures never echo transcripts or provider errors into Codex.
 Background failures appear in `$CODEX_HOME/openmembrane-capture.log`; check
-`openmembrane status` and diagnostics before retrying ingestion. The package
-includes the OpenMembrane CLI dependency; keep its installation/npx cache
-available or reinstall after clearing it.
+`openmembrane status` and diagnostics before retrying ingestion. Installation
+resolves and validates the CLI from `npm root --global`, not the transient
+npx dependency cache. Clearing the npx cache therefore does not break capture.
+If the global CLI or Node installation is removed or relocated, reinstall the
+CLI and adapter. Uninstall does not require the CLI to remain installed.
 
 ## Retrieval
 
