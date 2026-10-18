@@ -38,6 +38,22 @@ function userText(message: Record<string, unknown>, index: number, text: string)
   return !legacyContext(text);
 }
 
+function legacyAgentMessage(content: unknown[]): boolean {
+  if (content.length !== 1) return false;
+  const part: unknown = content[0];
+  if (!object(part) || (part.type !== "input_text" && part.type !== "output_text") || typeof part.text !== "string") return false;
+  let communication: unknown;
+  try {
+    communication = JSON.parse(part.text);
+  } catch {
+    return false;
+  }
+  return object(communication) && typeof communication.author === "string" && typeof communication.recipient === "string" &&
+    typeof communication.content === "string" && typeof communication.trigger_turn === "boolean" &&
+    (communication.other_recipients === undefined || (Array.isArray(communication.other_recipients) &&
+      communication.other_recipients.every((recipient: unknown) => typeof recipient === "string")));
+}
+
 export function parseHookInput(content: string): { cwd: string; transcriptPath: string; sessionId: string } {
   const input: unknown = JSON.parse(content);
   if (!object(input) || input.hook_event_name !== "SessionEnd" ||
@@ -51,7 +67,7 @@ export function parseHookInput(content: string): { cwd: string; transcriptPath: 
 
 export function sessionTranscript(content: string): string {
   const messages: string[] = [];
-  const userPositions: number[] = [];
+  const turnPositions: number[] = [];
   for (const [index, line] of content.split(/\r?\n/).entries()) {
     if (!line.trim()) continue;
     let record: unknown;
@@ -61,26 +77,36 @@ export function sessionTranscript(content: string): string {
       throw new Error(`Invalid Codex transcript JSON on line ${index + 1}.`);
     }
     if (!object(record)) continue;
+    if (record.type === "inter_agent_communication") {
+      turnPositions.push(messages.length);
+      continue;
+    }
     if (record.type === "event_msg" && object(record.payload) && record.payload.type === "thread_rolled_back") {
       const count = record.payload.num_turns;
       if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
         throw new Error(`Invalid rollback on transcript line ${index + 1}.`);
       }
-      const remaining = Math.max(0, userPositions.length - count);
-      messages.length = userPositions[remaining] ?? messages.length;
-      userPositions.length = remaining;
+      const remaining = Math.max(0, turnPositions.length - count);
+      messages.length = turnPositions[remaining] ?? messages.length;
+      turnPositions.length = remaining;
       continue;
     }
     // Other event_msg records duplicate messages or describe runtime activity.
     if (record.type !== "response_item") continue;
     const message = record.payload;
+    if (object(message) && (message.type === "agent_message" ||
+        (message.type === "message" && message.role === "assistant" &&
+          Array.isArray(message.content) && legacyAgentMessage(message.content)))) {
+      turnPositions.push(messages.length);
+      continue;
+    }
     if (!object(message) || message.type !== "message" ||
         (message.role !== "user" && message.role !== "assistant")) continue;
     if (!Array.isArray(message.content)) throw new Error(`Missing message content on transcript line ${index + 1}.`);
     if (message.role === "user" && message.content.some((part: unknown, partIndex: number) =>
       object(part) && userText(message, partIndex, typeof part.text === "string" ? part.text : ""))) {
       // Image-only user messages still delimit turns even though no text is sent.
-      userPositions.push(messages.length);
+      turnPositions.push(messages.length);
     }
     const text = message.content.flatMap((part: unknown, partIndex: number) =>
       object(part) && (part.type === "input_text" || part.type === "output_text") && typeof part.text === "string" &&

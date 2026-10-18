@@ -158,6 +158,24 @@ describe("Codex installation", () => {
 
 describe("Codex transcript capture", () => {
   it.each([
+    JSON.stringify({ type: "response_item", payload: {
+      type: "agent_message", author: "/worker", recipient: "/", content: [{ type: "input_text", text: "Agent payload" }],
+    } }),
+    message("assistant", JSON.stringify({ author: "/worker", recipient: "/", content: "Legacy agent payload", trigger_turn: true })),
+    JSON.stringify({ type: "inter_agent_communication", payload: {
+      author: "/worker", recipient: "/", content: "Persisted agent payload", trigger_turn: true,
+    } }),
+  ])("tracks agent turns without capturing payloads or rolling back human exchanges: %s", (agent) => {
+    const human = [message("user", "Retained human rule"), message("assistant", "Retained human answer")].join("\n");
+    const rollback = '{"type":"event_msg","payload":{"type":"thread_rolled_back","num_turns":1}}';
+    expect(sessionTranscript(human + "\n" + agent)).toBe("user:\nRetained human rule\n\nassistant:\nRetained human answer");
+    expect(sessionTranscript([human, agent, message("assistant", "Discard this agent-turn answer"), rollback].join("\n")))
+      .toBe("user:\nRetained human rule\n\nassistant:\nRetained human answer");
+    expect(sessionTranscript([human, agent, rollback, message("user", "Replacement rule")].join("\n")))
+      .toBe("user:\nRetained human rule\n\nassistant:\nRetained human answer\n\nuser:\nReplacement rule");
+  });
+
+  it.each([
     "<skill>Injected skill</skill>",
     "<turn_aborted>Interrupted</turn_aborted>",
     "<subagent_notification>Agent output</subagent_notification>",

@@ -63,7 +63,8 @@ instruction, skill, shell, environment and other known Codex context wrappers ar
 when annotations are unavailable. Explicitly annotated genuine user text is
 retained, including quotations of these wrappers.
 Rollback events remove discarded user turns and their assistant messages
-before extraction; contextual fragments do not count as user turns.
+before extraction; contextual fragments do not count as turns. Agent communication
+records count as rollback boundaries without exposing their payloads to extraction.
 
 The worker uses the hook's absolute `cwd` for project resolution. Launch Codex
 from the project root and keep `OPENMEMBRANE_PROJECT_ID`, `OPENMEMBRANE_HOME`
