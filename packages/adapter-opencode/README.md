@@ -119,6 +119,8 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   from restoring superseded knowledge or requeuing rejected content after
   restart or later turns. SQLite uses an indexed disposition table; JSON uses
   per-fingerprint marker files, without reading audit history on each lookup.
+  Interrupted JSON index updates are rebuilt from the committed audit log before
+  replay proceeds.
   A different session or an explicit manual proposal can reconsider content. No
   transcript file or delivery digest is retained by the adapter.
 - Errors are logged with `client.app.log({ body: { service, level, message,

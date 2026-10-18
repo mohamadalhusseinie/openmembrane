@@ -70,19 +70,8 @@ export class MemoryApprovalService {
     const existing = await this.memoryStore.list(projectId);
     const duplicate = this.deduplicator.findDuplicate(candidate, existing);
     const fingerprint = sessionCandidateFingerprint(candidate);
-    if (duplicate) {
-      if (fingerprint) {
-        await this.auditMemorySaved({
-          id: createId("audit"), projectId, type: "memory_saved", entityId: duplicate.id, createdAt: nowIso(),
-          details: { candidateId, approvedManually: true, sessionFingerprint: fingerprint }
-        }, options.preserveExistingConflicts === true);
-      }
-      await this.pendingCandidateStore.remove(projectId, candidateId);
-      return duplicate;
-    }
-
     const approvedAt = nowIso();
-    const memory = await this.memoryStore.save(memoryEntryFromCandidate(candidate, approvedAt));
+    const memory = duplicate ?? await this.memoryStore.save(memoryEntryFromCandidate(candidate, approvedAt));
     await this.auditMemorySaved({
       id: createId("audit"),
       projectId,
@@ -95,26 +84,24 @@ export class MemoryApprovalService {
         ...(fingerprint ? { sessionFingerprint: fingerprint } : {})
       }
     }, options.preserveExistingConflicts === true);
-    await this.pendingCandidateStore.remove(projectId, candidateId);
-
     if (!options.preserveExistingConflicts && candidate.conflictWith && candidate.conflictWith.length > 0) {
       for (const conflictId of candidate.conflictWith) {
-        try {
-          await this.memoryStore.supersede(projectId, conflictId, memory.id);
-          await this.auditLogStore.append({
-            id: createId("audit"),
-            projectId,
-            type: "memory_superseded",
-            entityId: conflictId,
-            createdAt: nowIso(),
-            details: { supersededBy: memory.id, reason: "Superseded by approved candidate." }
-          });
-        } catch {
-          // Conflicting memory may already be superseded or removed — skip silently.
-        }
+        if (conflictId === memory.id) continue;
+        const conflict = await this.memoryStore.findById(projectId, conflictId);
+        if (!conflict || conflict.status !== "active") continue;
+        await this.memoryStore.supersede(projectId, conflictId, memory.id);
+        await this.auditLogStore.append({
+          id: createId("audit"),
+          projectId,
+          type: "memory_superseded",
+          entityId: conflictId,
+          createdAt: nowIso(),
+          details: { supersededBy: memory.id, reason: "Superseded by approved candidate." }
+        });
       }
     }
 
+    await this.pendingCandidateStore.remove(projectId, candidateId);
     return memory;
   }
 
