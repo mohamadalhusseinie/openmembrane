@@ -45,7 +45,8 @@ function createStubs(existing?: MemoryEntry) {
   };
   const auditLogStore: AuditLogStore = {
     append: async (evt: AuditEvent) => { audited.push(evt); },
-    list: async () => audited
+    list: async () => audited,
+    findProcessedSessionFingerprints: async () => []
   };
   return { memoryStore, auditLogStore, saved, audited };
 }

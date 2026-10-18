@@ -160,7 +160,12 @@ Add to `.cursor/mcp.json` in your project:
 
 ### OpenCode
 
-Add to `~/.config/opencode/opencode.json`:
+For automatic session capture and opt-in context injection, follow
+[OpenCode plugin setup](docs/setup/opencode.md). It covers installation,
+explicit consent to send stored memory to OpenCode's model provider, extraction
+configuration, and uninstall instructions.
+
+For optional MCP tools, add to `~/.config/opencode/opencode.json`:
 
 ```json
 {

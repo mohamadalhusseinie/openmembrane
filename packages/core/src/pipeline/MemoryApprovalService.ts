@@ -1,5 +1,5 @@
 import { createId, nowIso } from "@openmembrane/shared";
-import { Deduplicator } from "../deduplication/Deduplicator";
+import { Deduplicator, sessionCandidateFingerprint } from "../deduplication/Deduplicator";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import { memoryEntryFromCandidate, type MemoryEntry } from "../types/MemoryEntry";
@@ -69,14 +69,9 @@ export class MemoryApprovalService {
 
     const existing = await this.memoryStore.list(projectId);
     const duplicate = this.deduplicator.findDuplicate(candidate, existing);
-    if (duplicate) {
-      await this.pendingCandidateStore.remove(projectId, candidateId);
-      return duplicate;
-    }
-
+    const fingerprint = sessionCandidateFingerprint(candidate);
     const approvedAt = nowIso();
-    const memory = await this.memoryStore.save(memoryEntryFromCandidate(candidate, approvedAt));
-    await this.pendingCandidateStore.remove(projectId, candidateId);
+    const memory = duplicate ?? await this.memoryStore.save(memoryEntryFromCandidate(candidate, approvedAt));
     await this.auditMemorySaved({
       id: createId("audit"),
       projectId,
@@ -85,28 +80,28 @@ export class MemoryApprovalService {
       createdAt: approvedAt,
       details: {
         candidateId,
-        approvedManually: true
+        approvedManually: true,
+        ...(fingerprint ? { sessionFingerprint: fingerprint } : {})
       }
     }, options.preserveExistingConflicts === true);
-
     if (!options.preserveExistingConflicts && candidate.conflictWith && candidate.conflictWith.length > 0) {
       for (const conflictId of candidate.conflictWith) {
-        try {
-          await this.memoryStore.supersede(projectId, conflictId, memory.id);
-          await this.auditLogStore.append({
-            id: createId("audit"),
-            projectId,
-            type: "memory_superseded",
-            entityId: conflictId,
-            createdAt: nowIso(),
-            details: { supersededBy: memory.id, reason: "Superseded by approved candidate." }
-          });
-        } catch {
-          // Conflicting memory may already be superseded or removed — skip silently.
-        }
+        if (conflictId === memory.id) continue;
+        const conflict = await this.memoryStore.findById(projectId, conflictId);
+        if (!conflict || conflict.status !== "active") continue;
+        await this.memoryStore.supersede(projectId, conflictId, memory.id);
+        await this.auditLogStore.append({
+          id: createId("audit"),
+          projectId,
+          type: "memory_superseded",
+          entityId: conflictId,
+          createdAt: nowIso(),
+          details: { supersededBy: memory.id, reason: "Superseded by approved candidate." }
+        });
       }
     }
 
+    await this.pendingCandidateStore.remove(projectId, candidateId);
     return memory;
   }
 
@@ -152,7 +147,7 @@ export class MemoryApprovalService {
       });
     }
 
-    await this.pendingCandidateStore.remove(projectId, candidateId);
+    const fingerprint = sessionCandidateFingerprint(candidate);
     await this.auditLogStore.append({
       id: createId("audit"),
       projectId,
@@ -160,9 +155,12 @@ export class MemoryApprovalService {
       entityId: candidateId,
       createdAt: nowIso(),
       details: {
-        reason: reason ?? "Rejected by user."
+        reason: reason ?? "Rejected by user.",
+        rejectedByUser: true,
+        ...(fingerprint ? { sessionFingerprint: fingerprint } : {})
       }
     });
+    await this.pendingCandidateStore.remove(projectId, candidateId);
   }
 
   private async auditMemorySaved(event: Parameters<AuditLogStore["append"]>[0], allowHandoffOnFailure: boolean): Promise<void> {

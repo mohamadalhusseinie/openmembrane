@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryApprovalService, OpenMembraneError } from "@openmembrane/core";
 import type { AuditLogStore } from "@openmembrane/core";
 import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
@@ -10,6 +10,7 @@ import { candidate, entry } from "./helpers";
 const tempDirs: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -98,11 +99,57 @@ describe("MemoryApprovalService", () => {
           if (event.type === "memory_saved") throw new Error("simulated audit write failure");
         },
         list: async () => [],
+        findProcessedSessionFingerprints: async () => [],
       };
       const service = new MemoryApprovalService({ memoryStore, pendingCandidateStore, auditLogStore });
       await pendingCandidateStore.save(candidate({ id: "cand_audit_failure", content: "Use standalone components." }));
 
       await expect(service.approve("project-a", "cand_audit_failure")).rejects.toThrow("simulated audit write failure");
+    });
+
+    it("finishes supersession when retrying an approval after its save audit fails", async () => {
+      const { service, memoryStore, pendingCandidateStore, auditLogStore } = await createService();
+      await memoryStore.save(entry({ id: "mem_old", content: "Use React for frontend." }));
+      await pendingCandidateStore.save(candidate({
+        id: "cand_retry", content: "Use Angular for frontend.", conflictWith: ["mem_old"],
+        source: { kind: "session", tool: "opencode", sessionId: "ses_1" },
+      }));
+      vi.spyOn(auditLogStore, "append").mockRejectedValueOnce(new Error("Audit unavailable"));
+      await expect(service.approve("project-a", "cand_retry")).rejects.toThrow("Audit unavailable");
+      expect(await memoryStore.list("project-a")).toHaveLength(2);
+      expect(await pendingCandidateStore.findById("project-a", "cand_retry")).toBeDefined();
+      const replacement = await service.approve("project-a", "cand_retry");
+      expect((await memoryStore.list("project-a")).map((memory) => memory.id)).toEqual([replacement.id]);
+      expect(await pendingCandidateStore.findById("project-a", "cand_retry")).toBeUndefined();
+      expect(await auditLogStore.list("project-a")).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "memory_saved", entityId: replacement.id }),
+        expect.objectContaining({ type: "memory_superseded", entityId: "mem_old" }),
+      ]));
+    });
+
+    it("retains retryable approval when superseding a conflict fails", async () => {
+      const { service, memoryStore, pendingCandidateStore } = await createService();
+      await memoryStore.save(entry({ id: "mem_old", content: "Use React for frontend." }));
+      await pendingCandidateStore.save(candidate({
+        id: "cand_retry", content: "Use Angular for frontend.", conflictWith: ["mem_old"],
+      }));
+      vi.spyOn(memoryStore, "supersede").mockRejectedValueOnce(new Error("Storage unavailable"));
+      await expect(service.approve("project-a", "cand_retry")).rejects.toThrow("Storage unavailable");
+      expect(await pendingCandidateStore.findById("project-a", "cand_retry")).toBeDefined();
+      const replacement = await service.approve("project-a", "cand_retry");
+      expect((await memoryStore.list("project-a")).map((memory) => memory.id)).toEqual([replacement.id]);
+    });
+
+    it("does not supersede the reused duplicate itself while completing approval conflicts", async () => {
+      const { service, memoryStore, pendingCandidateStore } = await createService();
+      await memoryStore.save(entry({ id: "mem_old", content: "Use React for frontend." }));
+      await memoryStore.save(entry({ id: "mem_replacement", content: "Use Angular for frontend." }));
+      await pendingCandidateStore.save(candidate({
+        id: "cand_duplicate", content: "Use Angular for frontend.", conflictWith: ["mem_old", "mem_replacement"],
+      }));
+      const approved = await service.approve("project-a", "cand_duplicate");
+      expect(approved.id).toBe("mem_replacement");
+      expect((await memoryStore.list("project-a")).map((memory) => memory.id)).toEqual(["mem_replacement"]);
     });
 
     it("supersedes conflicting memories when candidate has conflictWith", async () => {
@@ -186,6 +233,31 @@ describe("MemoryApprovalService", () => {
       await service.reject("project-a", "cand_1");
       const events = await auditLogStore.list("project-a");
       expect(events[0]!.details?.reason).toBe("Rejected by user.");
+    });
+
+    it("records only a fingerprint for suppressing rejected session content", async () => {
+      const { service, pendingCandidateStore, auditLogStore } = await createService();
+      const pending = candidate({ id: "cand_replay", source: { kind: "session", tool: "opencode", sessionId: "ses_1" } });
+      await pendingCandidateStore.save(pending);
+      await service.reject("project-a", pending.id);
+      const events = await auditLogStore.list("project-a");
+      expect(events[0]?.details).toMatchObject({ rejectedByUser: true, sessionFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+      expect(JSON.stringify(events)).not.toContain(pending.content);
+    });
+
+    it("retains the pending candidate if persisting the rejection fails", async () => {
+      const { memoryStore, pendingCandidateStore } = await createService();
+      await pendingCandidateStore.save(candidate({ id: "cand_retry" }));
+      const service = new MemoryApprovalService({
+        memoryStore, pendingCandidateStore,
+        auditLogStore: {
+          append: async () => { throw new Error("Audit unavailable"); },
+          list: async () => [],
+          findProcessedSessionFingerprints: async () => [],
+        },
+      });
+      await expect(service.reject("project-a", "cand_retry")).rejects.toThrow("Audit unavailable");
+      await expect(pendingCandidateStore.findById("project-a", "cand_retry")).resolves.toBeDefined();
     });
   });
 

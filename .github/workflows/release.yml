@@ -55,6 +55,18 @@ jobs:
             echo "openmembrane@$CURRENT already published, skipping"
           fi
 
+      - name: Publish OpenCode adapter to npm
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        working-directory: packages/adapter-opencode
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view @openmembrane/adapter-opencode version 2>/dev/null || echo "none")
+          if [ "$CURRENT" != "$PUBLISHED" ]; then
+            npm publish --access public
+          else
+            echo "@openmembrane/adapter-opencode@$CURRENT already published, skipping"
+          fi
+
       - name: Enable auto-merge on version PR
         if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != ''
         run: gh pr merge ${{ steps.changesets.outputs.pullRequestNumber }} --auto --squash
