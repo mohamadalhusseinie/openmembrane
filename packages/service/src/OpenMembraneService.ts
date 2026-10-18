@@ -34,7 +34,7 @@ export class OpenMembraneService {
     return (await this.project(ref)).service;
   }
 
-  // Compatibility for existing in-process tests until the daemon client replaces MCP context.
+  // Exposes service-owned state for integration fixtures.
   async projectState(ref: ProjectRef): Promise<ProjectState> {
     return (await this.project(ref)).state;
   }

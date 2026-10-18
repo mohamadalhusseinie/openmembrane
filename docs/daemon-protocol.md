@@ -1,9 +1,8 @@
 # Local daemon protocol and client
 
 `@openmembrane/protocol` defines the additive `/v1` HTTP contract.
-`@openmembrane/client` supplies `OpenMembraneClient`; CLI data commands and
-the review UI use it instead of opening storage. MCP still uses the
-in-process service pending its separate migration. `apps/daemon` serves the contract via
+`@openmembrane/client` supplies `OpenMembraneClient`; MCP, CLI data commands and
+the review UI use it instead of opening storage. `apps/daemon` serves the contract via
 the existing `OpenMembraneService`, with no HTTP framework dependency.
 
 ## Daemon lifecycle
@@ -16,13 +15,18 @@ The installed `openmembrane` executable provides:
 | `start` | Start a detached daemon and wait for health readiness; an existing daemon is left running. |
 | `status` | Report daemon availability; exit code 1 means it is not running. |
 | `stop` | Request authenticated graceful shutdown and wait for lock cleanup. |
-| `mcp`, or no arguments | Launch the existing MCP stdio server, unchanged. |
+| `mcp`, or no arguments | Launch MCP stdio; auto-start the daemon on the first tool call if needed. |
 
 From the repository, `npm run start -w @openmembrane/daemon` runs the
 foreground daemon. Start the daemon before using `ingest`, `context`,
 management commands, or the review UI. These clients do not auto-launch
-or fall back to local services. Do not use the in-process MCP surface and
-the daemon to write the same project store concurrently.
+or fall back to local services. MCP supplies the shared client's auto-launch
+hook, keeping tool discovery lazy and reusing the daemon across calls and
+sessions. It uses a 30-minute request deadline for GitHub Team operations.
+The daemon owns project diagnostics and post-response publication retries;
+MCP preserves safe error codes, messages, and diagnostic IDs, with local
+client failures correlated on stderr. See [MCP migration](mcp-migration.md)
+for the retained tools and maintenance replacements.
 
 ## CLI and review UI operations
 

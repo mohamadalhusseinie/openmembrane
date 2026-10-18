@@ -13,9 +13,8 @@ If OpenMembrane MCP tools are available in your environment:
   and \`type\`. Do not wait for the session to end.
 - **Explicit saves:** If the user asks you to save, remember, or store specific
   information, call \`remember\` immediately with that information.
-- **Transcript ingestion:** Use \`propose_memory_from_session\` only when an adapter
-  or workflow submits a full session transcript or summary and a server-side
-  extractor is configured.
+- **Candidate review:** Use \`approve_memory_candidate\` or
+  \`reject_memory_candidate\` when the developer decides what to retain.
 
 The memories below were exported from OpenMembrane for tools without MCP access.
 `;

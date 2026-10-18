@@ -192,7 +192,7 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
   });
 
   it("isolates two project directories and honors client overrides, not daemon environment", async () => {
-    const { alpha, beta, root, client } = await setup();
+    const { alpha, beta, root, client, paths, daemon } = await setup();
     vi.stubEnv("OPENMEMBRANE_HOME", join(root, "daemon-storage"));
     vi.stubEnv("OPENMEMBRANE_PROJECT_ID", "daemon-project");
     vi.stubEnv("OPENMEMBRANE_STORAGE_BACKEND", "sqlite");
@@ -217,13 +217,8 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     });
     expect(resolved).toEqual({ projectRoot: alpha, storageDir: join(alpha, "custom-storage"), projectId: result.projectId });
     for (const [key, value] of Object.entries(clientEnv)) vi.stubEnv(key, value);
-    const legacyMcp = await createOpenMembraneContext({ projectRoot: alpha });
-    try {
-      expect(legacyMcp.defaultProjectId).toBe(result.projectId);
-      expect(legacyMcp.storageDir).toBe(await realpath(resolved.storageDir));
-    } finally {
-      await legacyMcp.close();
-    }
+    const mcp = createOpenMembraneContext({ projectRoot: alpha, endpoint: daemon.endpoint, daemonPaths: paths });
+    expect(await mcp.client.searchMemory({ query: "Caller" })).toMatchObject([{ projectId: result.projectId }]);
     const explicit = await forwarded.remember({
       projectId: "explicit", storageDir: join(beta, "explicit-storage"), storageBackend: "json",
       content: "Explicit request fields override forwarded client settings.", type: "testing_rule", confidence: "high",

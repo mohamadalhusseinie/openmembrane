@@ -57,22 +57,19 @@ not MCP stdio. Restart Cursor after updating the configuration.
 
 Once configured, Cursor can use these tools:
 
+The first tool call auto-starts the local daemon if needed. Subsequent calls
+reuse it; merely listing tools does not start it. Maintenance uses the CLI or
+review UI; see [MCP migration](../mcp-migration.md).
+
 | Tool | Description |
 |------|-------------|
 | `remember` | Save structured memory directly (content + type). No API key needed. |
-| `propose_memory_from_session` | Ingest a session transcript — requires configured LLM extractor |
 | `get_project_rules` | Retrieve rule-type memories for the project |
 | `get_relevant_context` | Ranked memory retrieval by relevance query |
 | `search_memory` | Search memories by query, scope, type, or tags |
 | `list_memory_candidates` | List pending candidates awaiting approval |
 | `approve_memory_candidate` | Approve a pending candidate |
 | `reject_memory_candidate` | Reject a pending candidate |
-| `export_static_memory_files` | Generate AGENTS.md, CLAUDE.md, and other static files |
-| `review_stale_memories` | List memories not updated in N months |
-| `get_diagnostics` | Query diagnostic events |
-| `supersede_memory` | Mark a memory as superseded |
-| `update_memory` | Update content/type/scope/tags of a memory |
-| `list_audit_log` | Return recent audit events |
 
 ## Quick Start
 
@@ -80,7 +77,7 @@ Once configured, Cursor can use these tools:
 2. Restart Cursor or reload the window.
 3. In a chat session, Cursor can call `remember` to save durable knowledge as it's discovered (no API key needed).
 4. In future sessions, Cursor can call `get_relevant_context` to retrieve stored project memory.
-5. Run `export_static_memory_files` to generate static memory files.
+5. Run `openmembrane export --targets cursor` in a terminal to generate static memory files.
 
 ## Verify It Works
 
@@ -107,6 +104,8 @@ At session start:
 - Call get_relevant_context with a description of the current task.
 - Call list_memory_candidates to check for pending candidates. Surface any
   pending candidates for approval or rejection.
+- Use approve_memory_candidate or reject_memory_candidate after the
+  developer decides what to retain.
 
 During the session:
 - When you discover durable knowledge (rules, gotchas, architecture decisions),

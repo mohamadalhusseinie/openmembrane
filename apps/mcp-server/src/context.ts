@@ -1,45 +1,23 @@
-import { resolve } from "node:path";
-import { cwd } from "node:process";
-import { createOpenMembraneService } from "@openmembrane/service";
-import type { CommandRunner, ProjectRef, ProjectService, ProjectState } from "@openmembrane/service";
+import { OpenMembraneClient, createDaemonAutoLaunch } from "@openmembrane/client";
+import type { OpenMembraneClientOptions } from "@openmembrane/client";
+import { daemonEnvironment } from "../../daemon/src/environment";
 
-export interface OpenMembraneMcpContext extends ProjectState {
-  service: ReturnType<typeof createOpenMembraneService>;
-  projectRef: ProjectRef;
-  close: () => Promise<void>;
+export interface OpenMembraneMcpContext {
+  client: Pick<OpenMembraneClient,
+    "remember" | "getProjectRules" | "getRelevantContext" | "searchMemory" |
+    "listMemoryCandidates" | "approveMemoryCandidate" | "rejectMemoryCandidate">;
 }
 
-interface CreateOpenMembraneContextOptions {
-  defaultProjectId?: string;
-  projectRoot?: string;
-  storageDir?: string;
-  githubRunner?: CommandRunner;
-}
-
-export async function createOpenMembraneContext(
-  options: CreateOpenMembraneContextOptions = {},
-): Promise<OpenMembraneMcpContext> {
-  const service = createOpenMembraneService(
-    options.githubRunner ? { githubRunner: options.githubRunner } : {},
-  );
-  const projectRef: ProjectRef = {
-    projectRoot: resolve(options.projectRoot ?? cwd()),
-    ...(options.defaultProjectId ? { projectId: options.defaultProjectId } : {}),
-    ...(options.storageDir ? { storageDir: options.storageDir } : {}),
+export function createOpenMembraneContext(options: OpenMembraneClientOptions = {}): OpenMembraneMcpContext {
+  return {
+    client: new OpenMembraneClient({
+      requestTimeoutMs: 30 * 60_000,
+      ...options,
+      autoLaunch: options.autoLaunch ?? createDaemonAutoLaunch(
+        process.execPath,
+        [...process.execArgv, process.argv[1]!, "serve"],
+        { env: daemonEnvironment(options.env ?? process.env) },
+      ),
+    }),
   };
-  try {
-    const state = await service.projectState(projectRef);
-    return { ...state, service, projectRef, close: () => service.close() };
-  } catch (error) {
-    await service.close();
-    throw error;
-  }
-}
-
-export function resolveProjectId(context: Pick<OpenMembraneMcpContext, "defaultProjectId">, projectId?: string): string {
-  return projectId?.trim() || context.defaultProjectId;
-}
-
-export function projectService(context: OpenMembraneMcpContext, projectId?: string): Promise<ProjectService> {
-  return context.service.forProject({ ...context.projectRef, projectId: resolveProjectId(context, projectId) });
 }
