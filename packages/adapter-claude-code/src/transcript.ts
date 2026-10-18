@@ -27,21 +27,6 @@ export function sessionTranscript(content: string, lastAssistantMessage?: string
   return messages.join("\n\n");
 }
 
-export function transcriptChunks(transcript: string): string[] {
-  const chunks: string[] = [];
-  for (let start = 0; start < transcript.length;) {
-    let end = Math.min(start + MAX_TRANSCRIPT_LENGTH, transcript.length);
-    if (end < transcript.length) {
-      const newline = transcript.lastIndexOf("\n", end - 1);
-      if (newline > start + MAX_TRANSCRIPT_LENGTH / 2) end = newline + 1;
-      else if (/[\uD800-\uDBFF]/.test(transcript.charAt(end - 1))) end--;
-    }
-    chunks.push(transcript.slice(start, end));
-    start = end;
-  }
-  return chunks;
-}
-
 export function parseHookInput(content: string): {
   cwd: string; transcriptPath: string; sessionId: string; lastAssistantMessage?: string;
 } {
@@ -58,4 +43,3 @@ export function parseHookInput(content: string): {
       ? { lastAssistantMessage: input.last_assistant_message } : {}),
   };
 }
-import { MAX_TRANSCRIPT_LENGTH } from "@openmembrane/core";

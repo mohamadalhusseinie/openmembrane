@@ -42,7 +42,8 @@ user/assistant text to a transcript, and pipes it to
 `CLAUDE_PROJECT_DIR` keeps capture anchored to the session project, with hook
 `cwd` as a fallback. Stable session IDs preserve rejection decisions across
 incremental snapshots. Final `Stop` text is included even if transcript writes
-lag, and oversized transcripts are sent as sequential bounded requests.
+lag. Core redacts the complete transcript before preparing sequential bounded
+requests, so secrets crossing a transport boundary remain redacted.
 Extraction and privacy policy remain in the daemon; configure extraction
 as for [ordinary ingestion](../../README.md#automatic-memory-capture). Ingestion
 continues in a detached process after Claude exits; failures are written to

@@ -38,8 +38,10 @@ from `CLAUDE_PROJECT_DIR` (falling back to hook `cwd` if it is not set).
 This keeps capture anchored to the session project even after a directory change.
 On `Stop`, `last_assistant_message` supplies the just-finished response if it
 is not yet present in the transcript file. Long transcripts, including oversized
-individual turns, are split into sequential requests within the daemon limit
-without dropping text.
+individual turns, are prepared by core: it redacts the complete transcript
+before splitting it into sequential requests within the daemon limit.
+No non-secret text is dropped, and secrets spanning request boundaries are
+redacted before they can reach an extractor.
 Ingestion is detached after its input has been handed off, so it can finish
 after Claude exits without exceeding Claude's 60-second SessionEnd budget. The
 worker keeps transcripts in memory and pipes each bounded chunk to CLI ingestion.

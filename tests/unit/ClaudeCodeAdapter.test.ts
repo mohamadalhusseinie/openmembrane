@@ -4,12 +4,12 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { MAX_TRANSCRIPT_LENGTH } from "@openmembrane/core";
+import { MAX_TRANSCRIPT_LENGTH, prepareTranscriptChunks } from "@openmembrane/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { updateInstructions, updateSettings } from "../../packages/adapter-claude-code/src/config";
 import type { HookCommand } from "../../packages/adapter-claude-code/src/config";
 import { installAdapter } from "../../packages/adapter-claude-code/src/installer";
-import { parseHookInput, sessionTranscript, transcriptChunks } from "../../packages/adapter-claude-code/src/transcript";
+import { parseHookInput, sessionTranscript } from "../../packages/adapter-claude-code/src/transcript";
 
 const fixtures = fileURLToPath(new URL("./fixtures/claude-code/", import.meta.url));
 const fixture = async (name: string) => (await readFile(join(fixtures, name), "utf8")).replace(/\r\n/g, "\n");
@@ -155,7 +155,7 @@ describe("Claude Code transcript ingestion", () => {
 
   it("bounds all chunks without losing text or splitting Unicode surrogate pairs", () => {
     const transcript = "x".repeat(MAX_TRANSCRIPT_LENGTH - 1) + "\u{1F600}" + "\n" + "y".repeat(MAX_TRANSCRIPT_LENGTH * 2);
-    const chunks = transcriptChunks(transcript);
+    const chunks = prepareTranscriptChunks(transcript);
     expect(chunks.join("")).toBe(transcript);
     expect(chunks.every((chunk) => chunk.length <= MAX_TRANSCRIPT_LENGTH)).toBe(true);
     expect(chunks.every((chunk) => Buffer.from(chunk).toString("utf8") === chunk)).toBe(true);
@@ -220,6 +220,25 @@ describe("Claude Code transcript ingestion", () => {
     expect(ingestions.every((call) => call.input.length <= MAX_TRANSCRIPT_LENGTH)).toBe(true);
     expect(ingestions.every((call) => call.args.slice(-2).join(" ") === "--session-id long-session")).toBe(true);
     expect(ingestions.map((call) => call.input).join("")).toBe(`user:\n${text}`);
+  });
+
+  it("redacts complete secrets before any bounded CLI request is created", async () => {
+    const directory = await temporary();
+    const path = join(directory, "private-key.jsonl");
+    const key = "-----BEGIN PRIVATE KEY-----\n" + "PRIVATE_MATERIAL".repeat(100) + "\n-----END PRIVATE KEY-----";
+    const text = "x".repeat(MAX_TRANSCRIPT_LENGTH - 100) + key + "\n" + "y".repeat(MAX_TRANSCRIPT_LENGTH);
+    await writeFile(path, JSON.stringify({ type: "user", message: { content: text } }));
+    expect((await capture(JSON.stringify({
+      session_id: "private-session", hook_event_name: "SessionEnd", cwd: directory, transcript_path: path,
+    }), directory)).code).toBe(0);
+    let calls: { input: string }[] = [];
+    await expect.poll(async () => {
+      calls = (await readFile(join(directory, "result.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      return calls.length;
+    }, { timeout: 10_000 }).toBe(3);
+    const sent = calls.slice(1).map((call) => call.input).join("");
+    expect(sent).toBe(`user:\n${text.replace(key, "[REDACTED:private_key]")}`);
+    expect(sent).not.toContain("PRIVATE_MATERIAL");
   });
 
   it("reports failures without echoing transcript content and never ingests if startup fails", async () => {

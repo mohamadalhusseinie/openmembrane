@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { open, readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseHookInput, sessionTranscript, transcriptChunks } from "./transcript";
+import { prepareTranscriptChunks } from "@openmembrane/core";
+import { parseHookInput, sessionTranscript } from "./transcript";
 
 async function run(cli: string, args: string[], cwd: string, input?: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -28,7 +29,7 @@ async function main(): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
     const transcript = Buffer.concat(chunks).toString("utf8");
-    for (const chunk of transcriptChunks(transcript)) {
+    for (const chunk of prepareTranscriptChunks(transcript)) {
       if (chunk.trim()) await run(cli, [
         "ingest", "--stdin", "--tool", "claude-code", "--format", "text", "--session-id", sessionId,
       ], projectRoot, chunk);
