@@ -19,7 +19,9 @@ package to your project `opencode.json` or global
 
 Restart OpenCode. OpenCode installs the npm plugin and its dependencies,
 including the `openmembrane` CLI peer dependency. The plugin reuses the local
-daemon or auto-starts that CLI with `serve` on the first memory request. It uses
+daemon or auto-starts that CLI with `node <cli-entry> serve` on the first memory
+request. Node must be on PATH; OpenCode's standalone executable is not used as a
+JavaScript runtime. It uses
 `@openmembrane/client` for authentication, endpoint discovery, and all memory
 operations; it does not import services or storage.
 
@@ -54,7 +56,9 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   `directory` (cwd) and its SDK `client` and receives a `Hooks` object.
 - `experimental.chat.system.transform({ sessionID, model }, { system })` runs
   before a model request. The plugin reads rules and context from the daemon
-  and appends to `system`, preserving the host prompt. This also covers resumed
+  and concatenates memory into the last existing `system` entry (or creates one
+  if empty), preserving the host prompt and system-message count for providers
+  that accept only one leading system message. This also covers resumed
   sessions; `session.created` alone would not. Requests without a session ID
   (for example, auxiliary model calls) are left untouched. This experimental
   hook should be checked when upgrading OpenCode.

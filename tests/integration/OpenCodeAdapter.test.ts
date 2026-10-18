@@ -53,7 +53,8 @@ describe("OpenCode adapter through the real daemon", () => {
     const nextSession = createHooks(host, nextClient, project);
     const output = { system: ["Host prompt"] };
     await nextSession["experimental.chat.system.transform"]?.({ sessionID: "ses_next", model }, output);
-    expect(output.system[0]).toBe("Host prompt");
+    expect(output.system).toHaveLength(1);
+    expect(output.system[0]).toMatch(/^Host prompt\n\n/);
     expect(output.system.join("\n")).toContain("isolated Vitest fixtures");
     await nextSession.dispose?.();
   }, 15_000);

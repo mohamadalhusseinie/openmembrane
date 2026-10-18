@@ -83,8 +83,11 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project)
         ]);
         const memories = new Map([...rules.rules, ...context.memories].map((memory) => [memory.id, memory]));
         if (memories.size > 0) {
-          output.system.push("OpenMembrane project memory:\n" +
-            [...memories.values()].map((memory) => `- [${memory.type}] ${memory.content}`).join("\n"));
+          const block = "OpenMembrane project memory:\n" +
+            [...memories.values()].map((memory) => `- [${memory.type}] ${memory.content}`).join("\n");
+          const last = output.system.at(-1);
+          if (last === undefined) output.system.push(block);
+          else output.system[output.system.length - 1] = `${last}\n\n${block}`;
         }
       } catch (error) {
         await warn("context retrieval", error);

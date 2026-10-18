@@ -60,9 +60,10 @@ describe("OpenCode reference adapter", () => {
     expect(daemon.getRelevantContext).toHaveBeenCalledExactlyOnceWith({
       ...project, query: "The project must use isolated Vitest fixtures for integration tests.",
     });
-    expect(output.system[0]).toBe("Host instructions");
-    expect(output.system[1]).toContain("Use isolated Vitest fixtures.");
-    expect(output.system[1]).toContain("The project uses Vitest.");
+    expect(output.system).toHaveLength(1);
+    expect(output.system[0]).toMatch(/^Host instructions\n\nOpenMembrane project memory:/);
+    expect(output.system[0]).toContain("Use isolated Vitest fixtures.");
+    expect(output.system[0]).toContain("The project uses Vitest.");
     await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, { system: [] });
     expect(daemon.getProjectRules).toHaveBeenCalledTimes(2);
   });
@@ -76,6 +77,17 @@ describe("OpenCode reference adapter", () => {
     await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
     expect(output.system.join("\n").split(memory.content)).toHaveLength(2);
   });
+
+  it.each([{ system: [] }, { system: ["Host prompt"] }, { system: ["Provider prefix", "Host prompt"] }])(
+    "preserves system-message count when injecting into $system", async ({ system: initial }) => {
+      const { hooks } = fixture();
+      const output = { system: [...initial] };
+      await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
+      expect(output.system).toHaveLength(Math.max(1, initial.length));
+      for (let i = 0; i < initial.length; i++) expect(output.system[i]).toContain(initial[i]!);
+      expect(output.system.at(-1)).toContain("OpenMembrane project memory:");
+    },
+  );
 
   it("ignores auxiliary model requests and unrelated events", async () => {
     const { hooks, daemon, messages } = fixture();

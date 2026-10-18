@@ -1,14 +1,14 @@
 import { createRequire } from "node:module";
 import { createDaemonAutoLaunch, OpenMembraneClient } from "@openmembrane/client";
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { createHooks, detectProject } from "./plugin";
 
-const OpenMembrane: Plugin = async (input) => {
+const OpenMembrane = (async (input: Pick<PluginInput, "directory" | "client">): Promise<Hooks> => {
   const project = await detectProject(input.directory, process.env);
   const options = {
     ...project,
     autoLaunch: () => createDaemonAutoLaunch(
-      process.execPath,
+      "node",
       [createRequire(import.meta.url).resolve("openmembrane"), "serve"],
       { cwd: project.projectRoot },
     )(),
@@ -23,6 +23,6 @@ const OpenMembrane: Plugin = async (input) => {
     getRelevantContext: (request) => daemon.getRelevantContext(request),
     ingest: (request) => ingestion.ingest(request),
   }, project);
-};
+}) satisfies Plugin;
 
 export default OpenMembrane;
