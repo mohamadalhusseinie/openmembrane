@@ -90,6 +90,21 @@ describe("OpenCode reference adapter", () => {
     expect(output.system.join("\n").split(memory.content)).toHaveLength(2);
   });
 
+  it("uses the latest visible user text rather than an ignored-only status message", async () => {
+    const { hooks, daemon, messages } = fixture();
+    messages.mockResolvedValue({
+      data: [...sessionMessages, { ...sessionMessages[0]!, parts: [{
+        id: "notice", sessionID: sessionId, messageID: "msg_notice",
+        type: "text", text: "rule: The project uses obsolete fixtures.", ignored: true,
+      }] }],
+      request: new Request("http://localhost"), response: new Response(),
+    });
+    await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, { system: [] });
+    expect(daemon.getRelevantContext).toHaveBeenCalledWith({
+      ...project, query: "The project must use isolated Vitest fixtures for integration tests.\nrule: Use pnpm.", limit: 5,
+    });
+  });
+
   it.each([{ system: [] }, { system: ["Host prompt"] }, { system: ["Provider prefix", "Host prompt"] }])(
     "preserves system-message count when injecting into $system", async ({ system: initial }) => {
       const { hooks } = fixture();
@@ -172,6 +187,36 @@ describe("OpenCode reference adapter", () => {
     messages.mockResolvedValue({ data: [], request: new Request("http://localhost"), response: new Response() });
     await hooks.event?.(idle);
     expect(daemon.ingest).not.toHaveBeenCalled();
+  });
+
+  it("captures queued idle snapshots before deletion while an earlier ingest is blocked", async () => {
+    const { hooks, daemon, messages, log } = fixture();
+    let release = () => {};
+    daemon.ingest.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(ingestion); }));
+    const first = hooks.event?.(idle);
+    await vi.waitFor(() => expect(daemon.ingest).toHaveBeenCalledOnce());
+    const newer = structuredClone(sessionMessages);
+    newer[0]!.parts.push({
+      id: "new-turn", sessionID: sessionId, messageID: "msg_user", type: "text", text: "rule: Preserve the newest turn.",
+    });
+    messages.mockResolvedValueOnce({
+      data: newer, request: new Request("http://localhost"), response: new Response(),
+    });
+    const second = hooks.event?.(idle);
+    await vi.waitFor(() => expect(messages).toHaveBeenCalledTimes(2));
+    messages.mockRejectedValue(new Error("Session was deleted"));
+    await hooks.event?.({ event: {
+      type: "session.deleted", properties: { info: {
+        id: sessionId, projectID: "project", directory: project.projectRoot,
+        title: "Fixture", version: "1", time: { created: 1, updated: 2 },
+      } },
+    } });
+    const disposing = hooks.dispose?.();
+    release();
+    await Promise.all([first, second, disposing]);
+    expect(daemon.ingest).toHaveBeenCalledTimes(2);
+    expect(daemon.ingest.mock.calls[1]![0].transcript).toContain("rule: Preserve the newest turn.");
+    expect(log).not.toHaveBeenCalled();
   });
 
   it("does not cache successful HTTP responses as proof of complete extraction", async () => {

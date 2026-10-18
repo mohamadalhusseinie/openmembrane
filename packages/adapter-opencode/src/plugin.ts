@@ -39,9 +39,13 @@ export async function detectProject(directory: string, env: NodeJS.ProcessEnv): 
 
 export function sessionTranscript(messages: Messages): string {
   return messages.flatMap(({ info, parts }) => {
-    const text = parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n");
+    const text = messageText(parts);
     return text.trim() ? [`${info.role}:\n${text}`] : [];
   }).join("\n\n");
+}
+
+function messageText(parts: Messages[number]["parts"]): string {
+  return parts.flatMap((part) => part.type === "text" && !part.ignored ? [part.text] : []).join("\n");
 }
 
 export interface AdapterOptions {
@@ -79,8 +83,10 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project,
       if (disposed || !options.allowMemoryEgress || sessionID === undefined) return;
       try {
         const history = await messages(sessionID);
-        const user = [...history].reverse().find(({ info }) => info.role === "user");
-        const query = user?.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n").trim()
+        const query = [...history].reverse()
+          .filter(({ info }) => info.role === "user")
+          .map(({ parts }) => messageText(parts).trim())
+          .find((text) => text.length > 0)
           || basename(project.projectRoot) || "Project context";
         const [rules, context] = await Promise.all([
           daemon.getProjectRules({ ...project, limit: 10 }),
@@ -116,9 +122,15 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project,
       if (event.type !== "session.idle") return;
       const sessionID = event.properties.sessionID;
       const previous = sessions.get(sessionID) ?? Promise.resolve();
+      const snapshot = messages(sessionID).then(
+        (history) => ({ transcript: sessionTranscript(history) }),
+        (error: unknown) => ({ error }),
+      );
       const task = previous.then(async () => {
         try {
-          const transcript = sessionTranscript(await messages(sessionID));
+          const result = await snapshot;
+          if ("error" in result) throw result.error;
+          const { transcript } = result;
           if (!transcript) return;
           await daemon.ingest({ ...project, tool: "opencode", sessionId: sessionID, transcript });
         } catch (error) {

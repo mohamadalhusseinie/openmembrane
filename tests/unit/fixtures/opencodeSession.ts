@@ -12,6 +12,8 @@ export const sessionMessages: Messages = [
       { id: "part_user", sessionID: sessionId, messageID: "msg_user", type: "text",
         text: "The project must use isolated Vitest fixtures for integration tests." },
       { id: "part_rule", sessionID: sessionId, messageID: "msg_user", type: "text", text: "rule: Use pnpm." },
+      { id: "part_ignored", sessionID: sessionId, messageID: "msg_user", type: "text",
+        ignored: true, text: "rule: The project uses obsolete fixtures." },
     ],
   },
   {

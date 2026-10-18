@@ -91,7 +91,9 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
 - `client.session.messages({ path: { id: sessionID }, query: { directory } })`
   returns `{ data: [{ info, parts }], error? }`. User and assistant **text parts**
   are serialized in order with each role on its own line (`role:\ntext`), so
-  explicit memory markers remain at the start of a line. Binary attachments, reasoning, tool
+  explicit memory markers remain at the start of a line. Text marked `ignored`
+  by OpenCode is outside the model conversation and is excluded from both the
+  transcript and relevance query. Binary attachments, reasoning, tool
   payloads, and bookkeeping parts are not conversation text and are not included.
   The latest user text is the relevance query, falling back to the project name.
 - `event({ event: { type: "session.idle", properties: { sessionID } } })`
@@ -101,7 +103,9 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   as its work settles, not on deletion. `dispose` stops accepting new work and waits for in-flight ingestion,
   including requests belonging to deleted sessions. Abrupt process termination cannot
   guarantee delivery.
-- Ingestion is serialized per session. Every idle event submits the full current
+- Snapshots are captured immediately at each idle event, before waiting for
+  earlier ingestion, so queued turns survive later deletion or compaction.
+  Submissions are serialized per session. Every idle event submits the full current
   text snapshot, including unchanged snapshots: an accepted HTTP response does
   not prove that all provider extraction chunks succeeded. This allows later
   idle events to retry partial/failed extraction without interpreting candidate
