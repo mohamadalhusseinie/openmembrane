@@ -1,5 +1,5 @@
 import { createId, nowIso } from "@openmembrane/shared";
-import { Deduplicator } from "../deduplication/Deduplicator";
+import { Deduplicator, sessionRejectionFingerprint } from "../deduplication/Deduplicator";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import { memoryEntryFromCandidate, type MemoryEntry } from "../types/MemoryEntry";
@@ -152,7 +152,7 @@ export class MemoryApprovalService {
       });
     }
 
-    await this.pendingCandidateStore.remove(projectId, candidateId);
+    const fingerprint = sessionRejectionFingerprint(candidate);
     await this.auditLogStore.append({
       id: createId("audit"),
       projectId,
@@ -160,9 +160,12 @@ export class MemoryApprovalService {
       entityId: candidateId,
       createdAt: nowIso(),
       details: {
-        reason: reason ?? "Rejected by user."
+        reason: reason ?? "Rejected by user.",
+        rejectedByUser: true,
+        ...(fingerprint ? { sessionFingerprint: fingerprint } : {})
       }
     });
+    await this.pendingCandidateStore.remove(projectId, candidateId);
   }
 
   private async auditMemorySaved(event: Parameters<AuditLogStore["append"]>[0], allowHandoffOnFailure: boolean): Promise<void> {

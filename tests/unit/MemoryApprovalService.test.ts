@@ -187,6 +187,30 @@ describe("MemoryApprovalService", () => {
       const events = await auditLogStore.list("project-a");
       expect(events[0]!.details?.reason).toBe("Rejected by user.");
     });
+
+    it("records only a fingerprint for suppressing rejected session content", async () => {
+      const { service, pendingCandidateStore, auditLogStore } = await createService();
+      const pending = candidate({ id: "cand_replay", source: { kind: "session", tool: "opencode", sessionId: "ses_1" } });
+      await pendingCandidateStore.save(pending);
+      await service.reject("project-a", pending.id);
+      const events = await auditLogStore.list("project-a");
+      expect(events[0]?.details).toMatchObject({ rejectedByUser: true, sessionFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+      expect(JSON.stringify(events)).not.toContain(pending.content);
+    });
+
+    it("retains the pending candidate if persisting the rejection fails", async () => {
+      const { memoryStore, pendingCandidateStore } = await createService();
+      await pendingCandidateStore.save(candidate({ id: "cand_retry" }));
+      const service = new MemoryApprovalService({
+        memoryStore, pendingCandidateStore,
+        auditLogStore: {
+          append: async () => { throw new Error("Audit unavailable"); },
+          list: async () => [],
+        },
+      });
+      await expect(service.reject("project-a", "cand_retry")).rejects.toThrow("Audit unavailable");
+      await expect(pendingCandidateStore.findById("project-a", "cand_retry")).resolves.toBeDefined();
+    });
   });
 
   describe("approveAll", () => {

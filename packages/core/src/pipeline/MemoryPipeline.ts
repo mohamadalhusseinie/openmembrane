@@ -3,7 +3,7 @@ import { ActionRecommender } from "../classification/ActionRecommender";
 import { MemoryClassifier } from "../classification/MemoryClassifier";
 import { ConflictDetector } from "../deduplication/ConflictDetector";
 import type { ConflictResult } from "../deduplication/ConflictDetector";
-import { Deduplicator } from "../deduplication/Deduplicator";
+import { Deduplicator, sessionRejectionFingerprint } from "../deduplication/Deduplicator";
 import type { MemoryExtractor } from "../extraction/MemoryExtractor";
 import { PolicyEngine } from "../policy/PolicyEngine";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
@@ -129,6 +129,10 @@ export class MemoryPipeline {
     const rejected: MemoryCandidate[] = [];
     const candidates: MemoryCandidate[] = [];
     const supersededEntries: MemoryEntry[] = [];
+    const rejectedFingerprints = new Set((await this.auditLogStore.list(projectId)).flatMap((event) =>
+      event.type === "candidate_rejected" && event.details?.rejectedByUser === true &&
+      typeof event.details.sessionFingerprint === "string" ? [event.details.sessionFingerprint] : []
+    ));
 
     for (const rawCandidate of extracted) {
       await this.auditLogStore.append({
@@ -149,6 +153,15 @@ export class MemoryPipeline {
 
       if (!policyCheck.allowed) {
         const rejectedCandidate = this.reject(candidate, policyCheck.violations.join(" "));
+        rejected.push(rejectedCandidate);
+        candidates.push(rejectedCandidate);
+        await this.auditRejected(rejectedCandidate);
+        continue;
+      }
+
+      const fingerprint = sessionRejectionFingerprint(candidate);
+      if (fingerprint && rejectedFingerprints.has(fingerprint)) {
+        const rejectedCandidate = this.reject(candidate, "Previously rejected by user in this session.");
         rejected.push(rejectedCandidate);
         candidates.push(rejectedCandidate);
         await this.auditRejected(rejectedCandidate);

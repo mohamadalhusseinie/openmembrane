@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { MemoryPipeline, MockMemoryExtractor } from "@openmembrane/core";
+import { MemoryApprovalService, MemoryPipeline, MockMemoryExtractor } from "@openmembrane/core";
 import type { AuditLogStore } from "@openmembrane/core";
 import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 import { candidate } from "./helpers";
@@ -31,6 +31,26 @@ async function createPipeline() {
 }
 
 describe("MemoryPipeline.processStructured", () => {
+  it("suppresses normalized rejected session content without blocking explicit manual proposals", async () => {
+    const stores = await createPipeline();
+    const approval = new MemoryApprovalService(stores);
+    const source = { kind: "session", tool: "opencode", sessionId: "ses_replay" } as const;
+    const first = await stores.pipeline.processStructured("project-a", [
+      candidate({ content: "Prefer explicit return types.", confidence: "medium", source }),
+    ]);
+    await approval.reject("project-a", first.pending[0]!.id);
+    const replay = await stores.pipeline.processStructured("project-a", [
+      candidate({ content: "Prefer   explicit RETURN types!", source }),
+    ]);
+    expect(replay.pending).toHaveLength(0);
+    expect(replay.saved).toHaveLength(0);
+    expect(replay.rejected[0]?.rejectionReason).toBe("Previously rejected by user in this session.");
+    const manual = await stores.pipeline.processStructured("project-a", [
+      candidate({ content: "Prefer explicit return types.", source: { kind: "manual" } }),
+    ]);
+    expect(manual.saved).toHaveLength(1);
+  });
+
   it("saves a valid single candidate", async () => {
     const { pipeline } = await createPipeline();
 
