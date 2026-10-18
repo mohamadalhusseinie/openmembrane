@@ -77,8 +77,9 @@ describe("StaticMemoryExportService", () => {
       expect(file.content).toContain("list_memory_candidates");
       expect(file.content).toContain("call `remember` right away");
       expect(file.content).toContain("call `remember` immediately");
-      expect(file.content).toContain("Use `propose_memory_from_session` only");
-      expect(file.content).not.toContain("call `propose_memory_from_session` right away");
+      expect(file.content).toContain("`approve_memory_candidate`");
+      expect(file.content).toContain("`reject_memory_candidate`");
+      expect(file.content).not.toContain("propose_memory_from_session");
       expect(file.content).not.toContain("prefixes like `rule:`");
     }
   });

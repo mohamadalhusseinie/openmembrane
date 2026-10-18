@@ -5,14 +5,19 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { resolveDaemonPaths } from "@openmembrane/protocol";
 import { readLock } from "../../../apps/daemon/src/lock";
 import { sendRequest } from "../../../packages/client/src/transport";
 import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
+import { OpenMembraneClient } from "@openmembrane/client";
+import { createStores } from "@openmembrane/storage";
+import { candidate } from "../../unit/helpers";
 
 const exec = promisify(execFile);
 const entry = resolve("apps", "mcp-server", "dist", "index.js");
@@ -178,7 +183,10 @@ describe("packaged openmembrane lifecycle", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.map((tool) => tool.name)).toContain("remember");
+      expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
+        "remember", "get_project_rules", "get_relevant_context", "search_memory",
+        "list_memory_candidates", "approve_memory_candidate", "reject_memory_candidate",
+      ].sort());
       expect(await readLock(resolveDaemonPaths({ homeDir: home, runtimeDir: home }).runDir)).toBeUndefined();
     } finally {
       await client.close();
@@ -186,4 +194,76 @@ describe("packaged openmembrane lifecycle", () => {
     const logs = join(home, ".openmembrane", "logs", "daemon.log");
     await expect(readFile(logs, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   }, 15_000);
+
+  it.each([
+    { runtime: "packaged", entryArgs: [entry] },
+    { runtime: "source", entryArgs: [
+      "--import", pathToFileURL(resolve("node_modules", "tsx", "dist", "loader.mjs")).href,
+      resolve("apps", "mcp-server", "src", "index.ts"),
+    ] },
+  ])("auto-starts the $runtime daemon on the first stdio tool call and reuses it across all seven tools and MCP sessions", async ({ entryArgs }) => {
+    const { env, project, home, cli } = await setup();
+    const stores = await createStores({ backend: "json", baseDir: env.OPENMEMBRANE_HOME });
+    try {
+      await stores.pendingCandidateStore.save(candidate({ id: "approve candidate", projectId: "client-project" }));
+      await stores.pendingCandidateStore.save(candidate({ id: "reject-candidate", projectId: "client-project" }));
+    } finally {
+      await stores.close?.();
+    }
+    const paths = resolveDaemonPaths({ homeDir: home, runtimeDir: home });
+    const transport = new StdioClientTransport({ command: process.execPath, args: [...entryArgs, "mcp"], env, cwd: project, stderr: "pipe" });
+    const client = new Client({ name: "thin-mcp-integration", version: "1.0.0" });
+    const call = async (name: string, input: Record<string, unknown> = {}) => {
+      const result = CallToolResultSchema.parse(await client.callTool({ name, arguments: input }));
+      expect(result.isError, JSON.stringify(result.content)).not.toBe(true);
+      const block = result.content[0];
+      if (block?.type !== "text") throw new Error("Expected JSON tool content.");
+      return JSON.parse(block.text);
+    };
+    try {
+      await client.connect(transport);
+      await client.listTools();
+      expect(await readLock(paths.runDir)).toBeUndefined();
+      expect(await call("get_project_rules")).toMatchObject({ rules: [], pendingCandidateCount: 2 });
+      const first = (await readLock(paths.runDir))!;
+      expect(first.pid).not.toBe(process.pid);
+      expect((await cli("status")).stdout).toContain("is running");
+      expect(await call("remember", {
+        content: "Integration fixtures must use isolated project directories.", type: "testing_rule", confidence: "high",
+      })).toMatchObject({ projectId: "client-project", savedCount: 1 });
+      expect(await call("get_relevant_context", { query: "isolated project directories" })).toMatchObject({
+        memories: [expect.objectContaining({ content: "Integration fixtures must use isolated project directories." })],
+      });
+      expect(await call("search_memory", { query: "isolated" })).toHaveLength(1);
+      expect(await call("list_memory_candidates")).toHaveLength(2);
+      expect(await call("approve_memory_candidate", { candidateId: "approve candidate" })).toMatchObject({ projectId: "client-project", status: "active" });
+      expect(await call("reject_memory_candidate", { candidateId: "reject-candidate", reason: "Obsolete" })).toMatchObject({ rejected: true });
+      expect(await call("list_memory_candidates")).toEqual([]);
+      const failure = await client.callTool({ name: "approve_memory_candidate", arguments: { candidateId: "missing" } });
+      expect(failure.isError).toBe(true);
+      expect(failure.content).toEqual([expect.objectContaining({ text: expect.stringContaining("diagnosticId") })]);
+      const failed = CallToolResultSchema.parse(failure).content[0];
+      if (failed?.type !== "text") throw new Error("Expected JSON error content.");
+      const envelope = JSON.parse(failed.text);
+      expect(envelope.error).toMatchObject({ code: "CANDIDATE_NOT_FOUND", diagnosticId: expect.stringMatching(/^diag_/) });
+      expect(await diagnosticLog(home)).toContain(envelope.error.diagnosticId);
+      const daemon = new OpenMembraneClient({ daemonPaths: { homeDir: home, runtimeDir: home }, projectRoot: project, env });
+      expect(await daemon.getDiagnostics({ code: "CANDIDATE_NOT_FOUND" })).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: envelope.error.diagnosticId, projectId: "client-project", operation: "approveMemoryCandidate", source: "daemon" }),
+      ]));
+      expect(await daemon.searchMemory({ query: "isolated" })).toHaveLength(1);
+      expect((await readLock(paths.runDir))?.instanceId).toBe(first.instanceId);
+      await client.close();
+      const second = new Client({ name: "second-mcp-session", version: "1.0.0" });
+      try {
+        await second.connect(new StdioClientTransport({ command: process.execPath, args: entryArgs, env, cwd: project, stderr: "pipe" }));
+        expect((await second.callTool({ name: "get_project_rules", arguments: {} })).isError).not.toBe(true);
+        expect((await readLock(paths.runDir))?.instanceId).toBe(first.instanceId);
+      } finally {
+        await second.close();
+      }
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
 });

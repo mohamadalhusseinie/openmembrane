@@ -65,7 +65,6 @@ export class OpenMembraneClient {
         try {
           await this.invoke("health", {});
         } catch (healthError) {
-          if (!(healthError instanceof OpenMembraneClientError) || healthError.origin === "daemon" || healthError.code !== E_DAEMON_NOT_RUNNING) throw healthError;
           return this.launchAndRetry(name, request, healthError);
         }
         throw error;
@@ -75,11 +74,13 @@ export class OpenMembraneClient {
   }
 
   private async launchAndRetry<K extends EndpointName>(name: K, input: unknown, error: unknown): Promise<EndpointResponse<K>> {
-    if (!(error instanceof OpenMembraneClientError) || error.origin === "daemon" || error.code !== E_DAEMON_NOT_RUNNING || this.options.autoLaunch === undefined) {
+    const starting = error instanceof OpenMembraneClientError && error.origin === "daemon" && error.code === "DAEMON_STARTING";
+    const unavailable = error instanceof OpenMembraneClientError && error.origin === "client" && error.code === E_DAEMON_NOT_RUNNING;
+    if ((!starting && !unavailable) || this.options.autoLaunch === undefined) {
       throw error;
     }
     if (this.launchPromise === undefined) {
-      this.launchPromise = this.startDaemon(this.options.autoLaunch);
+      this.launchPromise = this.startDaemon(starting ? () => {} : this.options.autoLaunch);
     }
     await this.launchPromise;
     return this.invoke(name, input);

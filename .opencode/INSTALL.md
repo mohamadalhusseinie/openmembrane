@@ -40,7 +40,8 @@ are separate from team sync.
 3. Restart OpenCode to pick up the new MCP server.
 
 4. Verify the installation by using the `get_project_rules` tool. If it responds
-   without error, OpenMembrane is connected.
+   without error, OpenMembrane is connected. This first tool call auto-starts
+   the local daemon if needed; later calls reuse it.
 
 ## Development (from source)
 
@@ -63,19 +64,17 @@ The primary workflow uses the `remember` tool — no API keys needed. The AI too
 calls `remember` directly with structured content and type, and memories are
 auto-saved through the full pipeline.
 
-For automated full-transcript extraction via `propose_memory_from_session`, you
-can enable server-side LLM extraction by adding environment variables to the MCP
-config:
+Full-transcript extraction is a CLI/daemon operation, not an MCP tool.
+Configure the extractor in the daemon's environment before starting it, then
+submit a transcript from your project directory:
 
-```json
-"openmembrane": {
-  "type": "local",
-  "command": ["npx", "-y", "openmembrane"],
-  "environment": {
-    "OPENMEMBRANE_EXTRACTION_API_KEY": "your-api-key"
-  }
-}
+```sh
+openmembrane start
+openmembrane ingest --file session.txt --tool opencode
 ```
+
+For example, set `OPENMEMBRANE_EXTRACTION_API_KEY` in the daemon's environment.
+An already-running daemon does not adopt later MCP environment changes.
 
 Any OpenAI-compatible endpoint works (Ollama, Groq, Together, vLLM, OpenRouter,
 etc.) — set `OPENMEMBRANE_EXTRACTION_BASE_URL` to point to your provider and
@@ -98,6 +97,8 @@ reference it in your config.
    - Call get_relevant_context with a description of the current task.
    - Call list_memory_candidates to check for pending candidates. Surface any
      pending candidates for approval or rejection.
+   - Use approve_memory_candidate or reject_memory_candidate after the
+     developer decides what to retain.
 
    During the session:
    - When you discover durable knowledge (rules, gotchas, architecture decisions),

@@ -287,6 +287,24 @@ describe("OpenMembraneClient with a local HTTP server", () => {
     expect(records.at(-1)?.authorization).toBe("Bearer new-token");
   });
 
+  it("waits for an already-starting daemon without launching another process", async () => {
+    let healthCalls = 0;
+    let searchCalls = 0;
+    respond = (req, res) => {
+      const ready = req.url === "/v1/health" ? ++healthCalls > 1 : ++searchCalls > 1;
+      res.statusCode = ready ? 200 : 503;
+      res.end(JSON.stringify(ready ? (req.url === "/v1/health" ? {} : []) : {
+        error: { code: "DAEMON_STARTING", safeMessage: "The daemon is starting.", diagnosticId: "diag_starting" },
+      }));
+    };
+    const autoLaunch = vi.fn();
+    const client = new OpenMembraneClient({ endpoint, daemonPaths, autoLaunch, pollIntervalMs: 1 });
+    expect(await client.searchMemory()).toEqual([]);
+    expect(autoLaunch).not.toHaveBeenCalled();
+    expect(healthCalls).toBe(2);
+    expect(searchCalls).toBe(2);
+  });
+
   it("bounds startup readiness polling and surfaces launch failures", async () => {
     await close();
     const autoLaunch = vi.fn();

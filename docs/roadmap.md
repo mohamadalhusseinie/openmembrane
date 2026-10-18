@@ -11,7 +11,7 @@ Implemented:
 - TypeScript monorepo
 - core memory pipeline
 - `remember` tool (primary path — AI-side extraction, no server LLM needed)
-- `propose_memory_from_session` (secondary path — server-side LLM extraction)
+- CLI/daemon ingestion (secondary path — server-side LLM extraction)
 - deterministic mock extractor (for testing)
 - LLM-backed extractor behind `MemoryExtractor` interface
 - extraction prompt design with chunking and response parsing
@@ -27,7 +27,7 @@ Implemented:
 - diagnostics log
 - transport-agnostic ingestion API for adapters
 - multi-signal relevance scoring
-- MCP server with 16 tools
+- Thin daemon-client MCP server with seven mid-session tools
 - static fallback exporters (AGENTS.md, CLAUDE.md, copilot-instructions.md, cursor rules, project-memory.md)
 - test suite (34 test files, cross-platform CI)
 - Changesets release workflow

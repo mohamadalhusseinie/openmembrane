@@ -1,7 +1,8 @@
 # OpenMembrane Architecture
 
-OpenMembrane Core owns the memory engine. The in-process service owns project-scoped
-operations and storage lifecycle; MCP, CLI, and the Review UI are access layers.
+OpenMembrane Core owns the memory engine. The daemon's in-process service owns
+project-scoped operations and storage lifecycle; MCP, CLI, and the Review UI
+are daemon-client access layers.
 
 The current release runs in [Local Private mode](deployment-modes.md#local-private)
 by default and also supports [GitHub Team mode](deployment-modes.md#github-team).
@@ -103,7 +104,8 @@ it does not start a daemon or network listener.
 - MCP tool registration
 - tool input validation
 - safe user-facing error responses
-- delegation to the in-process service (including CLI commands)
+- delegation to the authenticated local daemon through `@openmembrane/client`
+- lazy daemon auto-launch on the first MCP tool call and session nudges
 
 `packages/exporters` owns:
 
@@ -142,7 +144,7 @@ Future implementations:
 
 The core must not hardwire a single LLM provider.
 
-Note: The extractor is only used by the `propose_memory_from_session` path. The primary `remember` tool bypasses extraction entirely — the AI tool does the extraction and provides structured content directly.
+Note: The extractor is only used by CLI/daemon ingestion. The primary `remember` tool bypasses extraction entirely — the AI tool does the extraction and provides structured content directly.
 
 ## Memory Candidate Schema
 
@@ -325,21 +327,16 @@ Each `DiagnosticEvent` includes `id`, `projectId`, `severity`, `code`, `message`
 Current tools:
 
 - `remember` — save structured memory directly (primary path, no server LLM needed)
-- `propose_memory_from_session` — submit transcript for server-side LLM extraction (secondary, requires configured extractor)
 - `get_project_rules`
 - `get_relevant_context`
 - `search_memory`
 - `list_memory_candidates`
 - `approve_memory_candidate`
-- `approve_all_candidates`
 - `reject_memory_candidate`
-- `reject_all_candidates`
-- `export_static_memory_files`
-- `get_diagnostics`
-- `list_audit_log`
-- `update_memory`
-- `supersede_memory`
-- `review_stale_memories`
+
+Exactly seven tools are registered. Maintenance and transcript ingestion stay
+on daemon endpoints and the CLI/review UI, not in every AI session's tool
+descriptions. See [MCP migration](mcp-migration.md) for replacements.
 
 The `remember` tool uses `processStructured()` to bypass the extraction step and feed pre-structured candidates directly into the classification/policy/dedup/conflict pipeline.
 

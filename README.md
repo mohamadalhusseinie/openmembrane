@@ -59,9 +59,9 @@ openmembrane stop
 Bare `openmembrane` and `openmembrane mcp` both launch MCP stdio.
 CLI data commands and the review UI use the authenticated local daemon.
 Run `openmembrane start` first; these surfaces report an error if the daemon
-is unavailable and never fall back to opening stores themselves. MCP still
-uses the in-process service pending its separate migration; do not use MCP
-and the daemon to write the same store concurrently. See
+is unavailable and never fall back to opening stores themselves. MCP uses
+the same client and auto-starts the daemon on the first tool call, then
+reuses it across calls and sessions. Listing tools does not start it. See
 [Daemon Protocol](docs/daemon-protocol.md) for transport, authentication,
 and per-project request settings.
 
@@ -186,6 +186,8 @@ Create `~/.config/openmembrane/instructions.md` with instructions for the AI to:
 
 - Call `get_project_rules`, `get_relevant_context`, and `list_memory_candidates`
   at the start of each session.
+- Use `approve_memory_candidate` or `reject_memory_candidate` after the
+  developer decides what to retain.
 - Call `remember` proactively when durable knowledge is discovered, providing
   structured content and a type (e.g., `coding_rule`, `known_gotcha`,
   `architecture_decision`). No API key needed.
@@ -202,7 +204,7 @@ Then wire the file into your tool's global configuration:
 See the platform-specific setup guides in [`docs/setup/`](docs/setup/) for
 detailed instructions.
 
-Alternatively, run `export_static_memory_files` in any project to generate
+Alternatively, run `openmembrane export` from any project to generate
 per-project instruction files (AGENTS.md, CLAUDE.md, etc.) that include both
 usage instructions and stored memories.
 
@@ -225,21 +227,17 @@ By default, local memory is stored in `.openmembrane` under the current working 
 ## MCP Tools
 
 - `remember` — save structured memory directly. Provide content, type, and optional scope/tags. No API key needed. Supports single and batch mode.
-- `propose_memory_from_session` — submit a session transcript or summary for server-side LLM extraction. Requires a configured extractor. Useful for automation adapters.
 - `get_project_rules` — retrieve project rules and conventions for the current scope.
 - `get_relevant_context` — find memories relevant to a natural language query.
 - `search_memory` — search saved memories by query, scope, type, or tags.
 - `list_memory_candidates` — list pending memory candidates awaiting approval.
 - `approve_memory_candidate` — approve a pending candidate to save it as memory.
-- `approve_all_candidates` — approve all pending candidates at once.
 - `reject_memory_candidate` — reject a pending candidate with an optional reason.
-- `reject_all_candidates` — reject all pending candidates at once.
-- `update_memory` — update the content, type, scope, or tags of a saved memory.
-- `supersede_memory` — mark a memory as superseded, optionally linking a replacement.
-- `review_stale_memories` — list memories older than a threshold (default: 6 months).
-- `export_static_memory_files` — generate static instruction files (AGENTS.md, CLAUDE.md, etc.).
-- `get_diagnostics` — retrieve diagnostic events filtered by severity or code.
-- `list_audit_log` — retrieve recent audit events.
+
+These are the seven mid-session MCP tools. Transcript ingestion, bulk review,
+memory maintenance, export, diagnostics, audit, and team configuration are
+user operations available through the [CLI and review UI](#cli-and-local-review).
+See [MCP migration](docs/mcp-migration.md) for each removed tool's replacement.
 
 ## Architecture
 
@@ -247,10 +245,10 @@ OpenMembrane supports two paths for saving memory:
 
 1. **`remember` (primary):** The AI tool calls `remember` directly with structured content and type. No server-side LLM needed. Memories go through the full pipeline (secret detection, policy filtering, deduplication) and are auto-saved.
 
-2. **`propose_memory_from_session` (secondary):** An adapter or AI tool submits a full session transcript for server-side LLM extraction. Requires a configured extractor (OpenAI or compatible provider).
+2. **`openmembrane ingest` (secondary):** An adapter submits a full session transcript through the CLI or daemon ingestion endpoint for server-side LLM extraction. Requires an explicitly configured daemon extractor (OpenAI or compatible provider).
 
 ```text
-remember tool                          propose_memory_from_session
+remember tool                          CLI / daemon ingestion
   |                                      |
   v                                      v
 processStructured()                    SessionIngestor
@@ -268,8 +266,8 @@ Package responsibilities:
 
 - `packages/core`: domain types, extraction interface, policy checks, classification, deduplication, conflict detection, and pipeline orchestration.
 - `packages/storage`: local JSON persistence for saved memory, pending approvals, and audit events.
-- `packages/service`: project-scoped operations, storage lifecycle, and GitHub Team synchronization owned by the daemon (and the not-yet-migrated MCP surface).
-- `packages/client`: authenticated local-daemon client used by the CLI and review UI.
+- `packages/service`: project-scoped operations, storage lifecycle, and GitHub Team synchronization owned by the daemon.
+- `packages/client`: authenticated local-daemon client used by MCP, CLI, and review UI.
 - `packages/exporters`: static fallback file generation for AI tools that read project instruction files.
 - `packages/shared`: small runtime helpers for IDs, time, and result types.
 - `apps/mcp-server`: local MCP server exposing saved memory and approval workflows to AI tools.
@@ -292,7 +290,10 @@ OpenMembrane distinguishes audit history from diagnostics:
 - Audit events describe normal memory activity, such as session ingestion, candidate extraction, saved memory, queued candidates, and rejected candidates.
 - Diagnostics describe operational problems, such as validation errors, missing candidates, invalid local JSON stores, unsafe approval attempts, and export failures.
 
-MCP tools return safe user-facing error payloads with a `diagnosticId`. The detailed diagnostic can be inspected through `get_diagnostics` without exposing raw transcripts or secrets.
+MCP tools return safe user-facing error payloads with a `diagnosticId`, preserving
+the daemon's ID and safe message. Inspect project diagnostics with
+`openmembrane diagnostics` or the review UI, and daemon failures in the local
+daemon log. Client-side failures are correlated on MCP stderr, never stdout.
 
 ## Static Fallback Files
 

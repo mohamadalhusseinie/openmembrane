@@ -100,7 +100,7 @@ MCP tools should return safe user-facing errors with a diagnostic ID. Detailed d
 
 The primary memory path (`remember` tool) does not call external LLM providers. The AI tool itself performs extraction and provides structured content directly.
 
-The secondary path (`propose_memory_from_session`) uses an external LLM when a provider is explicitly configured. Provider-backed extractors must follow these rules:
+The secondary CLI/daemon ingestion path uses an external LLM when a provider is explicitly configured in the daemon. Provider-backed extractors must follow these rules:
 
 - no external model use unless explicitly configured
 - redact secrets before provider calls

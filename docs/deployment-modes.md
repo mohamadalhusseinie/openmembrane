@@ -69,7 +69,7 @@ documented guarantees that support those claims.
 
 ## Static Exports
 
-Static exports are not GitHub Team sync. The `export_static_memory_files` tool
+Static exports are not GitHub Team sync. The `openmembrane export` CLI command
 creates local instruction files for AI tools that cannot retrieve memory over
 MCP. Those files may be committed by a project, and exporters omit
 `confidential` memories by default. They do not implement shared-memory sync,

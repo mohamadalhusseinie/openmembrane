@@ -3,16 +3,18 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { createOpenMembraneContext } from "../apps/mcp-server/src/context";
+import { createOpenMembraneService } from "@openmembrane/service";
 import { safeJsonResult } from "../apps/mcp-server/src/server";
-import { createToolHandlers } from "../apps/mcp-server/src/tools/handlers";
+import type { ProjectService } from "@openmembrane/service";
 import { SessionNudgeTracker } from "../apps/mcp-server/src/nudge";
 import type { Command, CommandResult, CommandRunner } from "../packages/service/src/collaboration/GitHubCli";
 import { candidate, entry } from "./unit/helpers";
 
 const tempDirs: string[] = [];
+const services: ReturnType<typeof createOpenMembraneService>[] = [];
 
 afterEach(async () => {
+  await Promise.all(services.splice(0).map((service) => service.close()));
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -131,21 +133,23 @@ async function createHandlers(options: { githubRunner?: CommandRunner } = {}) {
   const projectRoot = await mkdtemp(join(tmpdir(), "openmembrane-project-test-"));
   tempDirs.push(storageDir, projectRoot);
 
-  const context = await createOpenMembraneContext({
-    defaultProjectId: "project-a",
+  const service = createOpenMembraneService(options);
+  services.push(service);
+  const ref = {
+    projectId: "project-a",
     projectRoot,
     storageDir,
-    ...options,
-  });
+  };
+  const context = await service.projectState(ref);
 
   return {
     context,
-    handlers: createToolHandlers(context),
+    handlers: await service.forProject(ref),
     projectRoot
   };
 }
 
-async function configureGitHubMode(handlers: ReturnType<typeof createToolHandlers>): Promise<void> {
+async function configureGitHubMode(handlers: ProjectService): Promise<void> {
   await handlers.configureGitHubTeamMode({
     repository: { host: "github.example.test", owner: "team", name: "project-memory" },
   });
@@ -187,7 +191,7 @@ function rejectMemorySavedAuditWrites(
   };
 }
 
-describe("MCP tool handlers", () => {
+describe("Project service operations", () => {
   it("configures GitHub Team mode with a validated private repository", async () => {
     const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
 
@@ -303,7 +307,7 @@ describe("MCP tool handlers", () => {
     });
   });
 
-  it("starts eligible retry publication only after safeJsonResult constructs the retrieval response", async () => {
+  it("publishes eligible retries when the daemon schedules post-response work", async () => {
     const runner = new GitHubModeRunner();
     const { context, handlers } = await createHandlers({ githubRunner: runner });
     await handlers.configureGitHubTeamMode({
@@ -331,7 +335,7 @@ describe("MCP tool handlers", () => {
       updatedAt: "2026-09-12T12:00:00.000Z",
     });
 
-    const result = await safeJsonResult(context, "search_memory", {}, async () => ({
+    const result = await safeJsonResult("search_memory", async () => ({
       toJSON: () => {
         runner.responseConstructed = true;
         return { memories: [] };
@@ -339,6 +343,7 @@ describe("MCP tool handlers", () => {
     }));
 
     expect(result.content[0]?.type === "text" ? JSON.parse(result.content[0].text) : undefined).toEqual({ memories: [] });
+    await handlers.retryEligiblePublications();
     await waitFor(async () => (await context.collaborationStore.getProposal("project-a", "mem_retry"))?.state === "proposed");
     expect(runner.observedPublicationResponseStates).toEqual([true]);
     await expect(context.collaborationStore.getProposal("project-a", "mem_retry")).resolves.toMatchObject({ state: "proposed" });
@@ -653,26 +658,12 @@ describe("MCP tool handlers", () => {
     expect(projectMemory).toContain("Angular standalone components");
   });
 
-  it("logs safe diagnostics for user-facing MCP tool errors", async () => {
-    const { context, handlers } = await createHandlers();
-
-    const result = await safeJsonResult(context, "propose_memory_from_session", {}, () =>
-      handlers.proposeMemoryFromSession({})
-    );
-
-    expect(result.isError).toBe(true);
-    const payload = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "{}") as {
-      error: { code: string; message: string; diagnosticId: string };
-    };
-
-    expect(payload.error.code).toBe("VALIDATION_ERROR");
-    expect(payload.error.message).toBe("Either a session transcript or summary is required.");
-    expect(payload.error.diagnosticId).toMatch(/^diag_/);
-
-    const diagnostics = await handlers.getDiagnostics({});
-    const errorDiag = diagnostics.find((d) => d.id === payload.error.diagnosticId);
-    expect(errorDiag).toBeDefined();
-    expect(errorDiag?.operation).toBe("propose_memory_from_session");
+  it("rejects ingestion without a transcript or summary", async () => {
+    const { handlers } = await createHandlers();
+    await expect(handlers.proposeMemoryFromSession({})).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      safeMessage: "Either a session transcript or summary is required.",
+    });
   });
 
   it("exposes audit events for memory pipeline activity", async () => {
@@ -777,7 +768,7 @@ describe("MCP tool handlers", () => {
     });
     const savedMemory = proposed.saved[0]!;
 
-    const result = await safeJsonResult(context, "update_memory", { memoryId: savedMemory.id }, () =>
+    const result = await safeJsonResult("update_memory", () =>
       handlers.updateMemory({
         memoryId: savedMemory.id,
         content: "Use API key AKIA1234567890ABCDEF for deployments."
@@ -1033,7 +1024,7 @@ describe("MCP tool handlers", () => {
 
   it("remember: validation error when missing content+type and no items", async () => {
     const { context, handlers } = await createHandlers();
-    const result = await safeJsonResult(context, "remember", {}, () =>
+    const result = await safeJsonResult("remember", () =>
       handlers.remember({} as any)
     );
     expect(result.isError).toBe(true);
@@ -1116,8 +1107,7 @@ describe("Session nudge reminders (integration)", () => {
 
     // Call 1: Level 0 (session start prompt)
     const call1 = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const payload1 = parseJsonContent(call1) as { sessionReminder?: string };
@@ -1125,8 +1115,7 @@ describe("Session nudge reminders (integration)", () => {
 
     // Call 2: no reminder
     const call2 = await safeJsonResult(
-      context, "get_relevant_context", { query: "test" },
-      () => handlers.getRelevantContext({ query: "test" }),
+      "get_relevant_context", () => handlers.getRelevantContext({ query: "test" }),
       tracker
     );
     const payload2 = parseJsonContent(call2) as { sessionReminder?: string };
@@ -1134,34 +1123,31 @@ describe("Session nudge reminders (integration)", () => {
 
     // Call 3: Level 1 (gentle)
     const call3 = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const payload3 = parseJsonContent(call3) as { sessionReminder?: string };
     expect(payload3.sessionReminder).toContain("No memories saved this session");
 
     // Calls 4-5: still Level 1
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
 
     // Call 6: Level 2 (direct)
     const call6 = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const payload6 = parseJsonContent(call6) as { sessionReminder?: string };
     expect(payload6.sessionReminder).toContain("You have made 6 tool calls");
 
     // Calls 7-8: still Level 2
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
 
     // Call 9: Level 3 (urgent)
     const call9 = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const payload9 = parseJsonContent(call9) as { sessionReminder?: string };
@@ -1180,13 +1166,12 @@ describe("Session nudge reminders (integration)", () => {
 
     // Make 3 calls to trigger Level 1
     for (let i = 0; i < 3; i++) {
-      await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+      await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
     }
 
     // Call remember (call 4) — this is a save operation
     const rememberResult = await safeJsonResult(
-      context, "remember", {},
-      () => handlers.remember({
+      "remember", () => handlers.remember({
         content: "Always use ESM imports.",
         type: "coding_rule",
         confidence: "high"
@@ -1198,8 +1183,7 @@ describe("Session nudge reminders (integration)", () => {
 
     // Call 5: after save, no reminder
     const afterSave = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const afterPayload = parseJsonContent(afterSave) as { sessionReminder?: string };
@@ -1216,7 +1200,7 @@ describe("Session nudge reminders (integration)", () => {
     });
 
     // Call 1 (Level 0) then save
-    await safeJsonResult(context, "remember", {}, () => handlers.remember({
+    await safeJsonResult("remember", () => handlers.remember({
       content: "Use strict mode.",
       type: "coding_rule",
       confidence: "high"
@@ -1226,8 +1210,7 @@ describe("Session nudge reminders (integration)", () => {
     // Calls 2-5: no reminder (callsSinceLastSave < 5)
     for (let i = 0; i < 4; i++) {
       const result = await safeJsonResult(
-        context, "get_project_rules", {},
-        () => handlers.getProjectRules({}),
+        "get_project_rules", () => handlers.getProjectRules({}),
         tracker
       );
       const payload = parseJsonContent(result) as { sessionReminder?: string };
@@ -1236,8 +1219,7 @@ describe("Session nudge reminders (integration)", () => {
 
     // Call 6: re-nudge (callsSinceLastSave = 5)
     const reNudge = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const reNudgePayload = parseJsonContent(reNudge) as { sessionReminder?: string };
@@ -1256,8 +1238,7 @@ describe("Session nudge reminders (integration)", () => {
     // Make many calls — no reminder should ever appear
     for (let i = 0; i < 12; i++) {
       const result = await safeJsonResult(
-        context, "get_project_rules", {},
-        () => handlers.getProjectRules({}),
+        "get_project_rules", () => handlers.getProjectRules({}),
         tracker
       );
       const payload = parseJsonContent(result) as { sessionReminder?: string };
@@ -1275,12 +1256,11 @@ describe("Session nudge reminders (integration)", () => {
     });
 
     // Call 1: Level 0
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
 
     // Call 2: Level 1 — searchMemory returns an array
     const result = await safeJsonResult(
-      context, "search_memory", { query: "test" },
-      () => handlers.searchMemory({ query: "test" }),
+      "search_memory", () => handlers.searchMemory({ query: "test" }),
       tracker
     );
 
@@ -1306,13 +1286,12 @@ describe("Session nudge reminders (integration)", () => {
 
     // Make 3 calls to trigger Level 1
     for (let i = 0; i < 3; i++) {
-      await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+      await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
     }
 
     // Call propose_memory_from_session (save operation)
     await safeJsonResult(
-      context, "propose_memory_from_session", {},
-      () => handlers.proposeMemoryFromSession({
+      "propose_memory_from_session", () => handlers.proposeMemoryFromSession({
         transcript: "rule: This project uses strict TypeScript mode. Do not disable it."
       }),
       tracker
@@ -1320,8 +1299,7 @@ describe("Session nudge reminders (integration)", () => {
 
     // Next call should have no reminder
     const afterSave = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const payload = parseJsonContent(afterSave) as { sessionReminder?: string };
@@ -1338,9 +1316,9 @@ describe("Session nudge reminders (integration)", () => {
     });
 
     // Save a memory first time
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
-    await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
-    await safeJsonResult(context, "remember", {}, () => handlers.remember({
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
+    await safeJsonResult("remember", () => handlers.remember({
       content: "Never use var declarations in TypeScript files.",
       type: "coding_rule",
       confidence: "high"
@@ -1349,16 +1327,16 @@ describe("Session nudge reminders (integration)", () => {
     // At this point, memory is saved → reminders suppressed.
     // Now make enough calls to re-nudge
     for (let i = 0; i < 5; i++) {
-      await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+      await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
     }
 
     // Call 9: should be re-nudging now
-    const nudge = await safeJsonResult(context, "get_project_rules", {}, () => handlers.getProjectRules({}), tracker);
+    const nudge = await safeJsonResult("get_project_rules", () => handlers.getProjectRules({}), tracker);
     const nudgePayload = parseJsonContent(nudge) as { sessionReminder?: string };
     expect(nudgePayload.sessionReminder).toContain("No memories saved");
 
     // Try to save the SAME content again (will be deduplicated, savedCount = 0)
-    await safeJsonResult(context, "remember", {}, () => handlers.remember({
+    await safeJsonResult("remember", () => handlers.remember({
       content: "Never use var declarations in TypeScript files.",
       type: "coding_rule",
       confidence: "high"
@@ -1366,8 +1344,7 @@ describe("Session nudge reminders (integration)", () => {
 
     // Reminders should NOT be suppressed because nothing was actually saved
     const afterDuplicate = await safeJsonResult(
-      context, "get_project_rules", {},
-      () => handlers.getProjectRules({}),
+      "get_project_rules", () => handlers.getProjectRules({}),
       tracker
     );
     const afterPayload = parseJsonContent(afterDuplicate) as { sessionReminder?: string };

@@ -179,7 +179,7 @@ export const exportResponseSchema = z.object({
 });
 export const diagnosticEventSchema = z.object({
   id: text, projectId: text, severity: z.enum(diagnosticSeverities), code: text, message: z.string(),
-  operation: text.optional(), source: z.enum(["core", "storage", "mcp-server", "exporter", "adapter"]).optional(),
+  operation: text.optional(), source: z.enum(["core", "storage", "mcp-server", "daemon", "exporter", "adapter"]).optional(),
   entityId: text.optional(), createdAt: text, details: z.record(z.string(), z.unknown()).optional(),
 });
 export const diagnosticsRequestSchema = projectRequestSchema.extend({

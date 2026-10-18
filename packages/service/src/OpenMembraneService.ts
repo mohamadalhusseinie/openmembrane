@@ -1,6 +1,6 @@
 import { env } from "node:process";
 import { rankMemories } from "@openmembrane/core";
-import type { AuditEvent, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
+import type { AuditEvent, DiagnosticEvent, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
 import { createStores } from "@openmembrane/storage";
 import type { StoreSet, StorageBackend } from "@openmembrane/storage";
 import { createProjectState, resolveProjectRef } from "./factory";
@@ -15,6 +15,7 @@ export type ProjectService = ReturnType<typeof createProjectOperations> & {
   getMemory: (id: string) => Promise<MemoryEntry | undefined>;
   getCliContext: (options?: { query?: string; type?: MemoryType; scope?: MemoryScope }) => Promise<MemoryEntry[]>;
   pendingCandidateCount: () => Promise<number>;
+  recordDiagnostic: (event: Omit<DiagnosticEvent, "projectId">) => Promise<void>;
   listReviewAuditLog: (limit: number) => Promise<AuditEvent[]>;
   retryEligiblePublications: () => Promise<void>;
   checkCollaborationAvailability: () => ReturnType<ProjectState["githubTeamService"]["checkAvailability"]>;
@@ -34,7 +35,7 @@ export class OpenMembraneService {
     return (await this.project(ref)).service;
   }
 
-  // Compatibility for existing in-process tests until the daemon client replaces MCP context.
+  // Exposes service-owned state for integration fixtures.
   async projectState(ref: ProjectRef): Promise<ProjectState> {
     return (await this.project(ref)).state;
   }
@@ -103,6 +104,7 @@ export class OpenMembraneService {
           async pendingCandidateCount() {
             return (await state.pendingCandidateStore.list(resolved.projectId)).length;
           },
+          recordDiagnostic: (event) => state.diagnosticsLogStore.append({ ...event, projectId: resolved.projectId }),
           listReviewAuditLog: (limit) => operations.listAuditLog({ limit, order: "append" }),
           async retryEligiblePublications() {
             await state.githubTeamService.retryEligiblePublications(resolved.projectId);

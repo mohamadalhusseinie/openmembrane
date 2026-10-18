@@ -176,6 +176,46 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     expect(await client().health()).toEqual({});
   });
 
+  it.each(["json", "sqlite"])("persists project failures with their response IDs in %s diagnostics", async (backend) => {
+    const { alpha, beta, client } = await setup();
+    const env = { OPENMEMBRANE_STORAGE_BACKEND: backend };
+    const api = client(alpha, env);
+    const ids = await Promise.all(Array.from({ length: 6 }, async (_, index) => {
+      try {
+        await api.approveMemoryCandidate({ candidateId: `missing-${index}` });
+        throw new Error("Expected candidate lookup to fail.");
+      } catch (error) {
+        if (!(error instanceof OpenMembraneClientError)) throw error;
+        expect(error).toMatchObject({ code: "CANDIDATE_NOT_FOUND", origin: "daemon", status: 404 });
+        expect(error.diagnosticId).toMatch(/^diag_/);
+        return error.diagnosticId;
+      }
+    }));
+    const diagnostics = await api.getDiagnostics({ code: "CANDIDATE_NOT_FOUND" });
+    expect(diagnostics.map((event) => event.id).sort()).toEqual(ids.sort());
+    for (const diagnostic of diagnostics) {
+      expect(diagnostic).toMatchObject({
+        projectId: "alpha", severity: "error", operation: "approveMemoryCandidate", source: "daemon",
+      });
+    }
+    expect(await client(beta, env).getDiagnostics({ code: "CANDIDATE_NOT_FOUND" })).toEqual([]);
+  });
+
+  it("retains the original safe failure when diagnostic persistence is unavailable", async () => {
+    const service = createOpenMembraneService();
+    vi.spyOn(serviceModule, "createOpenMembraneService").mockReturnValue(service);
+    const { alpha, root, client } = await setup();
+    const state = await service.projectState({ projectRoot: alpha, projectId: "alpha", storageBackend: "json" });
+    vi.spyOn(state.diagnosticsLogStore, "append").mockRejectedValue(new Error("private diagnostic storage failure"));
+    await expect(client().approveMemoryCandidate({ candidateId: "missing" })).rejects.toMatchObject({
+      code: "CANDIDATE_NOT_FOUND", origin: "daemon", status: 404, diagnosticId: expect.stringMatching(/^diag_/),
+    });
+    const log = await readFile(join(root, ".openmembrane", "logs", "daemon.log"), "utf8");
+    expect(log).toContain("diagnostic_persistence_failed");
+    expect(log).not.toContain("private diagnostic storage failure");
+    expect(await client().health()).toEqual({});
+  });
+
   it.skipIf(process.platform !== "win32")("rejects drive-dependent roots and storage paths at the daemon boundary", async () => {
     const { daemon, token, alpha, client } = await setup();
     const rooted = alpha.slice(parse(alpha).root.length - 1);
@@ -192,7 +232,7 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
   });
 
   it("isolates two project directories and honors client overrides, not daemon environment", async () => {
-    const { alpha, beta, root, client } = await setup();
+    const { alpha, beta, root, client, paths, daemon } = await setup();
     vi.stubEnv("OPENMEMBRANE_HOME", join(root, "daemon-storage"));
     vi.stubEnv("OPENMEMBRANE_PROJECT_ID", "daemon-project");
     vi.stubEnv("OPENMEMBRANE_STORAGE_BACKEND", "sqlite");
@@ -217,13 +257,8 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     });
     expect(resolved).toEqual({ projectRoot: alpha, storageDir: join(alpha, "custom-storage"), projectId: result.projectId });
     for (const [key, value] of Object.entries(clientEnv)) vi.stubEnv(key, value);
-    const legacyMcp = await createOpenMembraneContext({ projectRoot: alpha });
-    try {
-      expect(legacyMcp.defaultProjectId).toBe(result.projectId);
-      expect(legacyMcp.storageDir).toBe(await realpath(resolved.storageDir));
-    } finally {
-      await legacyMcp.close();
-    }
+    const mcp = createOpenMembraneContext({ projectRoot: alpha, endpoint: daemon.endpoint, daemonPaths: paths });
+    expect(await mcp.client.searchMemory({ query: "Caller" })).toMatchObject([{ projectId: result.projectId }]);
     const explicit = await forwarded.remember({
       projectId: "explicit", storageDir: join(beta, "explicit-storage"), storageBackend: "json",
       content: "Explicit request fields override forwarded client settings.", type: "testing_rule", confidence: "high",
