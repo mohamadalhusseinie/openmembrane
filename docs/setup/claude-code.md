@@ -52,6 +52,37 @@ Keep the dependency installation/npx cache available, or rerun install if you
 clear it. See the [adapter README](../../packages/adapter-claude-code/README.md)
 for restoration and failure behavior.
 
+#### Share project and storage settings with hooks
+
+MCP server `env` values in `.mcp.json` apply only to that server; hooks do not
+inherit them. If you override `OPENMEMBRANE_PROJECT_ID`, `OPENMEMBRANE_HOME`,
+or `OPENMEMBRANE_STORAGE_BACKEND`, set the same values in the environment
+that launches Claude Code so automatic capture and MCP retrieval use the
+same project and store. Otherwise capture uses the session project directory
+and its defaults, even when MCP has separate overrides.
+
+For example, launch Claude Code with these environment variables, and use
+matching values in any MCP `env` configuration:
+
+```sh
+export OPENMEMBRANE_PROJECT_ID=my-project
+export OPENMEMBRANE_HOME=/absolute/path/to/project-memory
+export OPENMEMBRANE_STORAGE_BACKEND=json
+claude
+```
+
+In PowerShell:
+
+```powershell
+$env:OPENMEMBRANE_PROJECT_ID = "my-project"
+$env:OPENMEMBRANE_HOME = "C:\path\to\project-memory"
+$env:OPENMEMBRANE_STORAGE_BACKEND = "json"
+claude
+```
+
+Prefer an absolute storage path when sharing an override. Keep the same
+settings when using the CLI or review UI for this project.
+
 ### MCP retrieval
 
 Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.

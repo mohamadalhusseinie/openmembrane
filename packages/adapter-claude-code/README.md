@@ -49,6 +49,10 @@ Empty text does nothing. Failures are non-blocking hook errors on stderr;
 raw transcripts are never copied to the adapter directory or echoed to Claude.
 The daemon owns extraction, redaction, policy, deduplication, and persistence.
 Extraction/provider setup is the same as ordinary CLI ingestion.
+Hooks inherit the environment that launches Claude Code, not `.mcp.json`
+server `env` values. Share any `OPENMEMBRANE_PROJECT_ID`, `OPENMEMBRANE_HOME`
+and `OPENMEMBRANE_STORAGE_BACKEND` overrides with that launch environment
+and MCP configuration so capture and retrieval target the same project/store.
 
 Repeated installs are idempotent. Uninstall restores original files byte-for-byte
 when they are otherwise unchanged (and removes files the installer created).
