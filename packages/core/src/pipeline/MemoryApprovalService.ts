@@ -1,5 +1,5 @@
 import { createId, nowIso } from "@openmembrane/shared";
-import { Deduplicator, sessionRejectionFingerprint } from "../deduplication/Deduplicator";
+import { Deduplicator, sessionCandidateFingerprint } from "../deduplication/Deduplicator";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import { memoryEntryFromCandidate, type MemoryEntry } from "../types/MemoryEntry";
@@ -69,14 +69,20 @@ export class MemoryApprovalService {
 
     const existing = await this.memoryStore.list(projectId);
     const duplicate = this.deduplicator.findDuplicate(candidate, existing);
+    const fingerprint = sessionCandidateFingerprint(candidate);
     if (duplicate) {
+      if (fingerprint) {
+        await this.auditMemorySaved({
+          id: createId("audit"), projectId, type: "memory_saved", entityId: duplicate.id, createdAt: nowIso(),
+          details: { candidateId, approvedManually: true, sessionFingerprint: fingerprint }
+        }, options.preserveExistingConflicts === true);
+      }
       await this.pendingCandidateStore.remove(projectId, candidateId);
       return duplicate;
     }
 
     const approvedAt = nowIso();
     const memory = await this.memoryStore.save(memoryEntryFromCandidate(candidate, approvedAt));
-    await this.pendingCandidateStore.remove(projectId, candidateId);
     await this.auditMemorySaved({
       id: createId("audit"),
       projectId,
@@ -85,9 +91,11 @@ export class MemoryApprovalService {
       createdAt: approvedAt,
       details: {
         candidateId,
-        approvedManually: true
+        approvedManually: true,
+        ...(fingerprint ? { sessionFingerprint: fingerprint } : {})
       }
     }, options.preserveExistingConflicts === true);
+    await this.pendingCandidateStore.remove(projectId, candidateId);
 
     if (!options.preserveExistingConflicts && candidate.conflictWith && candidate.conflictWith.length > 0) {
       for (const conflictId of candidate.conflictWith) {
@@ -152,7 +160,7 @@ export class MemoryApprovalService {
       });
     }
 
-    const fingerprint = sessionRejectionFingerprint(candidate);
+    const fingerprint = sessionCandidateFingerprint(candidate);
     await this.auditLogStore.append({
       id: createId("audit"),
       projectId,

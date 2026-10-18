@@ -20,6 +20,53 @@ afterEach(async () => {
 });
 
 describe("OpenCode adapter through the real daemon", () => {
+  it.each(["json", "sqlite"] as const)("does not restore superseded session content, including after restart (%s)", async (storageBackend) => {
+    vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "mock");
+    vi.stubEnv("OPENMEMBRANE_HOME", "");
+    root = await mkdtemp(join(tmpdir(), "om-opencode-replay-"));
+    const paths = { homeDir: root, runtimeDir: root };
+    const env = { OPENMEMBRANE_STORAGE_BACKEND: storageBackend };
+    daemon = await startDaemon({ paths });
+    const client = new OpenMembraneClient({ endpoint: daemon.endpoint, daemonPaths: paths, projectRoot: root, env });
+    const project = { projectRoot: root, projectId: basename(root) };
+    let text = "This project uses React for frontend components.";
+    const host: Parameters<typeof createHooks>[0] = {
+      client: {
+        session: { messages: async () => ({
+          data: [{ ...sessionMessages[0]!, parts: [{
+            id: "part_user", sessionID: sessionId, messageID: "msg_user", type: "text", text,
+          }] }],
+          request: new Request("http://localhost/session"), response: new Response(),
+        }) },
+        app: { log: async () => ({ data: true, request: new Request("http://localhost/log"), response: new Response() }) },
+      },
+    };
+    const hooks = createHooks(host, client, project);
+    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "ses_A" } } });
+    expect((await client.listMemories()).map((memory) => memory.content)).toEqual([text]);
+    text = "This project uses Angular for frontend components.";
+    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "ses_B" } } });
+    expect((await client.listMemories()).map((memory) => memory.content)).toEqual([text]);
+    text = "This project uses React for frontend components.";
+    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "ses_A" } } });
+    expect((await client.listMemories()).map((memory) => memory.content)).toEqual([
+      "This project uses Angular for frontend components.",
+    ]);
+    await hooks.dispose?.();
+    await daemon.close();
+    daemon = await startDaemon({ paths });
+    const nextClient = new OpenMembraneClient({ endpoint: daemon.endpoint, daemonPaths: paths, projectRoot: root, env });
+    const resumed = createHooks(host, nextClient, project);
+    await resumed.event?.({ event: { type: "session.idle", properties: { sessionID: "ses_A" } } });
+    expect((await nextClient.listMemories()).map((memory) => memory.content)).toEqual([
+      "This project uses Angular for frontend components.",
+    ]);
+    text = "This project requires isolated integration fixtures.";
+    await resumed.event?.({ event: { type: "session.idle", properties: { sessionID: "ses_A" } } });
+    expect(await nextClient.listMemories()).toEqual(expect.arrayContaining([expect.objectContaining({ content: text })]));
+    await resumed.dispose?.();
+  }, 20_000);
+
   it("persists knowledge, honors rejected replay across restart, and injects it in a later session", async () => {
     vi.stubEnv("OPENMEMBRANE_EXTRACTION_PROVIDER", "mock");
     vi.stubEnv("OPENMEMBRANE_HOME", "");

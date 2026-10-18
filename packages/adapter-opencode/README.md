@@ -114,10 +114,12 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   not prove that all provider extraction chunks succeeded. This allows later
   idle events to retry partial/failed extraction without interpreting candidate
   counts or adding extraction policy to the adapter. Memory deduplication and
-  extraction diagnostics belong to the daemon. The core records a content
-  fingerprint for explicit rejections, preventing the same session from
-  requeuing rejected content even after restart or later turns. A different
-  session or an explicit manual proposal can reconsider that content. No
+  extraction diagnostics belong to the daemon. The core indexes session/content
+  fingerprints for accepted memories and explicit rejections, preventing replay
+  from restoring superseded knowledge or requeuing rejected content after
+  restart or later turns. SQLite uses an indexed disposition table; JSON uses
+  per-fingerprint marker files, without reading audit history on each lookup.
+  A different session or an explicit manual proposal can reconsider content. No
   transcript file or delivery digest is retained by the adapter.
 - Errors are logged with `client.app.log({ body: { service, level, message,
   extra } })`; a failed logging endpoint falls back to stderr. The plugin does

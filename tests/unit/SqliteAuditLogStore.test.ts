@@ -77,4 +77,17 @@ describe("SqliteAuditLogStore", () => {
     const result = await store.list("project-a");
     expect(result[0]!.entityId).toBeUndefined();
   });
+
+  it("backfills the session index on upgrade and uses its compound primary key", async () => {
+    const fingerprint = "f".repeat(64);
+    await store.append(auditEvent({ details: { sessionFingerprint: fingerprint } }));
+    db.exec("DROP TABLE session_dispositions");
+    db.close();
+    db = openDatabase(dbPath);
+    store = new SqliteAuditLogStore(db);
+    expect(await store.findProcessedSessionFingerprints("project-a", [fingerprint])).toEqual([fingerprint]);
+    const plan = db.prepare("EXPLAIN QUERY PLAN SELECT fingerprint FROM session_dispositions WHERE projectId = ? AND fingerprint = ?")
+      .all("project-a", fingerprint) as Array<{ detail: string }>;
+    expect(plan.some(({ detail }) => detail.includes("USING COVERING INDEX"))).toBe(true);
+  });
 });

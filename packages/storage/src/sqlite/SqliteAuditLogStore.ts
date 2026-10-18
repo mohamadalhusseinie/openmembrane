@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { AuditEvent, AuditLogStore } from "@openmembrane/core";
+import { processedSessionFingerprint, type AuditEvent, type AuditLogStore } from "@openmembrane/core";
 
 interface RawAuditRow {
   id: string;
@@ -29,19 +29,35 @@ export class SqliteAuditLogStore implements AuditLogStore {
   }
 
   async append(event: AuditEvent): Promise<void> {
-    this.db
-      .prepare(
-        `INSERT INTO audit_log (id, projectId, type, entityId, createdAt, details)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        event.id,
-        event.projectId,
-        event.type,
-        event.entityId ?? null,
-        event.createdAt,
-        event.details !== undefined ? JSON.stringify(event.details) : null
-      );
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO audit_log (id, projectId, type, entityId, createdAt, details)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          event.id,
+          event.projectId,
+          event.type,
+          event.entityId ?? null,
+          event.createdAt,
+          event.details !== undefined ? JSON.stringify(event.details) : null
+        );
+      const fingerprint = processedSessionFingerprint(event);
+      if (fingerprint) {
+        this.db.prepare("INSERT OR IGNORE INTO session_dispositions (projectId, fingerprint) VALUES (?, ?)")
+          .run(event.projectId, fingerprint);
+      }
+    })();
+  }
+
+  async findProcessedSessionFingerprints(projectId: string, fingerprints: string[]): Promise<string[]> {
+    const found: string[] = [];
+    const query = this.db.prepare("SELECT fingerprint FROM session_dispositions WHERE projectId = ? AND fingerprint = ?");
+    for (const fingerprint of new Set(fingerprints)) {
+      if (query.get(projectId, fingerprint)) found.push(fingerprint);
+    }
+    return found;
   }
 
   async list(projectId: string): Promise<AuditEvent[]> {

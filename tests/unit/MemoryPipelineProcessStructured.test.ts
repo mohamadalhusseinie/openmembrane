@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryApprovalService, MemoryPipeline, MockMemoryExtractor } from "@openmembrane/core";
 import type { AuditLogStore } from "@openmembrane/core";
 import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
@@ -31,6 +31,56 @@ async function createPipeline() {
 }
 
 describe("MemoryPipeline.processStructured", () => {
+  it.each(["automatic", "approval", "duplicate"] as const)("retains handled session identities after supersession: %s", async (mode) => {
+    const stores = await createPipeline();
+    const approval = new MemoryApprovalService(stores);
+    const content = "Use React for the frontend UI framework.";
+    const source = { kind: "session", tool: "opencode", sessionId: "ses_A" } as const;
+    if (mode === "duplicate") {
+      await stores.pipeline.processStructured("project-a", [candidate({ content, source: { kind: "manual" } })]);
+    }
+    const first = await stores.pipeline.processStructured("project-a", [
+      candidate({ content, source, scope: "frontend", confidence: mode === "approval" ? "medium" : "high" }),
+    ]);
+    if (mode === "approval") await approval.approve("project-a", first.pending[0]!.id);
+    const replacement = await stores.pipeline.processStructured("project-a", [candidate({
+      content: "Use Angular for the frontend UI framework.", scope: "frontend",
+      source: { kind: "session", tool: "opencode", sessionId: "ses_B" },
+    })]);
+    expect(replacement.saved).toHaveLength(1);
+    const replay = await stores.pipeline.processStructured("project-a", [candidate({ content, source, scope: "frontend" })]);
+    expect(replay.saved).toHaveLength(0);
+    expect(replay.superseded).toHaveLength(0);
+    expect((await stores.memoryStore.list("project-a")).map((memory) => memory.content))
+      .toEqual(["Use Angular for the frontend UI framework."]);
+  });
+
+  it("allows a later retry after policy rejection rather than marking incomplete extraction handled", async () => {
+    const { pipeline } = await createPipeline();
+    const source = { kind: "session", tool: "opencode", sessionId: "ses_retry" } as const;
+    const content = "Use explicit TypeScript return types.";
+    const first = await pipeline.processStructured("project-a", [candidate({ content, source, confidence: "low" })]);
+    expect(first.rejected).toHaveLength(1);
+    const retry = await pipeline.processStructured("project-a", [candidate({ content, source, confidence: "high" })]);
+    expect(retry.saved).toHaveLength(1);
+  });
+
+  it("handles active duplicates before supersession within the same extraction batch", async () => {
+    const { pipeline, memoryStore } = await createPipeline();
+    const content = "Use React for the frontend UI framework.";
+    await pipeline.processStructured("project-a", [candidate({ id: "initial", content, source: { kind: "manual" } })]);
+    const source = { kind: "session", tool: "opencode", sessionId: "ses_A" } as const;
+    const result = await pipeline.processStructured("project-a", [
+      candidate({ id: "duplicate", content, source, scope: "frontend" }),
+      candidate({ id: "replacement", content: "Use Angular for the frontend UI framework.", scope: "frontend",
+        source: { kind: "session", tool: "opencode", sessionId: "ses_B" } }),
+      candidate({ id: "replay", content, source, scope: "frontend" }),
+    ]);
+    expect(result.saved).toHaveLength(1);
+    expect((await memoryStore.list("project-a")).map((memory) => memory.content))
+      .toEqual(["Use Angular for the frontend UI framework."]);
+  });
+
   it("suppresses normalized rejected session content without blocking explicit manual proposals", async () => {
     const stores = await createPipeline();
     const approval = new MemoryApprovalService(stores);
@@ -39,16 +89,19 @@ describe("MemoryPipeline.processStructured", () => {
       candidate({ content: "Prefer explicit return types.", confidence: "medium", source }),
     ]);
     await approval.reject("project-a", first.pending[0]!.id);
+    vi.spyOn(stores.auditLogStore, "list").mockRejectedValue(new Error("Full audit scans are forbidden."));
     const replay = await stores.pipeline.processStructured("project-a", [
       candidate({ content: "Prefer   explicit RETURN types!", source }),
     ]);
     expect(replay.pending).toHaveLength(0);
     expect(replay.saved).toHaveLength(0);
-    expect(replay.rejected[0]?.rejectionReason).toBe("Previously rejected by user in this session.");
+    expect(replay.rejected[0]?.rejectionReason).toBe("Previously handled content from this session.");
+    const lookup = vi.spyOn(stores.auditLogStore, "findProcessedSessionFingerprints");
     const manual = await stores.pipeline.processStructured("project-a", [
       candidate({ content: "Prefer explicit return types.", source: { kind: "manual" } }),
     ]);
     expect(manual.saved).toHaveLength(1);
+    expect(lookup).not.toHaveBeenCalled();
   });
 
   it("saves a valid single candidate", async () => {
@@ -179,6 +232,7 @@ describe("MemoryPipeline.processStructured", () => {
         if (event.type === "memory_saved") throw new Error("simulated audit write failure");
       },
       list: async () => [],
+      findProcessedSessionFingerprints: async () => [],
     };
     const pipeline = new MemoryPipeline({
       extractor: new MockMemoryExtractor(),

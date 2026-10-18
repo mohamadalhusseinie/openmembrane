@@ -3,7 +3,7 @@ import { ActionRecommender } from "../classification/ActionRecommender";
 import { MemoryClassifier } from "../classification/MemoryClassifier";
 import { ConflictDetector } from "../deduplication/ConflictDetector";
 import type { ConflictResult } from "../deduplication/ConflictDetector";
-import { Deduplicator, sessionRejectionFingerprint } from "../deduplication/Deduplicator";
+import { Deduplicator, sessionCandidateFingerprint } from "../deduplication/Deduplicator";
 import type { MemoryExtractor } from "../extraction/MemoryExtractor";
 import { PolicyEngine } from "../policy/PolicyEngine";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
@@ -129,10 +129,13 @@ export class MemoryPipeline {
     const rejected: MemoryCandidate[] = [];
     const candidates: MemoryCandidate[] = [];
     const supersededEntries: MemoryEntry[] = [];
-    const rejectedFingerprints = new Set((await this.auditLogStore.list(projectId)).flatMap((event) =>
-      event.type === "candidate_rejected" && event.details?.rejectedByUser === true &&
-      typeof event.details.sessionFingerprint === "string" ? [event.details.sessionFingerprint] : []
-    ));
+    const fingerprints = extracted.flatMap((candidate) => {
+      const fingerprint = sessionCandidateFingerprint(this.withTranscriptHash(candidate, transcriptHash));
+      return fingerprint ? [fingerprint] : [];
+    });
+    const processedFingerprints = new Set(fingerprints.length > 0
+      ? await this.auditLogStore.findProcessedSessionFingerprints(projectId, [...new Set(fingerprints)])
+      : []);
 
     for (const rawCandidate of extracted) {
       await this.auditLogStore.append({
@@ -159,15 +162,7 @@ export class MemoryPipeline {
         continue;
       }
 
-      const fingerprint = sessionRejectionFingerprint(candidate);
-      if (fingerprint && rejectedFingerprints.has(fingerprint)) {
-        const rejectedCandidate = this.reject(candidate, "Previously rejected by user in this session.");
-        rejected.push(rejectedCandidate);
-        candidates.push(rejectedCandidate);
-        await this.auditRejected(rejectedCandidate);
-        continue;
-      }
-
+      const fingerprint = sessionCandidateFingerprint(candidate);
       const duplicate = this.deduplicator.findDuplicate(candidate, [...existing, ...saved, ...pendingCandidates]);
       if (duplicate) {
         const rejectedCandidate = this.reject(
@@ -177,6 +172,16 @@ export class MemoryPipeline {
           },
           "Duplicate memory already exists."
         );
+        rejected.push(rejectedCandidate);
+        candidates.push(rejectedCandidate);
+        const alreadyStored = "status" in duplicate && duplicate.status === "active";
+        await this.auditRejected(rejectedCandidate, alreadyStored);
+        if (alreadyStored && fingerprint) processedFingerprints.add(fingerprint);
+        continue;
+      }
+
+      if (fingerprint && processedFingerprints.has(fingerprint)) {
+        const rejectedCandidate = this.reject(candidate, "Previously handled content from this session.");
         rejected.push(rejectedCandidate);
         candidates.push(rejectedCandidate);
         await this.auditRejected(rejectedCandidate);
@@ -239,8 +244,9 @@ export class MemoryPipeline {
           type: "memory_saved",
           entityId: stored.id,
           createdAt: nowIso(),
-          details: { candidateId: candidate.id }
+          details: { candidateId: candidate.id, ...(fingerprint ? { sessionFingerprint: fingerprint } : {}) }
         }, options.preserveExistingConflicts === true);
+        if (fingerprint) processedFingerprints.add(fingerprint);
         continue;
       }
 
@@ -296,7 +302,8 @@ export class MemoryPipeline {
     };
   }
 
-  private async auditRejected(candidate: MemoryCandidate): Promise<void> {
+  private async auditRejected(candidate: MemoryCandidate, processedSession = false): Promise<void> {
+    const fingerprint = processedSession ? sessionCandidateFingerprint(candidate) : undefined;
     await this.auditLogStore.append({
       id: createId("audit"),
       projectId: candidate.projectId,
@@ -305,7 +312,8 @@ export class MemoryPipeline {
       createdAt: nowIso(),
       details: {
         reason: candidate.rejectionReason,
-        duplicateOf: candidate.duplicateOf
+        duplicateOf: candidate.duplicateOf,
+        ...(fingerprint ? { sessionFingerprint: fingerprint, processedSession: true } : {})
       }
     });
   }

@@ -98,6 +98,7 @@ describe("MemoryApprovalService", () => {
           if (event.type === "memory_saved") throw new Error("simulated audit write failure");
         },
         list: async () => [],
+        findProcessedSessionFingerprints: async () => [],
       };
       const service = new MemoryApprovalService({ memoryStore, pendingCandidateStore, auditLogStore });
       await pendingCandidateStore.save(candidate({ id: "cand_audit_failure", content: "Use standalone components." }));
@@ -206,6 +207,7 @@ describe("MemoryApprovalService", () => {
         auditLogStore: {
           append: async () => { throw new Error("Audit unavailable"); },
           list: async () => [],
+          findProcessedSessionFingerprints: async () => [],
         },
       });
       await expect(service.reject("project-a", "cand_retry")).rejects.toThrow("Audit unavailable");

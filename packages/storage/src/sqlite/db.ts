@@ -12,7 +12,9 @@ export function openDatabase(filePath: string): Database.Database {
 }
 
 function initSchema(db: Database.Database): void {
-  db.exec(`
+  db.transaction(() => {
+    const hasSessionIndex = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_dispositions'").get();
+    db.exec(`
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       projectId TEXT NOT NULL,
@@ -67,6 +69,12 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_audit_projectId ON audit_log(projectId);
 
+    CREATE TABLE IF NOT EXISTS session_dispositions (
+      projectId TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      PRIMARY KEY (projectId, fingerprint)
+    );
+
     CREATE TABLE IF NOT EXISTS diagnostics_log (
       id TEXT PRIMARY KEY,
       projectId TEXT NOT NULL,
@@ -81,5 +89,16 @@ function initSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_diag_projectId ON diagnostics_log(projectId);
-  `);
+    `);
+    if (!hasSessionIndex) {
+      db.exec(`
+      INSERT OR IGNORE INTO session_dispositions (projectId, fingerprint)
+      SELECT projectId, json_extract(details, '$.sessionFingerprint') FROM audit_log
+      WHERE length(json_extract(details, '$.sessionFingerprint')) = 64
+        AND json_extract(details, '$.sessionFingerprint') NOT GLOB '*[^a-f0-9]*'
+        AND (type = 'memory_saved' OR (type = 'candidate_rejected'
+          AND (json_extract(details, '$.rejectedByUser') = 1 OR json_extract(details, '$.processedSession') = 1)))
+      `);
+    }
+  })();
 }

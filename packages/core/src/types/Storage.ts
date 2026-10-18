@@ -45,4 +45,5 @@ export interface AuditEvent {
 export interface AuditLogStore {
   append(event: AuditEvent): Promise<void>;
   list(projectId: string): Promise<AuditEvent[]>;
+  findProcessedSessionFingerprints(projectId: string, fingerprints: string[]): Promise<string[]>;
 }
