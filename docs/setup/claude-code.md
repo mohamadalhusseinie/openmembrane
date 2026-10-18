@@ -38,8 +38,12 @@ npx @openmembrane/adapter-claude-code uninstall
 
 The handler reads `transcript_path` from hook stdin, converts Claude Code JSONL
 user/assistant text to a transcript, and pipes it to
-`openmembrane ingest --stdin --tool claude-code --format text` from the hook's
-`cwd`. Extraction and privacy policy remain in the daemon; configure extraction
+`openmembrane ingest --stdin --tool claude-code --format text --session-id <id>`.
+`CLAUDE_PROJECT_DIR` keeps capture anchored to the session project, with hook
+`cwd` as a fallback. Stable session IDs preserve rejection decisions across
+incremental snapshots. Final `Stop` text is included even if transcript writes
+lag, and oversized transcripts are sent as sequential bounded requests.
+Extraction and privacy policy remain in the daemon; configure extraction
 as for [ordinary ingestion](../../README.md#automatic-memory-capture). Ingestion
 continues in a detached process after Claude exits; failures are written to
 `openmembrane-capture.log` in the config directory. This does

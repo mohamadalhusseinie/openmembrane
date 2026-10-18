@@ -14,7 +14,8 @@ npx @openmembrane/adapter-claude-code uninstall
 Restart Claude Code after changing hooks. The default is `SessionEnd` only;
 `--incremental` additionally registers `Stop`. Reinstall without the flag to
 disable incremental capture. Incremental capture submits full transcript
-snapshots; normal daemon deduplication applies.
+snapshots with the stable Claude session ID, so daemon deduplication and
+rejection tracking apply across turns.
 
 The installer merges hooks into `~/.claude/settings.json`, appends a retrieval
 instruction block between `<!-- openmembrane:start -->` and
@@ -29,12 +30,19 @@ are safe on Windows, macOS, and Linux. The installed `openmembrane` dependency i
 resolved during installation; keep that installation (or npx cache) available.
 If you remove it, rerun install to refresh the path.
 
-Hook JSON supplies `cwd` and `transcript_path`. The handler reads Claude's JSONL
+Hook JSON supplies `cwd`, `session_id` and `transcript_path`. The handler reads Claude's JSONL
 transcript, selects user/assistant text (not tool payloads, thinking blocks, or
 sidechains), starts the local daemon if needed, then pipes text to
-`openmembrane ingest --stdin --tool claude-code --format text` from that cwd.
+`openmembrane ingest --stdin --tool claude-code --format text --session-id <id>`
+from `CLAUDE_PROJECT_DIR` (falling back to hook `cwd` if it is not set).
+This keeps capture anchored to the session project even after a directory change.
+On `Stop`, `last_assistant_message` supplies the just-finished response if it
+is not yet present in the transcript file. Long transcripts, including oversized
+individual turns, are split into sequential requests within the daemon limit
+without dropping text.
 Ingestion is detached after its input has been handed off, so it can finish
-after Claude exits without exceeding Claude's 60-second SessionEnd budget.
+after Claude exits without exceeding Claude's 60-second SessionEnd budget. The
+worker keeps transcripts in memory and pipes each bounded chunk to CLI ingestion.
 Ingestion errors are written to `openmembrane-capture.log` in the config directory;
 this log is retained on uninstall for troubleshooting.
 Empty text does nothing. Failures are non-blocking hook errors on stderr;

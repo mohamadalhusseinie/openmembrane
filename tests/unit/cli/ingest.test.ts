@@ -8,6 +8,18 @@ vi.mock("node:fs/promises", () => ({ readFile: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
 
 describe("ingest completion and pending reminder", () => {
+  it("forwards the stable session ID to daemon ingestion", async () => {
+    vi.mocked(readFile).mockResolvedValue("rule: Keep TypeScript strict.");
+    const ingest = vi.spyOn(OpenMembraneClient.prototype, "ingest").mockResolvedValue(ingestion);
+    vi.spyOn(OpenMembraneClient.prototype, "listMemoryCandidates").mockResolvedValue([]);
+    vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    await runIngest({
+      command: "ingest", file: "session.txt", stdin: false, tool: "claude-code", format: "text", sessionId: "stable-session",
+    });
+    expect(ingest).toHaveBeenCalledWith({
+      transcript: "rule: Keep TypeScript strict.", tool: "claude-code", sessionId: "stable-session",
+    });
+  });
   it("warns explicitly if only the post-ingest reminder fails", async () => {
     vi.mocked(readFile).mockResolvedValue("rule: This project must use strict TypeScript settings.");
     vi.spyOn(OpenMembraneClient.prototype, "ingest").mockResolvedValue(ingestion);

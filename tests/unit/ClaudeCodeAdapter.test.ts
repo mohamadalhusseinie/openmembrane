@@ -1,14 +1,15 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isAbsolute, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { MAX_TRANSCRIPT_LENGTH } from "@openmembrane/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { updateInstructions, updateSettings } from "../../packages/adapter-claude-code/src/config";
 import type { HookCommand } from "../../packages/adapter-claude-code/src/config";
 import { installAdapter } from "../../packages/adapter-claude-code/src/installer";
-import { parseHookInput, sessionTranscript } from "../../packages/adapter-claude-code/src/transcript";
+import { parseHookInput, sessionTranscript, transcriptChunks } from "../../packages/adapter-claude-code/src/transcript";
 
 const fixtures = fileURLToPath(new URL("./fixtures/claude-code/", import.meta.url));
 const fixture = async (name: string) => (await readFile(join(fixtures, name), "utf8")).replace(/\r\n/g, "\n");
@@ -112,6 +113,21 @@ describe("Claude Code configuration", () => {
     expect(await readFile(join(directory, "CLAUDE.md"), "utf8")).toBe("Keep me");
     await expect(readFile(join(directory, "openmembrane-capture.mjs"))).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("resolves relative config paths and preserves files deleted after installation", async () => {
+    const directory = await temporary();
+    const install = (enabled: boolean) => installAdapter(
+      enabled, false, relative(process.cwd(), directory), join(fixtures, "cli.mjs"), join(fixtures, "cli.mjs"),
+    );
+    await install(true);
+    const settings = JSON.parse(await readFile(join(directory, "settings.json"), "utf8"));
+    expect(settings.hooks.SessionEnd[0].hooks[0].args.every((arg: string) => isAbsolute(arg))).toBe(true);
+    await unlink(join(directory, "settings.json"));
+    await unlink(join(directory, "CLAUDE.md"));
+    await install(false);
+    await expect(readFile(join(directory, "settings.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(directory, "CLAUDE.md"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
 
 describe("Claude Code transcript ingestion", () => {
@@ -122,12 +138,38 @@ describe("Claude Code transcript ingestion", () => {
     expect(() => parseHookInput("{}")).toThrow("Expected");
   });
 
-  async function capture(input: string, directory: string, fail = ""): Promise<{ code: number | null; stdout: string; stderr: string }> {
-    const tsx = createRequire(import.meta.url).resolve("tsx/cli");
+  it("includes Stop's final assistant text exactly once when the transcript lags", () => {
+    const user = '{"type":"user","message":{"content":"Task"}}';
+    const final = "Final assistant rule";
+    const payload = parseHookInput(JSON.stringify({
+      hook_event_name: "Stop", cwd: "/project", transcript_path: "/session.jsonl",
+      session_id: "stable-session", last_assistant_message: final,
+    }));
+    const expected = `user:\nTask\n\nassistant:\n${final}`;
+    expect(sessionTranscript(user, payload.lastAssistantMessage)).toBe(expected);
+    expect(sessionTranscript(user + "\n" + JSON.stringify({
+      type: "assistant", message: { content: final },
+    }), final)).toBe(expected);
+    expect(payload.sessionId).toBe("stable-session");
+  });
+
+  it("bounds all chunks without losing text or splitting Unicode surrogate pairs", () => {
+    const transcript = "x".repeat(MAX_TRANSCRIPT_LENGTH - 1) + "\u{1F600}" + "\n" + "y".repeat(MAX_TRANSCRIPT_LENGTH * 2);
+    const chunks = transcriptChunks(transcript);
+    expect(chunks.join("")).toBe(transcript);
+    expect(chunks.every((chunk) => chunk.length <= MAX_TRANSCRIPT_LENGTH)).toBe(true);
+    expect(chunks.every((chunk) => Buffer.from(chunk).toString("utf8") === chunk)).toBe(true);
+  });
+
+  async function capture(input: string, directory: string, fail = "", projectRoot = ""): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    const loader = pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
     const script = fileURLToPath(new URL("../../packages/adapter-claude-code/src/capture.ts", import.meta.url));
     return new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [tsx, script, join(fixtures, "cli.mjs"), join(directory, "capture.log")], {
-        env: { ...process.env, CAPTURE_RESULT: join(directory, "result.jsonl"), FAIL_CAPTURE: fail },
+      const child = spawn(process.execPath, [script, join(fixtures, "cli.mjs"), join(directory, "capture.log")], {
+        env: {
+          ...process.env, NODE_OPTIONS: `--import=${loader}`, CLAUDE_PROJECT_DIR: projectRoot,
+          CAPTURE_RESULT: join(directory, "result.jsonl"), FAIL_CAPTURE: fail,
+        },
         stdio: ["pipe", "pipe", "pipe"],
       });
       let stdout = "";
@@ -143,25 +185,47 @@ describe("Claude Code transcript ingestion", () => {
   it.each(["SessionEnd", "Stop"])("pipes fixture text to CLI ingest from the project cwd for %s", async (event) => {
     const directory = await temporary();
     const result = await capture(JSON.stringify({
-      hook_event_name: event, cwd: directory, transcript_path: join(fixtures, "session.jsonl"),
+      session_id: "session-123", hook_event_name: event, cwd: directory, transcript_path: join(fixtures, "session.jsonl"),
     }), directory);
     expect(result).toEqual({ code: 0, stdout: "", stderr: "" });
     let calls: unknown[] = [];
     await expect.poll(async () => {
       calls = (await readFile(join(directory, "result.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
       return calls.length;
-    }).toBe(2);
+    }, { timeout: 10_000 }).toBe(2);
     expect(calls).toEqual([
       { args: ["start"], cwd: directory, input: "" },
-      { args: ["ingest", "--stdin", "--tool", "claude-code", "--format", "text"], cwd: directory,
+      { args: ["ingest", "--stdin", "--tool", "claude-code", "--format", "text", "--session-id", "session-123"], cwd: directory,
         input: (await fixture("transcript.txt")).trimEnd() },
     ]);
+  });
+
+  it("anchors subprocesses to CLAUDE_PROJECT_DIR and chunks oversized individual turns", async () => {
+    const directory = await temporary();
+    const projectRoot = await temporary();
+    const path = join(directory, "large.jsonl");
+    const text = "x".repeat(MAX_TRANSCRIPT_LENGTH * 2 + 1);
+    await writeFile(path, JSON.stringify({ type: "user", message: { content: text } }));
+    const result = await capture(JSON.stringify({
+      session_id: "long-session", hook_event_name: "SessionEnd", cwd: directory, transcript_path: path,
+    }), directory, "", projectRoot);
+    expect(result.code).toBe(0);
+    let calls: { args: string[]; cwd: string; input: string }[] = [];
+    await expect.poll(async () => {
+      calls = (await readFile(join(directory, "result.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      return calls.length;
+    }, { timeout: 10_000 }).toBe(4);
+    expect(calls.every((call) => call.cwd === projectRoot)).toBe(true);
+    const ingestions = calls.slice(1);
+    expect(ingestions.every((call) => call.input.length <= MAX_TRANSCRIPT_LENGTH)).toBe(true);
+    expect(ingestions.every((call) => call.args.slice(-2).join(" ") === "--session-id long-session")).toBe(true);
+    expect(ingestions.map((call) => call.input).join("")).toBe(`user:\n${text}`);
   });
 
   it("reports failures without echoing transcript content and never ingests if startup fails", async () => {
     const directory = await temporary();
     const result = await capture(JSON.stringify({
-      hook_event_name: "SessionEnd", cwd: directory, transcript_path: join(fixtures, "session.jsonl"),
+      session_id: "session-123", hook_event_name: "SessionEnd", cwd: directory, transcript_path: join(fixtures, "session.jsonl"),
     }), directory, "start");
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
@@ -173,10 +237,10 @@ describe("Claude Code transcript ingestion", () => {
   it("records detached ingestion failures in the local log", async () => {
     const directory = await temporary();
     const result = await capture(JSON.stringify({
-      hook_event_name: "SessionEnd", cwd: directory, transcript_path: join(fixtures, "session.jsonl"),
+      session_id: "session-123", hook_event_name: "SessionEnd", cwd: directory, transcript_path: join(fixtures, "session.jsonl"),
     }), directory, "ingest");
     expect(result.code).toBe(0);
-    await expect.poll(() => readFile(join(directory, "capture.log"), "utf8")).toContain("Fixture command failed.");
+    await expect.poll(() => readFile(join(directory, "capture.log"), "utf8"), { timeout: 10_000 }).toContain("Fixture command failed.");
   });
 
   it("rejects invalid payloads and skips transcripts with no conversation text", async () => {
@@ -184,7 +248,7 @@ describe("Claude Code transcript ingestion", () => {
     expect((await capture("{}", directory)).code).toBe(1);
     const path = join(directory, "empty.jsonl");
     await writeFile(path, '{"type":"system"}\n');
-    expect((await capture(JSON.stringify({ hook_event_name: "SessionEnd", cwd: directory, transcript_path: path }), directory)).code).toBe(0);
+    expect((await capture(JSON.stringify({ session_id: "session-123", hook_event_name: "SessionEnd", cwd: directory, transcript_path: path }), directory)).code).toBe(0);
     await expect(readFile(join(directory, "result.jsonl"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

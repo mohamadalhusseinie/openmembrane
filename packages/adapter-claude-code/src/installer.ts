@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { updateInstructions, updateSettings } from "./config";
 import type { HookCommand } from "./config";
@@ -41,6 +41,7 @@ export async function installAdapter(
   runtime = fileURLToPath(new URL("./capture.js", import.meta.url)),
   cli = createRequire(import.meta.url).resolve("openmembrane"),
 ): Promise<void> {
+  directory = resolve(directory);
   const settingsPath = join(directory, "settings.json");
   const instructionsPath = join(directory, "CLAUDE.md");
   const statePath = join(directory, "openmembrane-adapter-state.json");
@@ -77,6 +78,7 @@ export async function installAdapter(
     } satisfies State, null, 2) + "\n", { mode: 0o600 });
   }
   async function persist(path: string, before: string | null, after: string, remove: boolean): Promise<void> {
+    if (!install && before === null) return;
     if (remove) {
       if (before !== null) await unlink(path);
     } else if (before !== after) await writeFile(path, after, { mode: 0o600 });

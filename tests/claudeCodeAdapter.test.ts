@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
@@ -33,40 +33,57 @@ it("captures a Claude Code session through the installed hook, CLI and real daem
     session_id: "claude-fixture", hook_event_name: "SessionEnd",
     cwd: fixture.projectRoot, transcript_path: transcript,
   });
-  const output = await new Promise<{ code: number | null; stderr: string }>((accept, reject) => {
-    const child = spawn(hook.command, hook.args, {
-      cwd: fixture.projectRoot,
-      env: { ...fixture.env, NODE_OPTIONS: `--import=${loader}`, CAPTURE_PID: join(fixture.root, "ingest.pid") },
-      stdio: ["pipe", "ignore", "pipe"],
+  async function captureSession(): Promise<void> {
+    const pidPath = join(fixture.root, "ingest.pid");
+    await rm(pidPath, { force: true });
+    const output = await new Promise<{ code: number | null; stderr: string }>((accept, reject) => {
+      const child = spawn(hook.command, hook.args, {
+        cwd: fixture.projectRoot,
+        env: {
+          ...fixture.env, NODE_OPTIONS: `--import=${loader}`, CLAUDE_PROJECT_DIR: fixture.projectRoot,
+          CAPTURE_PID: pidPath,
+        },
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+      child.once("error", reject);
+      child.once("close", (code) => accept({ code, stderr }));
+      child.stdin.end(input);
     });
-    let stderr = "";
-    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
-    child.once("error", reject);
-    child.once("close", (code) => accept({ code, stderr }));
-    child.stdin.end(input);
-  });
-  expect(output).toEqual({ code: 0, stderr: "" });
-  try {
+    expect(output).toEqual({ code: 0, stderr: "" });
     await expect.poll(async () => {
-      const [memories, candidates] = await Promise.all([
-        fixture.client.searchMemory({ query: "strict TypeScript" }),
-        fixture.client.listMemoryCandidates(),
-      ]);
-      return [...memories, ...candidates].some((memory) =>
-        memory.content.includes("strict TypeScript") && memory.source.tool === "claude-code");
-    }, { timeout: 10_000 }).toBe(true);
-  } catch (error) {
-    throw new Error(`Capture failed: ${await readFile(join(configDir, "openmembrane-capture.log"), "utf8")}`, { cause: error });
-  } finally {
-    const pid = Number(await readFile(join(fixture.root, "ingest.pid"), "utf8"));
-    await expect.poll(() => {
+      let pids: number[];
       try {
-        process.kill(pid, 0);
-        return false;
+        pids = JSON.parse(await readFile(pidPath, "utf8"));
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
         throw error;
       }
+      return pids.every((pid) => {
+        try {
+          process.kill(pid, 0);
+          return false;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+          throw error;
+        }
+      });
     }, { timeout: 10_000 }).toBe(true);
   }
+  await captureSession();
+  const first = (await fixture.client.listMemoryCandidates()).find((memory) =>
+    memory.content.includes("strict TypeScript") && memory.source.tool === "claude-code");
+  expect(first?.source.sessionId).toBe("claude-fixture");
+  if (!first) throw new Error("Expected a captured rule awaiting approval.");
+  await fixture.client.rejectMemoryCandidate({ candidateId: first.id, reason: "Not a project rule." });
+  const nextRule = "Release automation must verify package provenance before publishing.";
+  await writeFile(transcript, await readFile(transcript, "utf8") + "\n" + JSON.stringify({
+    type: "user", message: { content: `rule: ${nextRule}` },
+  }));
+  await captureSession();
+  const pending = await fixture.client.listMemoryCandidates();
+  expect(pending.some((memory) => memory.content.includes("strict TypeScript"))).toBe(false);
+  const captured = [...pending, ...await fixture.client.searchMemory({ query: "package provenance" })];
+  expect(captured.some((memory) => memory.content.includes(nextRule) && memory.source.sessionId === "claude-fixture")).toBe(true);
 });

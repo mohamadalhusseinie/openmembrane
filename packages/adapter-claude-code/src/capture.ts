@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { open, readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import { parseHookInput, sessionTranscript } from "./transcript";
+import { fileURLToPath } from "node:url";
+import { parseHookInput, sessionTranscript, transcriptChunks } from "./transcript";
 
 async function run(cli: string, args: string[], cwd: string, input?: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -19,6 +20,21 @@ async function run(cli: string, args: string[], cwd: string, input?: string): Pr
 }
 
 async function main(): Promise<void> {
+  if (process.argv[2] === "--ingest") {
+    const [, , , cli, projectRoot, sessionId] = process.argv;
+    if (!cli || !isAbsolute(cli) || !projectRoot || !isAbsolute(projectRoot) || !sessionId?.trim()) {
+      throw new Error("Invalid ingestion worker arguments.");
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+    const transcript = Buffer.concat(chunks).toString("utf8");
+    for (const chunk of transcriptChunks(transcript)) {
+      if (chunk.trim()) await run(cli, [
+        "ingest", "--stdin", "--tool", "claude-code", "--format", "text", "--session-id", sessionId,
+      ], projectRoot, chunk);
+    }
+    return;
+  }
   const cli = process.argv[2];
   const logPath = process.argv[3];
   if (!cli || !isAbsolute(cli)) throw new Error("Missing installed OpenMembrane CLI path; reinstall the adapter.");
@@ -26,17 +42,20 @@ async function main(): Promise<void> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
   const payload = parseHookInput(Buffer.concat(chunks).toString("utf8"));
-  if (!isAbsolute(payload.cwd) || !isAbsolute(payload.transcriptPath)) {
+  const projectRoot = process.env.CLAUDE_PROJECT_DIR || payload.cwd;
+  if (!isAbsolute(projectRoot) || !isAbsolute(payload.transcriptPath)) {
     throw new Error("Claude Code hook paths must be absolute.");
   }
-  const transcript = sessionTranscript(await readFile(payload.transcriptPath, "utf8"));
+  const transcript = sessionTranscript(await readFile(payload.transcriptPath, "utf8"), payload.lastAssistantMessage);
   if (!transcript) return;
-  await run(cli, ["start"], payload.cwd);
+  await run(cli, ["start"], projectRoot);
   const log = await open(logPath, "a", 0o600);
   try {
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(process.execPath, [cli, "ingest", "--stdin", "--tool", "claude-code", "--format", "text"], {
-        cwd: payload.cwd, detached: true, stdio: ["pipe", "ignore", log.fd], windowsHide: true,
+      const child = spawn(process.execPath, [
+        fileURLToPath(import.meta.url), "--ingest", cli, projectRoot, payload.sessionId,
+      ], {
+        cwd: projectRoot, detached: true, stdio: ["pipe", "ignore", log.fd], windowsHide: true,
       });
       child.once("error", reject);
       const stdin = child.stdin;
