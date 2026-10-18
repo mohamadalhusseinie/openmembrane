@@ -40,7 +40,7 @@ export async function detectProject(directory: string, env: NodeJS.ProcessEnv): 
 export function sessionTranscript(messages: Messages): string {
   return messages.flatMap(({ info, parts }) => {
     const text = parts.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n");
-    return text.trim() ? [`${info.role}: ${text}`] : [];
+    return text.trim() ? [`${info.role}:\n${text}`] : [];
   }).join("\n\n");
 }
 
@@ -90,7 +90,7 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project,
         const budget = Math.max(0, Math.min(
           8_000,
           Math.floor(model.limit.context / 10),
-          model.limit.context - model.limit.output - Buffer.byteLength(output.system.join("\n\n"), "utf8") - 2,
+          Math.floor(model.limit.context / 2) - Buffer.byteLength(output.system.join("\n\n"), "utf8") - 2,
         ));
         const lines = ["OpenMembrane project memory:"];
         let bytes = Buffer.byteLength(lines[0]!, "utf8");

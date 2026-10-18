@@ -11,6 +11,7 @@ export const sessionMessages: Messages = [
     parts: [
       { id: "part_user", sessionID: sessionId, messageID: "msg_user", type: "text",
         text: "The project must use isolated Vitest fixtures for integration tests." },
+      { id: "part_rule", sessionID: sessionId, messageID: "msg_user", type: "text", text: "rule: Use pnpm." },
     ],
   },
   {
@@ -28,8 +29,8 @@ export const sessionMessages: Messages = [
   },
 ];
 
-export const expectedTranscript = "user: The project must use isolated Vitest fixtures for integration tests.\n\n" +
-  "assistant: Understood. I will use isolated fixtures.";
+export const expectedTranscript = "user:\nThe project must use isolated Vitest fixtures for integration tests.\nrule: Use pnpm.\n\n" +
+  "assistant:\nUnderstood. I will use isolated fixtures.";
 
 export const model: Parameters<NonNullable<Hooks["experimental.chat.system.transform"]>>[0]["model"] = {
   id: "fixture", providerID: "local", name: "Fixture",

@@ -45,6 +45,10 @@ describe("OpenCode adapter through the real daemon", () => {
       source: expect.objectContaining({ tool: "opencode", sessionId }),
       content: expect.stringContaining("isolated Vitest fixtures"),
     })]));
+    expect([...memories, ...pending]).toEqual(expect.arrayContaining([expect.objectContaining({
+      content: "Use pnpm.",
+      source: expect.objectContaining({ tool: "opencode", sessionId }),
+    })]));
     expect(memories.length).toBeGreaterThan(0);
     await hooks.dispose?.();
     await daemon.close();

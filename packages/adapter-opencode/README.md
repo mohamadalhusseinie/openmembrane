@@ -83,12 +83,15 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
   hook should be checked when upgrading OpenCode.
   Retrieval requests at most 10 rules and 5 relevant memories. Whole entries are
   included only while they fit a conservative UTF-8 byte budget: 10% of the
-  model context, capped at 8,000 bytes, with space reserved for the existing
-  system text and configured model output. This is prompt-size management,
+  model context, capped at 8,000 bytes, leaving at least half the context
+  outside the existing system text and memory for conversation/output headroom.
+  The advertised maximum output is not treated as a per-request reservation.
+  This is prompt-size management,
   not memory classification or save policy.
 - `client.session.messages({ path: { id: sessionID }, query: { directory } })`
   returns `{ data: [{ info, parts }], error? }`. User and assistant **text parts**
-  are serialized in order as `role: text`. Binary attachments, reasoning, tool
+  are serialized in order with each role on its own line (`role:\ntext`), so
+  explicit memory markers remain at the start of a line. Binary attachments, reasoning, tool
   payloads, and bookkeeping parts are not conversation text and are not included.
   The latest user text is the relevance query, falling back to the project name.
 - `event({ event: { type: "session.idle", properties: { sessionID } } })`

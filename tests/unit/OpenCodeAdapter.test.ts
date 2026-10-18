@@ -70,7 +70,7 @@ describe("OpenCode reference adapter", () => {
     await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
     expect(daemon.getProjectRules).toHaveBeenCalledExactlyOnceWith({ ...project, limit: 10 });
     expect(daemon.getRelevantContext).toHaveBeenCalledExactlyOnceWith({
-      ...project, query: "The project must use isolated Vitest fixtures for integration tests.", limit: 5,
+      ...project, query: "The project must use isolated Vitest fixtures for integration tests.\nrule: Use pnpm.", limit: 5,
     });
     expect(output.system).toHaveLength(1);
     expect(output.system[0]).toMatch(/^Host instructions\n\nOpenMembrane project memory:/);
@@ -125,6 +125,16 @@ describe("OpenCode reference adapter", () => {
       sessionID: sessionId, model: { ...model, limit: { context: 1_024, output: 256 } },
     }, output);
     expect(output.system).toEqual(["H".repeat(1_000)]);
+  });
+
+  it("injects memories when advertised maximum output equals model context", async () => {
+    const { hooks } = fixture();
+    const output = { system: ["Host prompt"] };
+    await hooks["experimental.chat.system.transform"]?.({
+      sessionID: sessionId, model: { ...model, limit: { context: 128_000, output: 128_000 } },
+    }, output);
+    expect(output.system[0]).toContain("OpenMembrane project memory:");
+    expect(output.system[0]).toContain("Use isolated Vitest fixtures.");
   });
 
   it("ignores auxiliary model requests and unrelated events", async () => {
