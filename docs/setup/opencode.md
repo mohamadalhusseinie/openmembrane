@@ -16,9 +16,19 @@ or `~/.config/opencode/opencode.json` (Windows:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openmembrane/adapter-opencode"]
+  "plugin": [
+    ["@openmembrane/adapter-opencode", { "allowMemoryEgress": true }]
+  ]
 }
 ```
+
+`allowMemoryEgress: true` explicitly authorizes sending retrieved project
+memories, including confidential entries, to OpenCode's configured model
+provider (local or hosted). Enable it only when that destination is authorized
+to receive your stored memory. For capture without memory egress, use
+`"plugin": ["@openmembrane/adapter-opencode"]` instead; context retrieval and
+injection stay disabled. This is separate from configuring the daemon's
+extraction provider.
 
 Preserve other settings and restart OpenCode. OpenCode installs the plugin;
 the plugin automatically starts the local daemon if needed. See the
@@ -72,6 +82,8 @@ auto-approves them.
   dependency is installed and the daemon can start.
 - **Different memories in CLI and OpenCode:** Use the same project directory,
   `OPENMEMBRANE_PROJECT_ID`, and storage environment in both.
+- **Capture works but no context appears:** Context injection requires the
+  explicit `allowMemoryEgress: true` option shown above.
 - **Very large conversations:** The daemon protocol limits transcript size.
   Oversized submissions are logged and not truncated; start a new session.
 

@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
@@ -45,8 +44,12 @@ export function sessionTranscript(messages: Messages): string {
   }).join("\n\n");
 }
 
-export function createHooks(input: Host, daemon: DaemonClient, project: Project): Hooks {
-  const sessions = new Map<string, { tail: Promise<void>; hash?: string }>();
+export interface AdapterOptions {
+  allowMemoryEgress?: boolean;
+}
+
+export function createHooks(input: Host, daemon: DaemonClient, project: Project, options: AdapterOptions = {}): Hooks {
+  const sessions = new Map<string, Promise<void>>();
   const pending = new Set<Promise<void>>();
   let disposed = false;
 
@@ -73,7 +76,7 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project)
 
   return {
     "experimental.chat.system.transform": async ({ sessionID, model }, output) => {
-      if (disposed || sessionID === undefined) return;
+      if (disposed || !options.allowMemoryEgress || sessionID === undefined) return;
       try {
         const history = await messages(sessionID);
         const user = [...history].reverse().find(({ info }) => info.role === "user");
@@ -110,36 +113,25 @@ export function createHooks(input: Host, daemon: DaemonClient, project: Project)
     },
     event: async ({ event }) => {
       if (disposed) return;
-      if (event.type === "session.deleted") {
-        sessions.delete(event.properties.info.id);
-        return;
-      }
       if (event.type !== "session.idle") return;
       const sessionID = event.properties.sessionID;
-      let state = sessions.get(sessionID);
-      if (state === undefined) {
-        state = { tail: Promise.resolve() };
-        sessions.set(sessionID, state);
-      }
-      const current = state;
-      current.tail = current.tail.then(async () => {
+      const previous = sessions.get(sessionID) ?? Promise.resolve();
+      const task = previous.then(async () => {
         try {
           const transcript = sessionTranscript(await messages(sessionID));
           if (!transcript) return;
-          const hash = createHash("sha256").update(transcript).digest("hex");
-          if (hash === current.hash) return;
           await daemon.ingest({ ...project, tool: "opencode", sessionId: sessionID, transcript });
-          current.hash = hash;
         } catch (error) {
           await warn("session ingestion", error);
         }
       });
-      const task = current.tail;
+      sessions.set(sessionID, task);
       pending.add(task);
       try {
         await task;
       } finally {
         pending.delete(task);
+        if (sessions.get(sessionID) === task) sessions.delete(sessionID);
       }
     },
     dispose: async () => {

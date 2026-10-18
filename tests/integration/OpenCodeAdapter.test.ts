@@ -36,7 +36,7 @@ describe("OpenCode adapter through the real daemon", () => {
       },
     };
     const project = { projectRoot: root, projectId: basename(root) };
-    const hooks = createHooks(host, client, project);
+    const hooks = createHooks(host, client, project, { allowMemoryEgress: true });
     await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: sessionId } } });
     const memories = await client.listMemories();
     const pending = await client.listMemoryCandidates({});
@@ -50,7 +50,7 @@ describe("OpenCode adapter through the real daemon", () => {
     await daemon.close();
     daemon = await startDaemon({ paths });
     const nextClient = new OpenMembraneClient({ endpoint: daemon.endpoint, daemonPaths: paths, projectRoot: root, env: {} });
-    const nextSession = createHooks(host, nextClient, project);
+    const nextSession = createHooks(host, nextClient, project, { allowMemoryEgress: true });
     const output = { system: ["Host prompt"] };
     await nextSession["experimental.chat.system.transform"]?.({ sessionID: "ses_next", model }, output);
     expect(output.system).toHaveLength(1);

@@ -20,7 +20,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-function fixture() {
+function fixture(options: { allowMemoryEgress?: boolean } = { allowMemoryEgress: true }) {
   const messages = vi.fn<Parameters<typeof createHooks>[0]["client"]["session"]["messages"]>()
     .mockResolvedValue({ data: structuredClone(sessionMessages), request: new Request("http://localhost/session"),
       response: new Response() });
@@ -36,10 +36,22 @@ function fixture() {
     }),
   };
   const host = { client: { session: { messages }, app: { log } } };
-  return { host, messages, log, daemon, hooks: createHooks(host, daemon, project) };
+  return { host, messages, log, daemon, hooks: createHooks(host, daemon, project, options) };
 }
 
 describe("OpenCode reference adapter", () => {
+  it.each([{}, { allowMemoryEgress: false }])("does not retrieve or inject memory without explicit consent: %j", async (options) => {
+    const { hooks, daemon, messages } = fixture(options);
+    const output = { system: ["Host instructions"] };
+    await hooks["experimental.chat.system.transform"]?.({ sessionID: sessionId, model }, output);
+    expect(output.system).toEqual(["Host instructions"]);
+    expect(messages).not.toHaveBeenCalled();
+    expect(daemon.getProjectRules).not.toHaveBeenCalled();
+    expect(daemon.getRelevantContext).not.toHaveBeenCalled();
+    await hooks.event?.(idle);
+    expect(daemon.ingest).toHaveBeenCalledOnce();
+  });
+
   it("maps the OpenCode fixture to an exact ingest request without prompting", async () => {
     const { hooks, daemon, messages } = fixture();
     expect(sessionTranscript(sessionMessages)).toBe(expectedTranscript);
@@ -123,16 +135,26 @@ describe("OpenCode reference adapter", () => {
     expect(daemon.ingest).not.toHaveBeenCalled();
   });
 
-  it("serializes concurrent idle events, skips unchanged snapshots, and ingests changed snapshots", async () => {
+  it("serializes concurrent idle events and ingests changed snapshots", async () => {
     const { hooks, daemon, messages } = fixture();
+    let active = 0;
+    let maxActive = 0;
+    daemon.ingest.mockImplementation(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await Promise.resolve();
+      active--;
+      return ingestion;
+    });
     await Promise.all([hooks.event?.(idle), hooks.event?.(idle), hooks.event?.(idle)]);
-    expect(daemon.ingest).toHaveBeenCalledTimes(1);
+    expect(daemon.ingest).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(1);
     const changed = structuredClone(sessionMessages);
     changed[0]!.parts.push({ id: "extra", sessionID: sessionId, messageID: "msg_user", type: "text", text: "New knowledge." });
     messages.mockResolvedValue({ data: changed, request: new Request("http://localhost"), response: new Response() });
     await hooks.event?.(idle);
-    expect(daemon.ingest).toHaveBeenCalledTimes(2);
-    expect(daemon.ingest.mock.calls[1]![0].transcript).toContain("New knowledge.");
+    expect(daemon.ingest).toHaveBeenCalledTimes(4);
+    expect(daemon.ingest.mock.calls[3]![0].transcript).toContain("New knowledge.");
   });
 
   it("does not ingest empty sessions", async () => {
@@ -142,17 +164,12 @@ describe("OpenCode reference adapter", () => {
     expect(daemon.ingest).not.toHaveBeenCalled();
   });
 
-  it("clears the delivery digest on session deletion", async () => {
+  it("does not cache successful HTTP responses as proof of complete extraction", async () => {
     const { hooks, daemon } = fixture();
     await hooks.event?.(idle);
-    await hooks.event?.({ event: {
-      type: "session.deleted", properties: { info: {
-        id: sessionId, projectID: "project", directory: project.projectRoot,
-        title: "Fixture", version: "1", time: { created: 1, updated: 2 },
-      } },
-    } });
     await hooks.event?.(idle);
     expect(daemon.ingest).toHaveBeenCalledTimes(2);
+    expect(daemon.ingest.mock.calls[0]).toEqual(daemon.ingest.mock.calls[1]);
   });
 
   it("logs startup failures safely and retries unchanged failed transcripts on the next idle", async () => {

@@ -1,11 +1,14 @@
 import { createRequire } from "node:module";
 import { createDaemonAutoLaunch, OpenMembraneClient } from "@openmembrane/client";
-import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
+import type { Hooks, Plugin, PluginInput, PluginOptions } from "@opencode-ai/plugin";
 import { createHooks, detectProject } from "./plugin";
 
-const OpenMembrane = (async (input: Pick<PluginInput, "directory" | "client">): Promise<Hooks> => {
+const OpenMembrane = (async (
+  input: Pick<PluginInput, "directory" | "client">,
+  options: PluginOptions = {},
+): Promise<Hooks> => {
   const project = await detectProject(input.directory, process.env);
-  const options = {
+  const clientOptions = {
     ...project,
     autoLaunch: () => createDaemonAutoLaunch(
       "node",
@@ -13,16 +16,16 @@ const OpenMembrane = (async (input: Pick<PluginInput, "directory" | "client">): 
       { cwd: project.projectRoot },
     )(),
   };
-  const daemon = new OpenMembraneClient(options);
+  const daemon = new OpenMembraneClient(clientOptions);
   const ingestion = new OpenMembraneClient({
-    ...options,
+    ...clientOptions,
     requestTimeoutMs: 30 * 60_000,
   });
   return createHooks(input, {
     getProjectRules: (request) => daemon.getProjectRules(request),
     getRelevantContext: (request) => daemon.getRelevantContext(request),
     ingest: (request) => ingestion.ingest(request),
-  }, project);
+  }, project, { allowMemoryEgress: options.allowMemoryEgress === true });
 }) satisfies Plugin;
 
 export default OpenMembrane;

@@ -160,9 +160,9 @@ Add to `.cursor/mcp.json` in your project:
 
 ### OpenCode
 
-For automatic context injection and session capture, add
-`"plugin": ["@openmembrane/adapter-opencode"]` to your OpenCode config and restart.
-See [OpenCode plugin setup](docs/setup/opencode.md) for installation, extraction
+For automatic session capture and opt-in context injection, follow
+[OpenCode plugin setup](docs/setup/opencode.md). It covers installation,
+explicit consent to send stored memory to OpenCode's model provider, extraction
 configuration, and uninstall instructions.
 
 For optional MCP tools, add to `~/.config/opencode/opencode.json`:

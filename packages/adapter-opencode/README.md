@@ -17,6 +17,25 @@ package to your project `opencode.json` or global
 }
 ```
 
+The string-only configuration above enables capture but does **not** send
+stored memory to a model. To enable context injection, explicitly permit
+memory egress using the plugin option:
+
+```json
+{
+  "plugin": [
+    ["@openmembrane/adapter-opencode", { "allowMemoryEgress": true }]
+  ]
+}
+```
+
+This sends retrieved memories, **including confidential entries returned by the
+daemon**, to whichever model provider OpenCode uses, including hosted providers.
+Only enable it when that provider is authorized to receive your project memory.
+The option is required for local models too; the adapter does not guess whether
+a provider is trusted or implement sensitivity filtering. Omit it or set it to
+`false` for capture-only operation.
+
 Restart OpenCode. OpenCode installs the npm plugin and its dependencies,
 including the `openmembrane` CLI peer dependency. The plugin reuses the local
 daemon or auto-starts that CLI with `node <cli-entry> serve` on the first memory
@@ -75,14 +94,17 @@ its matching **`@opencode-ai/sdk@1.19.3`** declarations at implementation time:
 - `event({ event: { type: "session.idle", properties: { sessionID } } })`
   triggers `POST /v1/ingest` via the client with `tool: "opencode"`, `sessionId`,
   and the transcript. There is no documented `session.ended` event: idle is the
-  completion boundary, not deletion. `session.deleted` clears session state;
-  `dispose` stops accepting new work and waits for in-flight ingestion,
+  completion boundary, not deletion. Session queue state is released as soon
+  as its work settles, not on deletion. `dispose` stops accepting new work and waits for in-flight ingestion,
   including requests belonging to deleted sessions. Abrupt process termination cannot
   guarantee delivery.
-- Ingestion is serialized per session. Identical successful snapshots are not
-  resubmitted within the plugin lifetime; changed snapshots are submitted in
-  full, leaving memory deduplication to the daemon. Failed submissions can retry
-  on the next idle event. Only a digest is retained, never a transcript file.
+- Ingestion is serialized per session. Every idle event submits the full current
+  text snapshot, including unchanged snapshots: an accepted HTTP response does
+  not prove that all provider extraction chunks succeeded. This allows later
+  idle events to retry partial/failed extraction without interpreting candidate
+  counts or adding extraction policy to the adapter. Memory deduplication and
+  extraction diagnostics belong to the daemon. No transcript file or delivery
+  digest is retained.
 - Errors are logged with `client.app.log({ body: { service, level, message,
   extra } })`; a failed logging endpoint falls back to stderr. The plugin does
   not throw daemon/startup errors into OpenCode or log conversation contents.
@@ -98,7 +120,9 @@ Use the same cwd and environment as your other OpenMembrane clients.
 
 This adapter has no classification, filtering, redaction, or approval policy.
 All such decisions belong to the daemon. Local Private is the default; external
-extraction requires explicit configuration. The client enforces the daemon's
+extraction requires explicit configuration. Stored-memory injection separately
+requires `allowMemoryEgress: true`; OpenCode sends the resulting prompt to its
+configured model, not to the daemon's extraction provider. The client enforces the daemon's
 transcript size limit; oversized sessions are logged as failures, not silently
 truncated or marked delivered.
 
