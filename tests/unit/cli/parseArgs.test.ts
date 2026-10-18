@@ -16,6 +16,13 @@ function expectError(result: ParseResult): string {
 }
 
 describe("ingest timeout options", () => {
+  it("accepts a stable source session ID", () => {
+    expect(expectOk(parseArgs(argv("ingest", "--stdin", "--session-id", "claude-session")))).toMatchObject({
+      command: "ingest", sessionId: "claude-session",
+    });
+    expect(expectError(parseArgs(argv("ingest", "--stdin", "--session-id")))).toContain("--session-id");
+    expect(expectError(parseArgs(argv("ingest", "--stdin", "--session-id", " ")))).toContain("--session-id");
+  });
   it("accepts an explicit ingestion deadline", () => {
     expect(expectOk(parseArgs(argv("ingest", "--stdin", "--timeout-ms", "3600000")))).toMatchObject({
       command: "ingest", timeoutMs: 3_600_000,

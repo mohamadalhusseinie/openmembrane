@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)"
+    ]
+  },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "logout",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo user-hook"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "capture.mjs",
+              "openmembrane.js",
+              "capture.log"
+            ],
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo user-stop"
+          }
+        ]
+      }
+    ]
+  }
+}

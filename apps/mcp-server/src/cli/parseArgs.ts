@@ -18,6 +18,7 @@ export interface IngestCommand {
   readonly file?: string | undefined;
   readonly stdin: boolean;
   readonly tool: string;
+  readonly sessionId?: string;
   readonly project?: string | undefined;
   readonly format: InputFormat;
   readonly output?: OutputFormat;
@@ -101,6 +102,10 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     const file = getFlag(args, "file");
     const stdin = hasFlag(args, "stdin");
     const tool = getFlag(args, "tool") ?? "unknown";
+    const sessionId = getFlag(args, "session-id");
+    if (hasFlag(args, "session-id") && !sessionId?.trim()) {
+      return { ok: false, error: "--session-id requires a non-empty value." };
+    }
     const project = getFlag(args, "project");
     const formatRaw = getFlag(args, "format") ?? "auto";
     const output = getFlag(args, "output");
@@ -127,7 +132,7 @@ export function parseArgs(argv: readonly string[]): ParseResult {
 
     return {
       ok: true,
-      value: { command: "ingest", file, stdin, tool, project, format: formatRaw as InputFormat, ...(output ? { output } : {}), ...(timeoutMs === undefined ? {} : { timeoutMs }) }
+      value: { command: "ingest", file, stdin, tool, project, format: formatRaw as InputFormat, ...(sessionId === undefined ? {} : { sessionId }), ...(output ? { output } : {}), ...(timeoutMs === undefined ? {} : { timeoutMs }) }
     };
   }
 
@@ -254,6 +259,7 @@ Ingest options:
   --file <path>             Path to session transcript file
   --stdin                   Read transcript from stdin
   --tool <name>             Source tool name (default: "unknown")
+  --session-id <id>         Stable source session ID for replay and rejection tracking
   --project <id>            Project identifier (default: env/cwd basename)
   --format <type>           Input format: auto, text, openai-chat (default: auto)
   --output <format>         text, json, markdown (default: json for ingest)

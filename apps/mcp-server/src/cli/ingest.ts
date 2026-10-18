@@ -43,7 +43,9 @@ export async function runIngest(cmd: IngestCommand): Promise<void> {
 
   const client = new OpenMembraneClient({ requestTimeoutMs: cmd.timeoutMs ?? 30 * 60_000 });
   const input = { ...(cmd.project ? { projectId: cmd.project } : {}) };
-  const result = await client.ingest({ ...input, transcript, tool: cmd.tool }).catch((error: unknown) => {
+  const result = await client.ingest({
+    ...input, transcript, tool: cmd.tool, ...(cmd.sessionId === undefined ? {} : { sessionId: cmd.sessionId }),
+  }).catch((error: unknown) => {
     if (error instanceof OpenMembraneClientError && error.code === "E_REQUEST_TIMEOUT") {
       process.stderr.write("Warning: Ingestion may still be processing in the daemon. Check context and audit before retrying; a timeout does not mean nothing was saved.\n");
     }

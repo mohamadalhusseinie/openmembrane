@@ -1,0 +1,8 @@
+user:
+rule: Always use strict TypeScript in this project.
+
+assistant:
+I will keep strict mode enabled.
+
+assistant:
+Use npm run check before committing.

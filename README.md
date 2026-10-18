@@ -73,6 +73,7 @@ the per-user daemon endpoint.
 
 ```sh
 openmembrane ingest --file session.txt --tool codex
+openmembrane ingest --stdin --tool claude-code --session-id session-123
 openmembrane context --query "deployment rules" --output markdown
 openmembrane candidates list --output json
 openmembrane candidates approve <id>

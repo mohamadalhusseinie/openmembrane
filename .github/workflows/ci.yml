@@ -42,3 +42,6 @@ jobs:
 
       - name: Build OpenCode plugin
         run: npm run build -w @openmembrane/adapter-opencode
+
+      - name: Build Claude Code adapter
+        run: npm run build -w @openmembrane/adapter-claude-code

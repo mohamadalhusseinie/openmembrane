@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","cwd":"/project"}
+{"type":"user","sessionId":"session-123","message":{"role":"user","content":"rule: Always use strict TypeScript in this project."}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Private reasoning"},{"type":"text","text":"I will keep strict mode enabled."},{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"tool output must not enter the transcript"}]}}
+{"type":"assistant","isSidechain":true,"message":{"content":"Subagent-only text"}}
+{"type":"assistant","isApiErrorMessage":true,"message":{"content":"API failure"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Use npm run check before committing."}]}}

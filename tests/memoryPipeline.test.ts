@@ -1,8 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
-import { MemoryPipeline, MockMemoryExtractor } from "@openmembrane/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_TRANSCRIPT_LENGTH, MemoryPipeline, MockMemoryExtractor, prepareTranscriptChunks } from "@openmembrane/core";
+import type { MemoryCandidate, MemoryExtractor, SessionInput } from "@openmembrane/core";
 import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 
 const tempDirs: string[] = [];
@@ -11,7 +12,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function createPipeline() {
+async function createPipeline(extractor: MemoryExtractor = new MockMemoryExtractor()) {
   const baseDir = await mkdtemp(join(tmpdir(), "openmembrane-test-"));
   tempDirs.push(baseDir);
 
@@ -19,7 +20,7 @@ async function createPipeline() {
   const pendingCandidateStore = new JsonPendingCandidateStore(baseDir);
   const auditLogStore = new JsonAuditLogStore(baseDir);
   const pipeline = new MemoryPipeline({
-    extractor: new MockMemoryExtractor(),
+    extractor,
     memoryStore,
     pendingCandidateStore,
     auditLogStore
@@ -34,6 +35,27 @@ async function createPipeline() {
 }
 
 describe("MemoryPipeline", () => {
+  it.each(["private_key", "aws_access_key"])("never exposes %s secrets spanning transport boundaries to the configured extractor", async (kind) => {
+    const extractor = { extract: vi.fn(async (_input: SessionInput): Promise<MemoryCandidate[]> => []) };
+    const { pipeline } = await createPipeline(extractor);
+    const key = kind === "private_key"
+      ? "-----BEGIN PRIVATE KEY-----\n" + "PRIVATE_KEY_MATERIAL".repeat(10_000) + "\n-----END PRIVATE KEY-----"
+      : "AKIAABCDEFGHIJKLMNOP";
+    const transcript = "before\n" + "x".repeat(MAX_TRANSCRIPT_LENGTH - 20) + " " + key +
+      "\nafter\n" + "y".repeat(MAX_TRANSCRIPT_LENGTH);
+    expect(transcript.indexOf(key)).toBeLessThan(MAX_TRANSCRIPT_LENGTH);
+    expect(transcript.indexOf(key) + key.length).toBeGreaterThan(MAX_TRANSCRIPT_LENGTH);
+    for (const chunk of prepareTranscriptChunks(transcript)) {
+      expect(chunk.length).toBeLessThanOrEqual(MAX_TRANSCRIPT_LENGTH);
+      await pipeline.process({ projectId: "project-a", transcript: chunk, tool: "claude-code", sessionId: "session-a" });
+    }
+    const received = extractor.extract.mock.calls.map(([input]) => input.transcript).join("");
+    expect(received).toBe(transcript.replace(key, `[REDACTED:${kind}]`));
+    expect(received).not.toContain(key);
+    expect(received).not.toContain("PRIVATE_KEY_MATERIAL");
+    expect(received).not.toContain("BEGIN PRIVATE KEY");
+  });
+
   it("rejects secrets and does not persist them", async () => {
     const { pipeline, memoryStore } = await createPipeline();
 

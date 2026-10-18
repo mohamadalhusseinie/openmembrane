@@ -1,6 +1,7 @@
 # OpenMembrane Local Private Setup: Claude Code
 
-Claude Code supports MCP servers natively. No adapter code is needed — just configuration.
+Claude Code supports MCP servers natively for retrieval and direct saves. The
+optional hooks adapter captures sessions automatically without model cooperation.
 
 This guide configures the current [Local Private mode](../deployment-modes.md#local-private).
 Local Private remains the default. [GitHub Team](../deployment-modes.md#github-team)
@@ -13,6 +14,77 @@ are separate from team sync.
 - `openmembrane` installed: `npm install -g openmembrane`
 
 ## Configuration
+
+### Automatic session capture
+
+```sh
+npx @openmembrane/adapter-claude-code install
+```
+
+Restart Claude Code. The installer registers a `SessionEnd` command hook in
+`~/.claude/settings.json` and adds marked retrieval instructions to
+`~/.claude/CLAUDE.md`. `CLAUDE_CONFIG_DIR` is respected. Existing hooks and
+instructions are preserved. Claude Code must support exec-form hooks
+(`command` plus `args`). The adapter includes the OpenMembrane CLI dependency;
+it starts the daemon when capture needs it.
+
+For opt-in per-turn capture, run install with `--incremental` (adds `Stop`).
+Running install again without this flag disables per-turn capture.
+To remove the adapter and restore the original configuration:
+
+```sh
+npx @openmembrane/adapter-claude-code uninstall
+```
+
+The handler reads `transcript_path` from hook stdin, converts Claude Code JSONL
+user/assistant text to a transcript, and pipes it to
+`openmembrane ingest --stdin --tool claude-code --format text --session-id <id>`.
+`CLAUDE_PROJECT_DIR` keeps capture anchored to the session project, with hook
+`cwd` as a fallback. Stable session IDs preserve rejection decisions across
+incremental snapshots. Final `Stop` text is included even if transcript writes
+lag. Core redacts the complete transcript before preparing sequential bounded
+requests, so secrets crossing a transport boundary remain redacted.
+Extraction and privacy policy remain in the daemon; configure extraction
+as for [ordinary ingestion](../../README.md#automatic-memory-capture). Ingestion
+continues in a detached process after Claude exits; failures are written to
+`openmembrane-capture.log` in the config directory. This does
+not itself configure MCP or authorize stored-memory egress to a provider.
+Keep the dependency installation/npx cache available, or rerun install if you
+clear it. See the [adapter README](../../packages/adapter-claude-code/README.md)
+for restoration and failure behavior.
+
+#### Share project and storage settings with hooks
+
+MCP server `env` values in `.mcp.json` apply only to that server; hooks do not
+inherit them. If you override `OPENMEMBRANE_PROJECT_ID`, `OPENMEMBRANE_HOME`,
+or `OPENMEMBRANE_STORAGE_BACKEND`, set the same values in the environment
+that launches Claude Code so automatic capture and MCP retrieval use the
+same project and store. Otherwise capture uses the session project directory
+and its defaults, even when MCP has separate overrides.
+
+For example, launch Claude Code with these environment variables, and use
+matching values in any MCP `env` configuration:
+
+```sh
+export OPENMEMBRANE_PROJECT_ID=my-project
+export OPENMEMBRANE_HOME=/absolute/path/to/project-memory
+export OPENMEMBRANE_STORAGE_BACKEND=json
+claude
+```
+
+In PowerShell:
+
+```powershell
+$env:OPENMEMBRANE_PROJECT_ID = "my-project"
+$env:OPENMEMBRANE_HOME = "C:\path\to\project-memory"
+$env:OPENMEMBRANE_STORAGE_BACKEND = "json"
+claude
+```
+
+Prefer an absolute storage path when sharing an override. Keep the same
+settings when using the CLI or review UI for this project.
+
+### MCP retrieval
 
 Add the OpenMembrane MCP server to your project-level `.mcp.json` file (recommended) or global Claude Code settings.
 
