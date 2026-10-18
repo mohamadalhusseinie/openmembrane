@@ -39,3 +39,6 @@ jobs:
 
       - name: Check storage boundaries, types, and tests
         run: npm run check
+
+      - name: Build OpenCode plugin
+        run: npm run build -w @openmembrane/adapter-opencode

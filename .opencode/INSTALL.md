@@ -1,5 +1,9 @@
 # OpenMembrane Local Private Setup: OpenCode
 
+For automatic context injection and session capture without AI tool calls, use
+the [OpenCode plugin setup](../docs/setup/opencode.md). The guide below remains
+available for optional, tool-driven MCP access.
+
 This guide configures the current [Local Private mode](../docs/deployment-modes.md#local-private).
 Local Private remains the default. [GitHub Team](../docs/deployment-modes.md#github-team)
 is also current; Self-Hosted Team and Managed Team are planned. Static exports

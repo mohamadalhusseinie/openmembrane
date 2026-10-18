@@ -1,0 +1,37 @@
+{
+  "name": "@openmembrane/adapter-opencode",
+  "version": "1.0.2",
+  "description": "Automatic OpenMembrane session capture and context for OpenCode",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohamadalhusseinie/openmembrane.git",
+    "directory": "packages/adapter-opencode"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": { "node": ">=18" },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.19.3",
+    "openmembrane": "^1.0.2"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.19.3",
+    "@openmembrane/client": "*"
+  }
+}
