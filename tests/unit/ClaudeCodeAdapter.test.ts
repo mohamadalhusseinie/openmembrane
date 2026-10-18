@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ const fixture = async (name: string) => (await readFile(join(fixtures, name), "u
 const hook: HookCommand = { type: "command", command: "node", args: ["capture.mjs", "openmembrane.js", "capture.log"], timeout: 60 };
 const directories: string[] = [];
 async function temporary(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "openmembrane-claude-"));
+  const path = await realpath(await mkdtemp(join(tmpdir(), "openmembrane-claude-")));
   directories.push(path);
   return path;
 }
