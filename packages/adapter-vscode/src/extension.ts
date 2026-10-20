@@ -10,6 +10,10 @@ export interface ExtensionApi {
   mcpProvider: vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition>;
 }
 
+function isHostFile(uri: vscode.Uri): boolean {
+  return uri.scheme === "file" || (vscode.env.remoteName !== undefined && uri.scheme === "vscode-remote");
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<ExtensionApi | undefined> {
   if (!vscode.workspace.isTrusted) return;
   const output = vscode.window.createOutputChannel("OpenMembrane");
@@ -44,7 +48,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   }
 
   function folders(): readonly vscode.WorkspaceFolder[] {
-    return (vscode.workspace.workspaceFolders ?? []).filter((folder) => folder.uri.scheme === "file");
+    return (vscode.workspace.workspaceFolders ?? []).filter((folder) => isHostFile(folder.uri));
   }
 
   async function selectFolder(): Promise<vscode.WorkspaceFolder> {
@@ -52,7 +56,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     if (all.length === 0) throw new OpenMembraneClientError("E_VSCODE_WORKSPACE", "Open a local workspace folder to use OpenMembrane.");
     if (all.length === 1) return all[0]!;
     const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: "Choose the OpenMembrane project" });
-    if (!picked || picked.uri.scheme !== "file") throw new vscode.CancellationError();
+    if (!picked || !isHostFile(picked.uri)) throw new vscode.CancellationError();
     return picked;
   }
 
@@ -113,7 +117,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     });
     const file = files?.[0];
     if (!file) return;
-    if (file.scheme !== "file" || (await stat(file.fsPath)).size > 1_000_000) {
+    if (!isHostFile(file) || (await stat(file.fsPath)).size > 1_000_000) {
       throw new OpenMembraneClientError("E_VSCODE_TRANSCRIPT", "Choose a local transcript smaller than 1 MB.");
     }
     const transcript = await readFile(file.fsPath, "utf8");

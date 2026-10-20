@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   trusted: true,
   autoSave: false,
+  remoteName: undefined as string | undefined,
   folders: [{ name: "project", uri: { fsPath: "C:\\project", scheme: "file" } }],
   commands: new Map<string, () => Promise<void>>(),
   messages: [] as string[],
@@ -57,6 +58,7 @@ vi.mock("vscode", () => {
     },
     EventEmitter: class { event = vi.fn(); fire = vi.fn(); dispose = vi.fn(); },
     ViewColumn: { One: 1 },
+    env: { get remoteName() { return state.remoteName; } },
     workspace: {
       get isTrusted() { return state.trusted; },
       get workspaceFolders() { return state.folders; },
@@ -117,6 +119,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.trusted = true;
   state.autoSave = false;
+  state.remoteName = undefined;
   state.folders = [{ name: "project", uri: { fsPath: "C:\\project", scheme: "file" } }];
   state.commands.clear();
   state.messages = [];
@@ -169,6 +172,20 @@ describe("VS Code adapter", () => {
     expect(await api!.mcpProvider.provideMcpServerDefinitions({} as vscode.CancellationToken)).toEqual([]);
     await state.commands.get("openmembrane.diagnostics")!();
     expect(state.messages[0]).toContain("Open a local workspace");
+  });
+
+  it("bootstraps and registers remote filesystem folders on the remote host, not virtual folders", async () => {
+    state.remoteName = "ssh-remote";
+    state.folders = [{ name: "remote", uri: { fsPath: "/workspace/project", scheme: "vscode-remote" } }];
+    const api = await start();
+    expect(state.daemon.health).toHaveBeenCalledOnce();
+    const definitions = await api!.mcpProvider.provideMcpServerDefinitions({} as vscode.CancellationToken);
+    expect(definitions).toHaveLength(1);
+    expect(definitions![0]!.cwd).toEqual(state.folders[0]!.uri);
+    await state.commands.get("openmembrane.diagnostics")!();
+    expect(state.clientOptions.at(-1)).toMatchObject({ projectRoot: "/workspace/project" });
+    state.folders = [{ name: "virtual", uri: { fsPath: "/virtual", scheme: "github" } }];
+    expect(await api!.mcpProvider.provideMcpServerDefinitions({} as vscode.CancellationToken)).toEqual([]);
   });
 
   it.each([["rules", ""], [undefined, "rules"]] as const)("handles rules via %s %s without capturing by default", async (command, prompt) => {
@@ -243,12 +260,13 @@ describe("VS Code adapter", () => {
     expect(state.output.join("\n")).toContain("TEST (diag): Safe");
   });
 
-  it("imports an explicitly selected export only after confirmation", async () => {
+  it.each(["file", "vscode-remote"])("imports a %s export only after confirmation", async (scheme) => {
     const root = await mkdtemp(join(tmpdir(), "om-export-"));
     try {
       const file = join(root, "chat.json");
       await writeFile(file, '{"requests":[{"message":"Use strict types."}]}');
-      state.openDialog.mockResolvedValue([{ scheme: "file", fsPath: file }]);
+      state.remoteName = scheme === "vscode-remote" ? "ssh-remote" : undefined;
+      state.openDialog.mockResolvedValue([{ scheme, fsPath: file }]);
       await start();
       await state.commands.get("openmembrane.saveChat")!();
       expect(state.daemon.ingest).not.toHaveBeenCalled();
