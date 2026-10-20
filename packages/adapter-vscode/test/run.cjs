@@ -8,7 +8,7 @@ async function printFailureLogs(root) {
   const logs = path.join(root, "user-data", "logs");
   try {
     for (const file of await readdir(logs, { recursive: true })) {
-      if (file.endsWith(".log") && /exthost|renderer|output_logging/.test(file)) {
+      if (file.endsWith(".log") && /exthost|renderer|output_logging|main\.log/.test(file)) {
         console.error(`--- ${file} ---\n${(await readFile(path.join(logs, file), "utf8")).slice(-12_000)}`);
       }
     }

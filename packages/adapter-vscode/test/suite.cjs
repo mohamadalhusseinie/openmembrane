@@ -1,11 +1,13 @@
 const assert = require("node:assert/strict");
 const { access, readFile } = require("node:fs/promises");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
 const path = require("node:path");
 const vscode = require("vscode");
 const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
 const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio.js");
 
-exports.run = async function run() {
+async function run() {
   const extension = vscode.extensions.getExtension("mohamadalhusseinie.openmembrane-vscode");
   assert.ok(extension, "Extension must be discoverable");
   console.log("Activating OpenMembrane in the isolated extension host");
@@ -113,4 +115,14 @@ exports.run = async function run() {
   assert.equal(manifest.contributes.mcpServerDefinitionProviders[0].id, "openmembrane");
   assert.equal(manifest.contributes.configuration.properties["openmembrane.autoSave"].default, false);
   cancellation.dispose();
+}
+
+exports.run = async function runWithCleanup() {
+  try {
+    await run();
+  } finally {
+    await promisify(execFile)(process.execPath, [path.resolve(__dirname, "../dist/cli.mjs"), "stop"], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 35_000,
+    });
+  }
 };

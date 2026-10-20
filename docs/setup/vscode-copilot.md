@@ -40,7 +40,10 @@ Multi-root workspaces prompt for the target project.
 **Capture boundary:** stable VS Code APIs do not expose all Copilot chat
 transcripts or session-end events. Export a chat using **Chat: Export Chat...**,
 then run **Save chat session to OpenMembrane**, choose the export, and confirm.
-Files must contain at most 100,000 characters. `/save` captures only history
+JSON exports are decoded to message text before daemon redaction; tool payloads,
+reference metadata, and thinking parts are excluded. Normalized transcripts
+must contain at most 100,000 characters (selected files must be at most 1 MB).
+`/save` captures only history
 visible to `@openmembrane`. The opt-in `openmembrane.autoSave` setting defaults
 to `false` and captures only completed `/rules` and `/recall` exchanges handled
 by that participant, not other Copilot chats.
