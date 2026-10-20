@@ -11,7 +11,7 @@ export function transcriptTurn(role: "user" | "assistant", text: string, command
 
 export function exportedChatTranscript(source: string, filename: string): string {
   const text = source.replace(/^\uFEFF/, "");
-  if (extname(filename).toLowerCase() !== ".json" && !text.trimStart().startsWith("{")) return text;
+  if (extname(filename).toLowerCase() !== ".json") return text;
   const invalid = (): OpenMembraneClientError => new OpenMembraneClientError(
     "E_VSCODE_CHAT_EXPORT", "Select a valid VS Code chat JSON export, or a plain-text/Markdown transcript.",
   );

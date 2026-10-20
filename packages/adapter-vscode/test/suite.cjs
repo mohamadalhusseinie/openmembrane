@@ -64,10 +64,10 @@ exports.run = async function run() {
   }
   console.log("PASS MCP registration and real bundled server retrieval");
 
-  async function chat(command, prompt) {
+  async function chat(command, prompt, history = []) {
     const chunks = [];
     const result = await api.participant.requestHandler(
-      { command, prompt }, { history: [] },
+      { command, prompt }, { history },
       { markdown: (value) => { chunks.push(typeof value === "string" ? value : value.value); } },
       cancellation.token,
     );
@@ -87,6 +87,27 @@ exports.run = async function run() {
   await vscode.commands.executeCommand("openmembrane.review");
   assert.match(await chat("review", ""), /pending candidate/);
   console.log("PASS commands and participant candidate review");
+
+  const requestTurn = Object.assign(Object.create(vscode.ChatRequestTurn.prototype), {
+    prompt: "remember: Always use explicit types for extension API boundaries.",
+    participant: "openmembrane.chat", references: [], toolReferences: [],
+  });
+  assert.match(await chat("save", "", [requestTurn]), /history sent to the daemon/);
+  const captureClient = new Client({ name: "vscode-capture-test", version: "1" });
+  try {
+    await captureClient.connect(new StdioClientTransport({
+      command: definition.command, args: definition.args, cwd: definition.cwd.fsPath,
+      env: Object.fromEntries(Object.entries({ ...process.env, ...definition.env })
+        .filter((entry) => typeof entry[1] === "string")),
+      stderr: "pipe",
+    }));
+    const candidates = await captureClient.callTool({ name: "list_memory_candidates", arguments: {} });
+    assert.ok(!candidates.isError, JSON.stringify(candidates));
+    assert.match(JSON.stringify(candidates), /explicit types for extension API boundaries/);
+  } finally {
+    await captureClient.close();
+  }
+  console.log("PASS participant capture through real local daemon extraction");
 
   const manifest = JSON.parse(await readFile(path.join(extension.extensionPath, "package.json"), "utf8"));
   assert.equal(manifest.contributes.mcpServerDefinitionProviders[0].id, "openmembrane");

@@ -345,6 +345,10 @@ describe("VS Code adapter", () => {
 
     it("accepts plain transcripts and fails visibly on malformed or unsupported JSON", () => {
       expect(exportedChatTranscript("remember: Keep it local.\n", "chat.md")).toBe("remember: Keep it local.\n");
+      expect(exportedChatTranscript('{"example":"plain conversation text"}\nremember: Keep it local.', "chat.txt"))
+        .toBe('{"example":"plain conversation text"}\nremember: Keep it local.');
+      expect(exportedChatTranscript("{this is a plain Markdown transcript}", "chat.md"))
+        .toBe("{this is a plain Markdown transcript}");
       for (const source of ["{bad", "{}", '{"requests":[{"message":42}]}', '{"requests":[]}']) {
         expect(() => exportedChatTranscript(source, "chat.json")).toThrow("valid VS Code chat JSON export");
       }
