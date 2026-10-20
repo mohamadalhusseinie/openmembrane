@@ -1,0 +1,68 @@
+{
+  "name": "openmembrane-vscode",
+  "displayName": "OpenMembrane",
+  "publisher": "mohamadalhusseinie",
+  "version": "1.0.2",
+  "private": true,
+  "description": "Local-first project memory for GitHub Copilot Chat",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohamadalhusseinie/openmembrane.git",
+    "directory": "packages/adapter-vscode"
+  },
+  "engines": { "vscode": "^1.104.0" },
+  "categories": ["Chat", "Other"],
+  "extensionKind": ["workspace"],
+  "main": "./dist/extension.cjs",
+  "activationEvents": ["onStartupFinished"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "contributes": {
+    "mcpServerDefinitionProviders": [
+      { "id": "openmembrane", "label": "OpenMembrane" }
+    ],
+    "chatParticipants": [{
+      "id": "openmembrane.chat",
+      "name": "openmembrane",
+      "fullName": "OpenMembrane",
+      "description": "Retrieve local project memory and review candidates",
+      "commands": [
+        { "name": "rules", "description": "Show project rules" },
+        { "name": "recall", "description": "Recall relevant project memory" },
+        { "name": "review", "description": "Review pending memory candidates" },
+        { "name": "save", "description": "Save this participant's visible chat history" }
+      ]
+    }],
+    "commands": [
+      { "command": "openmembrane.review", "title": "OpenMembrane: Review candidates" },
+      { "command": "openmembrane.export", "title": "OpenMembrane: Export static files" },
+      { "command": "openmembrane.diagnostics", "title": "OpenMembrane: Show diagnostics" },
+      { "command": "openmembrane.saveChat", "title": "Save chat session to OpenMembrane" }
+    ],
+    "configuration": {
+      "title": "OpenMembrane",
+      "properties": {
+        "openmembrane.autoSave": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "markdownDescription": "Opt in to ingesting completed `@openmembrane` exchanges through the local daemon. Does not capture other Copilot participants. Extraction may use an external provider only if configured in the daemon."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', {recursive:true,force:true})\" && tsup",
+    "test:host": "npm run build && node test/run.cjs",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@openmembrane/client": "*",
+    "@types/vscode": "1.104.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.2"
+  }
+}
