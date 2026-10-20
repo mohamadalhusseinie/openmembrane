@@ -1,0 +1,7 @@
+{
+  "name": "@openmembrane/adapter-hooks",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@openmembrane/core": "*" }
+}

@@ -45,3 +45,6 @@ jobs:
 
       - name: Build Claude Code adapter
         run: npm run build -w @openmembrane/adapter-claude-code
+
+      - name: Build Codex adapter
+        run: npm run build -w @openmembrane/adapter-codex
