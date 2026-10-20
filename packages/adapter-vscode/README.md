@@ -68,6 +68,9 @@ The extension does not retain a second copy of the raw transcript.
 all-Copilot auto-save hook. `/save` explicitly captures the participant's
 visible history instead. Chat capture is sent only to the local authenticated
 daemon, which owns redaction, extraction, deduplication and approval policy.
+Conversation identity is retained in participant response metadata, so appended
+history does not undo candidate rejections. Imports retain identity while the
+export stays at the same path; moving it starts a new import identity.
 External extraction requires explicit daemon configuration; configure that
 policy before capturing sensitive chats. Retrieval via MCP may be sent to the
 model used by Copilot when you enable/use those tools.
@@ -88,7 +91,8 @@ npm run test:host -w packages/adapter-vscode
 ```
 
 Host tests use `@vscode/test-electron` with VS Code 1.104, an isolated home and
-workspace, and the bundled CLI. Linux requires a display (CI uses `xvfb-run`).
+workspace, in-memory secret storage (no OS keychain prompts), and the bundled
+CLI. Linux requires a display (CI uses `xvfb-run`).
 They exercise real activation/bootstrap, participant requests, registered
 commands, MCP definitions and a real MCP retrieval round-trip. Unit tests cover
 capture opt-in, review messages and error/cancellation paths.

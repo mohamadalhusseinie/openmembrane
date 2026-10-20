@@ -47,6 +47,10 @@ must contain at most 100,000 characters (selected files must be at most 1 MB).
 visible to `@openmembrane`. The opt-in `openmembrane.autoSave` setting defaults
 to `false` and captures only completed `/rules` and `/recall` exchanges handled
 by that participant, not other Copilot chats.
+Participant conversation IDs are retained in chat response metadata across saves;
+imports use the export's path as their stable identity. Re-saving an extended
+conversation or updating the same export file therefore honors earlier candidate
+rejections. Moving an export to a different path starts a new import identity.
 
 Capture goes through the local daemon's redaction/extraction/approval pipeline.
 An explicitly configured external extractor can receive redacted captures;

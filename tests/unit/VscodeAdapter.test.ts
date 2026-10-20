@@ -95,7 +95,8 @@ import * as vscode from "vscode";
 import { OpenMembraneClientError } from "@openmembrane/client";
 import { activate } from "../../packages/adapter-vscode/src/extension";
 import { exportedChatTranscript, transcriptTurn } from "../../packages/adapter-vscode/src/transcript";
-import { MockMemoryExtractor, SecretDetector } from "@openmembrane/core";
+import { MemoryApprovalService, MemoryPipeline, MockMemoryExtractor, SecretDetector } from "@openmembrane/core";
+import { JsonAuditLogStore, JsonMemoryStore, JsonPendingCandidateStore } from "@openmembrane/storage";
 
 async function start() {
   return activate({
@@ -208,7 +209,7 @@ describe("VS Code adapter", () => {
     await chat("recall", "storage");
     expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({
       transcript: "user (/recall):\nstorage\n\nassistant:\nUse local memory.",
-      tool: "vscode-copilot", sessionId: expect.stringMatching(/^vscode-[a-f0-9]{64}$/),
+      tool: "vscode-copilot", sessionId: expect.stringMatching(/^vscode-[a-f0-9-]{36}$/),
     }));
     await chat("review");
     expect(state.daemon.ingest).toHaveBeenCalledTimes(1);
@@ -239,6 +240,69 @@ describe("VS Code adapter", () => {
     expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({
       transcript: "user:\nExplain local storage\n\nassistant:\nKeep it local.",
     }));
+  });
+
+  it.each(["participant", "import"] as const)("honors rejection after extending and re-saving a %s capture", async (mode) => {
+    const root = await mkdtemp(join(tmpdir(), "om-vscode-replay-"));
+    try {
+      const stores = {
+        memoryStore: new JsonMemoryStore(root),
+        pendingCandidateStore: new JsonPendingCandidateStore(root),
+        auditLogStore: new JsonAuditLogStore(root),
+      };
+      const pipeline = new MemoryPipeline({ ...stores, extractor: new MockMemoryExtractor() });
+      const approval = new MemoryApprovalService(stores);
+      state.daemon.ingest.mockImplementation(async (input: { sessionId: string; tool: string; transcript: string }) => {
+        const result = await pipeline.process({ ...input, projectId: "project-a" });
+        return { savedCount: result.saved.length, pendingCount: result.pending.length, rejectedCount: result.rejected.length };
+      });
+      const request: vscode.ChatRequestTurn = {
+        prompt: "remember: Prefer explicit TypeScript return types.",
+        participant: "openmembrane.chat", references: [], toolReferences: [],
+      };
+      Object.setPrototypeOf(request, vscode.ChatRequestTurn.prototype);
+      const file = join(root, "chat.txt");
+      await writeFile(file, request.prompt);
+      state.openDialog.mockResolvedValue([{ scheme: "file", fsPath: file }]);
+      state.warning.mockResolvedValue("Save session");
+      const first = mode === "participant" ? await chat("save", "", false, [request]) : undefined;
+      if (mode === "import") {
+        await start();
+        await state.commands.get("openmembrane.saveChat")!();
+      }
+      const pending = await stores.pendingCandidateStore.list("project-a");
+      expect(pending).toHaveLength(1);
+      await approval.reject("project-a", pending[0]!.id);
+      const confirmation: vscode.ChatResponseTurn = {
+        participant: "openmembrane.chat", result: first?.result ?? {},
+        response: [new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString("Visible history sent to the daemon."))],
+      };
+      const appended: vscode.ChatRequestTurn = { ...request, prompt: "An additional ordinary turn." };
+      Object.setPrototypeOf(appended, vscode.ChatRequestTurn.prototype);
+      if (mode === "participant") {
+        await chat("save", "", false, [request, confirmation, appended]);
+      } else {
+        await writeFile(file, `${request.prompt}\n\nAn additional ordinary turn.`);
+        await state.commands.get("openmembrane.saveChat")!();
+      }
+      expect(state.daemon.ingest.mock.calls[1]![0].sessionId).toBe(state.daemon.ingest.mock.calls[0]![0].sessionId);
+      expect(await stores.pendingCandidateStore.list("project-a")).toEqual([]);
+      expect(await stores.memoryStore.list("project-a")).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retains the conversation identity from auto-save through a later explicit save", async () => {
+    state.autoSave = true;
+    const first = await chat("rules");
+    const response: vscode.ChatResponseTurn = {
+      participant: "openmembrane.chat", result: first.result ?? {}, response: [],
+    };
+    await chat("save", "", false, [response]);
+    expect(state.daemon.ingest.mock.calls[1]![0].sessionId).toBe(state.daemon.ingest.mock.calls[0]![0].sessionId);
+    await chat("rules");
+    expect(state.daemon.ingest.mock.calls[2]![0].sessionId).not.toBe(state.daemon.ingest.mock.calls[0]![0].sessionId);
   });
 
   it("does not retrieve or ingest cancelled requests", async () => {

@@ -48,7 +48,7 @@ async function main() {
       extensionTestsEnv: env,
       launchArgs: [
         workspace, "--disable-extensions", "--skip-welcome", "--skip-release-notes",
-        "--disable-workspace-trust", "--no-sandbox",
+        "--disable-workspace-trust", "--no-sandbox", "--use-inmemory-secretstorage",
         "--user-data-dir", path.join(root, "user-data"),
         "--extensions-dir", path.join(root, "extensions"),
       ],

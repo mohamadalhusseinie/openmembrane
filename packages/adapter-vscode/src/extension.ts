@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
@@ -13,6 +13,15 @@ export interface ExtensionApi {
 
 function isHostFile(uri: vscode.Uri): boolean {
   return uri.scheme === "file" || (vscode.env.remoteName !== undefined && uri.scheme === "vscode-remote");
+}
+
+function conversationId(history: vscode.ChatContext): string {
+  for (const turn of history.history) {
+    if (turn instanceof vscode.ChatRequestTurn || turn.participant !== "openmembrane.chat") continue;
+    const id: unknown = turn.result.metadata?.["openmembraneSessionId"];
+    if (typeof id === "string" && /^vscode-[a-f0-9-]{36}$/.test(id)) return id;
+  }
+  return `vscode-${randomUUID()}`;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<ExtensionApi | undefined> {
@@ -65,13 +74,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     return picked;
   }
 
-  async function save(daemon: OpenMembraneClient, transcript: string): Promise<void> {
+  async function save(daemon: OpenMembraneClient, transcript: string, sessionId: string): Promise<void> {
     if (!transcript.trim() || transcript.length > 100_000) {
       throw new OpenMembraneClientError("E_VSCODE_TRANSCRIPT", "Choose a non-empty chat export of at most 100,000 characters. Split larger exports before saving.");
     }
     const result = await daemon.ingest({
       tool: "vscode-copilot",
-      sessionId: `vscode-${createHash("sha256").update(transcript).digest("hex")}`,
+      sessionId,
       transcript,
     });
     const states = new Map<string, number>();
@@ -136,7 +145,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       `Send the selected chat export to OpenMembrane for ${folder.name}? The daemon will redact secrets and apply its configured extraction policy, which may use an external provider.`,
       { modal: true }, "Save session",
     );
-    if (answer === "Save session") await save(client(folder), transcript);
+    if (answer === "Save session") {
+      await save(client(folder), transcript, `vscode-import-${createHash("sha256").update(file.fsPath).digest("hex")}`);
+    }
   });
 
   const mcpProvider: ExtensionApi["mcpProvider"] = {
@@ -160,9 +171,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   );
 
   const participant = vscode.chat.createChatParticipant("openmembrane.chat", async (request, history, stream, token) => {
+    const sessionId = conversationId(history);
+    const chatResult = { metadata: { openmembraneSessionId: sessionId } };
     try {
       const folder = await selectFolder();
-      if (token.isCancellationRequested) return;
+      if (token.isCancellationRequested) return chatResult;
       const daemon = client(folder);
       const prompt = request.prompt.trim();
       const verb = prompt.match(/^\S+/)?.[0] ?? "";
@@ -175,7 +188,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       } else if (command === "recall") {
         if (!query) {
           stream.markdown("Use `@openmembrane /recall <query>`.");
-          return;
+          return chatResult;
         }
         const result = await daemon.getRelevantContext({ query });
         response = result.memories.map((memory) => memory.content).join("\n\n") || "No relevant memories found.";
@@ -183,30 +196,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         const candidates = await daemon.listMemoryCandidates({ limit: null });
         stream.markdown(`${candidates.length} pending candidate(s). Opening the review panel.`);
         await review(folder);
-        return;
+        return chatResult;
       } else if (command === "save") {
         const transcript = history.history.map((turn) => turn instanceof vscode.ChatRequestTurn
           ? transcriptTurn("user", turn.prompt, turn.command)
           : transcriptTurn("assistant", turn.response.flatMap((part) => part instanceof vscode.ChatResponseMarkdownPart ? [part.value.value] : []).join("\n")),
         ).join("\n\n");
-        await save(daemon, transcript);
+        await save(daemon, transcript, sessionId);
         stream.markdown("Visible @openmembrane history sent to the daemon.");
-        return;
+        return chatResult;
       } else {
         stream.markdown("Use `/rules`, `/recall <query>`, `/review`, or `/save`. To capture other Copilot chats, export the chat and run **Save chat session to OpenMembrane**.");
-        return;
+        return chatResult;
       }
-      if (token.isCancellationRequested) return;
+      if (token.isCancellationRequested) return chatResult;
       // Stored content is data, not trusted Markdown commands or links.
       const text = new vscode.MarkdownString();
       text.appendText(response);
       stream.markdown(text);
       if (vscode.workspace.getConfiguration("openmembrane", folder.uri).get<boolean>("autoSave", false)) {
-        await save(daemon, `${transcriptTurn("user", request.command ? request.prompt : query, command)}\n\n${transcriptTurn("assistant", response)}`);
+        await save(daemon, `${transcriptTurn("user", request.command ? request.prompt : query, command)}\n\n${transcriptTurn("assistant", response)}`, sessionId);
       }
     } catch (error) {
-      if (!(error instanceof vscode.CancellationError)) return { errorDetails: { message: report(error) } };
+      if (!(error instanceof vscode.CancellationError)) return { ...chatResult, errorDetails: { message: report(error) } };
     }
+    return chatResult;
   });
   context.subscriptions.push(participant);
 
