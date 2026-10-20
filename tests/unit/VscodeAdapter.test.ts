@@ -214,6 +214,18 @@ describe("VS Code adapter", () => {
     expect(state.daemon.ingest).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves multiline plain-text command input through auto-save and local extraction", async () => {
+    state.autoSave = true;
+    await chat(undefined, "recall storage\nremember: Always use strict TypeScript types.");
+    expect(state.daemon.getRelevantContext).toHaveBeenCalledWith({
+      query: "storage\nremember: Always use strict TypeScript types.",
+    });
+    const capture = state.daemon.ingest.mock.calls[0]![0] as { transcript: string };
+    expect(capture.transcript).toContain("user (/recall):\nstorage\nremember: Always use strict TypeScript types.");
+    const extracted = await new MockMemoryExtractor().extract({ projectId: "test", transcript: capture.transcript });
+    expect(extracted.some((item) => item.content === "Always use strict TypeScript types.")).toBe(true);
+  });
+
   it("explicitly saves only the participant history supplied by VS Code", async () => {
     const request: vscode.ChatRequestTurn = {
       prompt: "Explain local storage", participant: "openmembrane.chat", references: [], toolReferences: [],

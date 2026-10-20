@@ -164,9 +164,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       const folder = await selectFolder();
       if (token.isCancellationRequested) return;
       const daemon = client(folder);
-      const [verb = "", ...words] = request.prompt.trim().split(/\s+/);
+      const prompt = request.prompt.trim();
+      const verb = prompt.match(/^\S+/)?.[0] ?? "";
       const command = request.command ?? verb.toLowerCase();
-      const query = request.command ? request.prompt.trim() : words.join(" ");
+      const query = request.command ? prompt : prompt.slice(verb.length).trimStart();
       let response: string;
       if (command === "rules") {
         const result = await daemon.getProjectRules({});

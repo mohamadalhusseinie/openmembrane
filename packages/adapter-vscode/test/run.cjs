@@ -4,6 +4,19 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { runTests } = require("@vscode/test-electron");
 
+async function printFailureLogs(root) {
+  const logs = path.join(root, "user-data", "logs");
+  try {
+    for (const file of await readdir(logs, { recursive: true })) {
+      if (file.endsWith(".log") && /exthost|renderer|output_logging/.test(file)) {
+        console.error(`--- ${file} ---\n${(await readFile(path.join(logs, file), "utf8")).slice(-12_000)}`);
+      }
+    }
+  } catch (error) {
+    console.error("Could not read extension host failure logs:", error);
+  }
+}
+
 async function main() {
   const root = await mkdtemp(path.join(tmpdir(), "om-vsc-"));
   const home = path.join(root, "home");
@@ -23,6 +36,10 @@ async function main() {
     OPENMEMBRANE_EXTRACTION_ENABLED: "false",
     OPENMEMBRANE_VSCODE_TEST_ROOT: root,
   };
+  const watchdog = setTimeout(() => {
+    console.error("Extension host has not completed after 90 seconds; collecting startup diagnostics.");
+    void printFailureLogs(root);
+  }, 90_000);
   try {
     await runTests({
       version: "1.104.0",
@@ -37,18 +54,10 @@ async function main() {
       ],
     });
   } catch (error) {
-    const logs = path.join(root, "user-data", "logs");
-    try {
-      for (const file of await readdir(logs, { recursive: true })) {
-        if (file.endsWith(".log") && /exthost|output_logging/.test(file)) {
-          console.error(`--- ${file} ---\n${(await readFile(path.join(logs, file), "utf8")).slice(-12_000)}`);
-        }
-      }
-    } catch (logError) {
-      console.error("Could not read extension host failure logs:", logError);
-    }
+    await printFailureLogs(root);
     throw error;
   } finally {
+    clearTimeout(watchdog);
     const stopped = spawnSync(process.execPath, [path.resolve(__dirname, "../dist/cli.mjs"), "stop"], {
       env, encoding: "utf8", timeout: 35_000,
     });
