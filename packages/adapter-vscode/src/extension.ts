@@ -4,7 +4,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { createDaemonAutoLaunch, OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import { openReview } from "./review";
-import { exportedChatTranscript, transcriptTurn } from "./transcript";
+import { exportedChatTranscript, originalParticipantResponse, transcriptTurn } from "./transcript";
 
 export interface ExtensionApi {
   participant: vscode.ChatParticipant;
@@ -22,6 +22,12 @@ function conversationId(history: vscode.ChatContext): string {
     if (typeof id === "string" && /^vscode-[a-f0-9-]{36}$/.test(id)) return id;
   }
   return `vscode-${randomUUID()}`;
+}
+
+function assistantText(turn: vscode.ChatResponseTurn): string {
+  const raw = originalParticipantResponse(turn.participant, turn.result);
+  if (raw !== undefined) return raw;
+  return turn.response.flatMap((part) => part instanceof vscode.ChatResponseMarkdownPart ? [part.value.value] : []).join("\n");
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<ExtensionApi | undefined> {
@@ -172,7 +178,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
 
   const participant = vscode.chat.createChatParticipant("openmembrane.chat", async (request, history, stream, token) => {
     const sessionId = conversationId(history);
-    const chatResult = { metadata: { openmembraneSessionId: sessionId } };
+    const metadata: { openmembraneSessionId: string; openmembraneResponseText?: string } = { openmembraneSessionId: sessionId };
+    const chatResult = { metadata };
     try {
       const folder = await selectFolder();
       if (token.isCancellationRequested) return chatResult;
@@ -200,7 +207,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       } else if (command === "save") {
         const transcript = history.history.map((turn) => turn instanceof vscode.ChatRequestTurn
           ? transcriptTurn("user", turn.prompt, turn.command)
-          : transcriptTurn("assistant", turn.response.flatMap((part) => part instanceof vscode.ChatResponseMarkdownPart ? [part.value.value] : []).join("\n")),
+          : transcriptTurn("assistant", assistantText(turn)),
         ).join("\n\n");
         await save(daemon, transcript, sessionId);
         stream.markdown("Visible @openmembrane history sent to the daemon.");
@@ -210,6 +217,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         return chatResult;
       }
       if (token.isCancellationRequested) return chatResult;
+      metadata.openmembraneResponseText = response;
       // Stored content is data, not trusted Markdown commands or links.
       const text = new vscode.MarkdownString();
       text.appendText(response);

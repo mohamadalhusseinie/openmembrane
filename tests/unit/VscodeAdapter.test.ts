@@ -305,6 +305,20 @@ describe("VS Code adapter", () => {
     expect(state.daemon.ingest.mock.calls[2]![0].sessionId).not.toBe(state.daemon.ingest.mock.calls[0]![0].sessionId);
   });
 
+  it("captures original retrieval text instead of its escaped Markdown representation", async () => {
+    const raw = "Use `named_exports` and strict types.";
+    state.daemon.getProjectRules.mockResolvedValue({ rules: [{ content: raw }] });
+    const first = await chat("rules");
+    const response: vscode.ChatResponseTurn = {
+      participant: "openmembrane.chat", result: first.result ?? {},
+      response: [new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString("Use&nbsp;\\`named\\_exports\\`&nbsp;and&nbsp;strict&nbsp;types\\."))],
+    };
+    await chat("save", "", false, [response]);
+    expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({
+      transcript: `assistant:\n${raw}`,
+    }));
+  });
+
   it("does not retrieve or ingest cancelled requests", async () => {
     state.autoSave = true;
     await chat("rules", "", true);
@@ -391,6 +405,20 @@ describe("VS Code adapter", () => {
   });
 
   describe("VS Code transcript normalization", () => {
+    it("uses original retrieval text in this participant's JSON exports, not arbitrary metadata", () => {
+      const raw = "Use `named_exports` and strict types.";
+      const request = {
+        message: "rules", response: [{ value: "Use&nbsp;escaped&nbsp;text." }],
+        agent: { id: "openmembrane.chat" },
+        result: { metadata: { openmembraneResponseText: raw } },
+      };
+      expect(exportedChatTranscript(JSON.stringify({ requests: [request] }), "chat.json"))
+        .toBe(`user:\nrules\n\nassistant:\n${raw}`);
+      request.agent.id = "another.participant";
+      expect(exportedChatTranscript(JSON.stringify({ requests: [request] }), "chat.json"))
+        .toBe("user:\nrules\n\nassistant:\nUse&nbsp;escaped&nbsp;text.");
+    });
+
     it("decodes real export message/markdown shapes before daemon secret redaction and extraction", async () => {
       const source = JSON.stringify({
         requesterUsername: "Developer", responderUsername: "GitHub Copilot",

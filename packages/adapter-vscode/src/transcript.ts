@@ -9,6 +9,12 @@ export function transcriptTurn(role: "user" | "assistant", text: string, command
   return `${role}${command ? ` (/${command})` : ""}:\n${text}`;
 }
 
+export function originalParticipantResponse(participant: unknown, result: unknown): string | undefined {
+  if (participant !== "openmembrane.chat" || !record(result) || !record(result.metadata)) return undefined;
+  const text = result.metadata.openmembraneResponseText;
+  return typeof text === "string" ? text : undefined;
+}
+
 export function exportedChatTranscript(source: string, filename: string): string {
   const text = source.replace(/^\uFEFF/, "");
   if (extname(filename).toLowerCase() !== ".json") return text;
@@ -31,13 +37,14 @@ export function exportedChatTranscript(source: string, filename: string): string
     if (prompt.trim()) turns.push(transcriptTurn("user", prompt));
     if (request.response === undefined || request.response === null) continue;
     if (!Array.isArray(request.response)) throw invalid();
-    const response = request.response.flatMap((part: unknown) => {
-      if (!record(part)) throw invalid();
-      if (part.kind === undefined && typeof part.value === "string") return [part.value];
-      if ((part.kind === "markdownContent" || part.kind === "markdownVuln") &&
-        record(part.content) && typeof part.content.value === "string") return [part.content.value];
-      return [];
-    }).join("");
+    const response = originalParticipantResponse(record(request.agent) ? request.agent.id : undefined, request.result) ??
+      request.response.flatMap((part: unknown) => {
+        if (!record(part)) throw invalid();
+        if (part.kind === undefined && typeof part.value === "string") return [part.value];
+        if ((part.kind === "markdownContent" || part.kind === "markdownVuln") &&
+          record(part.content) && typeof part.content.value === "string") return [part.content.value];
+        return [];
+      }).join("");
     if (response.trim()) turns.push(transcriptTurn("assistant", response));
   }
   if (turns.length === 0) throw invalid();

@@ -71,6 +71,9 @@ daemon, which owns redaction, extraction, deduplication and approval policy.
 Conversation identity is retained in participant response metadata, so appended
 history does not undo candidate rejections. Imports retain identity while the
 export stays at the same path; moving it starts a new import identity.
+Participant response metadata also retains original retrieval text separately
+from its escaped Markdown display, so `/save` and JSON imports do not extract
+display escapes as new facts.
 External extraction requires explicit daemon configuration; configure that
 policy before capturing sensitive chats. Retrieval via MCP may be sent to the
 model used by Copilot when you enable/use those tools.
