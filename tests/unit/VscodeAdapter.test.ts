@@ -158,7 +158,7 @@ describe("VS Code adapter", () => {
     expect([...state.commands.keys()]).toEqual([
       "openmembrane.review", "openmembrane.export", "openmembrane.diagnostics", "openmembrane.saveChat",
     ]);
-    expect(state.clientOptions[0]).toMatchObject({ projectRoot: "C:\\project", requestTimeoutMs: 1_800_000 });
+    expect(state.clientOptions[0]).toMatchObject({ projectRoot: "C:\\project", requestTimeoutMs: 1_000 });
   });
 
   it("does nothing in untrusted workspaces", async () => {

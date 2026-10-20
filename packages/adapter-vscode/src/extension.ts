@@ -32,17 +32,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     return message;
   }
 
+  function createClient(folder: vscode.WorkspaceFolder, requestTimeoutMs: number): OpenMembraneClient {
+    return new OpenMembraneClient({
+      projectRoot: folder.uri.fsPath,
+      requestTimeoutMs,
+      autoLaunch: createDaemonAutoLaunch(process.execPath, [cli, "serve"], {
+        cwd: folder.uri.fsPath,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      }),
+    });
+  }
+
   function client(folder: vscode.WorkspaceFolder): OpenMembraneClient {
     let value = clients.get(folder.uri.fsPath);
     if (!value) {
-      value = new OpenMembraneClient({
-        projectRoot: folder.uri.fsPath,
-        requestTimeoutMs: 30 * 60_000,
-        autoLaunch: createDaemonAutoLaunch(process.execPath, [cli, "serve"], {
-          cwd: folder.uri.fsPath,
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-        }),
-      });
+      value = createClient(folder, 30 * 60_000);
       clients.set(folder.uri.fsPath, value);
     }
     return value;
@@ -209,7 +213,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     const folder = folders()[0];
     if (!folder) return;
     try {
-      await client(folder).health();
+      await createClient(folder, 1_000).health();
     } catch (error) {
       report(error);
     }

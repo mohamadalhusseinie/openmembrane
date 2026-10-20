@@ -38,10 +38,14 @@ async function main() {
     });
   } catch (error) {
     const logs = path.join(root, "user-data", "logs");
-    for (const file of await readdir(logs, { recursive: true })) {
-      if (file.endsWith(".log") && /exthost|output_logging/.test(file)) {
-        console.error(`--- ${file} ---\n${(await readFile(path.join(logs, file), "utf8")).slice(-12_000)}`);
+    try {
+      for (const file of await readdir(logs, { recursive: true })) {
+        if (file.endsWith(".log") && /exthost|output_logging/.test(file)) {
+          console.error(`--- ${file} ---\n${(await readFile(path.join(logs, file), "utf8")).slice(-12_000)}`);
+        }
       }
+    } catch (logError) {
+      console.error("Could not read extension host failure logs:", logError);
     }
     throw error;
   } finally {
