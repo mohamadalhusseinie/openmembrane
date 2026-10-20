@@ -4,6 +4,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { createDaemonAutoLaunch, OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import { openReview } from "./review";
+import { exportedChatTranscript, transcriptTurn } from "./transcript";
 
 export interface ExtensionApi {
   participant: vscode.ChatParticipant;
@@ -69,8 +70,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       sessionId: `vscode-${createHash("sha256").update(transcript).digest("hex")}`,
       transcript,
     });
+    const states = new Map<string, number>();
+    for (const proposal of result.proposals ?? []) {
+      states.set(proposal.state, (states.get(proposal.state) ?? 0) + 1);
+    }
+    const proposals = result.proposalCount === undefined ? "" :
+      ` ${result.proposalCount} team proposals (${[...states].map(([state, count]) => `${state}: ${count}`).join(", ")}). Check team review/diagnostics for publication status.`;
     void vscode.window.showInformationMessage(
-      `OpenMembrane: ${result.savedCount} saved, ${result.pendingCount} pending, ${result.rejectedCount} rejected.`,
+      `OpenMembrane: ${result.savedCount} saved, ${result.pendingCount} pending, ${result.rejectedCount} rejected.${proposals}`,
     );
   }
 
@@ -120,7 +127,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     if (!isHostFile(file) || (await stat(file.fsPath)).size > 1_000_000) {
       throw new OpenMembraneClientError("E_VSCODE_TRANSCRIPT", "Choose a local transcript smaller than 1 MB.");
     }
-    const transcript = await readFile(file.fsPath, "utf8");
+    const transcript = exportedChatTranscript(await readFile(file.fsPath, "utf8"), file.fsPath);
     const answer = await vscode.window.showWarningMessage(
       `Send the selected chat export to OpenMembrane for ${folder.name}? The daemon will redact secrets and apply its configured extraction policy, which may use an external provider.`,
       { modal: true }, "Save session",
@@ -174,8 +181,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         return;
       } else if (command === "save") {
         const transcript = history.history.map((turn) => turn instanceof vscode.ChatRequestTurn
-          ? `user: ${turn.command ? `/${turn.command} ` : ""}${turn.prompt}`
-          : `assistant: ${turn.response.flatMap((part) => part instanceof vscode.ChatResponseMarkdownPart ? [part.value.value] : []).join("\n")}`,
+          ? transcriptTurn("user", turn.prompt, turn.command)
+          : transcriptTurn("assistant", turn.response.flatMap((part) => part instanceof vscode.ChatResponseMarkdownPart ? [part.value.value] : []).join("\n")),
         ).join("\n\n");
         await save(daemon, transcript);
         stream.markdown("Visible @openmembrane history sent to the daemon.");
@@ -190,7 +197,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       text.appendText(response);
       stream.markdown(text);
       if (vscode.workspace.getConfiguration("openmembrane", folder.uri).get<boolean>("autoSave", false)) {
-        await save(daemon, `user: ${request.command ?? command} ${query}\n\nassistant: ${response}`);
+        await save(daemon, `${transcriptTurn("user", request.command ? request.prompt : query, command)}\n\n${transcriptTurn("assistant", response)}`);
       }
     } catch (error) {
       if (!(error instanceof vscode.CancellationError)) return { errorDetails: { message: report(error) } };

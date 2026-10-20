@@ -94,6 +94,8 @@ vi.mock("vscode", () => {
 import * as vscode from "vscode";
 import { OpenMembraneClientError } from "@openmembrane/client";
 import { activate } from "../../packages/adapter-vscode/src/extension";
+import { exportedChatTranscript, transcriptTurn } from "../../packages/adapter-vscode/src/transcript";
+import { MockMemoryExtractor, SecretDetector } from "@openmembrane/core";
 
 async function start() {
   return activate({
@@ -205,7 +207,7 @@ describe("VS Code adapter", () => {
     state.autoSave = true;
     await chat("recall", "storage");
     expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({
-      transcript: "user: recall storage\n\nassistant: Use local memory.",
+      transcript: "user (/recall):\nstorage\n\nassistant:\nUse local memory.",
       tool: "vscode-copilot", sessionId: expect.stringMatching(/^vscode-[a-f0-9]{64}$/),
     }));
     await chat("review");
@@ -223,7 +225,7 @@ describe("VS Code adapter", () => {
     };
     await chat("save", "", false, [request, response]);
     expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({
-      transcript: "user: Explain local storage\n\nassistant: Keep it local.",
+      transcript: "user:\nExplain local storage\n\nassistant:\nKeep it local.",
     }));
   });
 
@@ -272,14 +274,26 @@ describe("VS Code adapter", () => {
       expect(state.daemon.ingest).not.toHaveBeenCalled();
       state.warning.mockResolvedValue("Save session");
       await state.commands.get("openmembrane.saveChat")!();
-      expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({ transcript: '{"requests":[{"message":"Use strict types."}]}' }));
-      await writeFile(file, "x".repeat(100_001));
+      expect(state.daemon.ingest).toHaveBeenCalledWith(expect.objectContaining({ transcript: "user:\nUse strict types." }));
+      await writeFile(file, JSON.stringify({ requests: [{ message: "x".repeat(100_001) }] }));
       await state.commands.get("openmembrane.saveChat")!();
       expect(state.daemon.ingest).toHaveBeenCalledTimes(1);
       expect(state.messages.at(-1)).toContain("100,000");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("reports team proposal states instead of hiding publication outcomes", async () => {
+    state.autoSave = true;
+    state.daemon.ingest.mockResolvedValue({
+      savedCount: 0, pendingCount: 0, rejectedCount: 0, proposalCount: 2,
+      proposals: [{ memoryId: "one", state: "proposed" }, { memoryId: "two", state: "retry_scheduled", nextAttemptAt: "later" }],
+    });
+    await chat("rules");
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.stringContaining(
+      "2 team proposals (proposed: 1, retry_scheduled: 1)",
+    ));
   });
 
   it("renders escaped candidates and accepts only valid review messages", async () => {
@@ -298,6 +312,43 @@ describe("VS Code adapter", () => {
     expect(state.daemon.approveMemoryCandidate).toHaveBeenCalledWith({ candidateId: "candidate-1" });
     await state.receive!({ action: "reject", id: "candidate-1" });
     expect(state.daemon.rejectMemoryCandidate).toHaveBeenCalledWith({ candidateId: "candidate-1" });
+  });
+
+  describe("VS Code transcript normalization", () => {
+    it("decodes real export message/markdown shapes before daemon secret redaction and extraction", async () => {
+      const source = JSON.stringify({
+        requesterUsername: "Developer", responderUsername: "GitHub Copilot",
+        requests: [{
+          message: { text: 'remember: Always use strict TypeScript types.\npassword="fixturePassword123"', parts: [] },
+          variableData: { variables: [{ value: "private reference metadata" }] },
+          response: [{ value: "Confirmed.\n" }, { value: "testing: Run extension host tests before publishing." }, { kind: "thinking", value: "private reasoning" }],
+        }, { message: "Legacy string request", response: [] }],
+      });
+      const transcript = exportedChatTranscript(source, "chat.json");
+      expect(transcript).toContain('user:\nremember: Always use strict TypeScript types.\npassword="fixturePassword123"');
+      expect(transcript).toContain("assistant:\nConfirmed.\ntesting: Run extension host tests before publishing.");
+      expect(transcript).not.toContain("private reference metadata");
+      expect(transcript).not.toContain("private reasoning");
+      const redacted = new SecretDetector().redact(transcript);
+      expect(redacted.redactedText).not.toContain("fixturePassword123");
+      const extracted = await new MockMemoryExtractor().extract({ projectId: "test", transcript: redacted.redactedText });
+      expect(extracted.map((item) => item.content)).toEqual([
+        "Always use strict TypeScript types.", "Run extension host tests before publishing.",
+      ]);
+    });
+
+    it("preserves first-line marked facts in participant history and auto-save", async () => {
+      const transcript = transcriptTurn("user", "remember: Always use strict TypeScript types.", "recall");
+      const extracted = await new MockMemoryExtractor().extract({ projectId: "test", transcript });
+      expect(extracted[0]?.content).toBe("Always use strict TypeScript types.");
+    });
+
+    it("accepts plain transcripts and fails visibly on malformed or unsupported JSON", () => {
+      expect(exportedChatTranscript("remember: Keep it local.\n", "chat.md")).toBe("remember: Keep it local.\n");
+      for (const source of ["{bad", "{}", '{"requests":[{"message":42}]}', '{"requests":[]}']) {
+        expect(() => exportedChatTranscript(source, "chat.json")).toThrow("valid VS Code chat JSON export");
+      }
+    });
   });
 
   it("uses the explicitly selected folder in multi-root workspaces", async () => {

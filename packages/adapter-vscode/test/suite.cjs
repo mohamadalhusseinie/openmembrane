@@ -8,7 +8,17 @@ const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio
 exports.run = async function run() {
   const extension = vscode.extensions.getExtension("mohamadalhusseinie.openmembrane-vscode");
   assert.ok(extension, "Extension must be discoverable");
-  const api = await extension.activate();
+  console.log("Activating OpenMembrane in the isolated extension host");
+  let timer;
+  let api;
+  try {
+    api = await Promise.race([
+      extension.activate(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Extension activation exceeded 60 seconds")), 60_000); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
   assert.equal(extension.isActive, true);
   assert.equal(api.participant.id, "openmembrane.chat");
   const root = process.env.OPENMEMBRANE_VSCODE_TEST_ROOT;

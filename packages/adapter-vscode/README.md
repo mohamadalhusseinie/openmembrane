@@ -56,7 +56,10 @@ commands, and cannot silently capture ordinary Copilot or other participants.
 
 For a normal Copilot session, use VS Code's **Chat: Export Chat...** action,
 then run **Save chat session to OpenMembrane**, select the export and confirm
-the target project. Exports must be non-empty and at most 100,000 characters
+the target project. JSON exports are decoded to user/assistant message text
+before daemon redaction; reference metadata, tool payloads and thinking parts
+are not ingested. Markdown/text transcripts retain their line breaks.
+Normalized transcripts must be non-empty and at most 100,000 characters
 (files over 1 MB are rejected before reading). Split larger exports first.
 The extension does not retain a second copy of the raw transcript.
 
@@ -70,6 +73,8 @@ policy before capturing sensitive chats. Retrieval via MCP may be sent to the
 model used by Copilot when you enable/use those tools.
 
 Errors show safe client messages and daemon diagnostic IDs where available.
+Capture summaries include team proposal counts and states when using GitHub
+Team mode, including scheduled/deferred publication retries.
 Use **Show diagnostics** or the local daemon log for investigation. Candidate
 contents are escaped in the webview; no daemon token or HTTP endpoint is exposed
 to webview scripts.

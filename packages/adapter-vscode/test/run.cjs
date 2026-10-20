@@ -1,4 +1,4 @@
-const { mkdtemp, mkdir, rm, writeFile } = require("node:fs/promises");
+const { mkdtemp, mkdir, rm, writeFile, readdir, readFile } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
@@ -36,6 +36,14 @@ async function main() {
         "--extensions-dir", path.join(root, "extensions"),
       ],
     });
+  } catch (error) {
+    const logs = path.join(root, "user-data", "logs");
+    for (const file of await readdir(logs, { recursive: true })) {
+      if (file.endsWith(".log") && /exthost|output_logging/.test(file)) {
+        console.error(`--- ${file} ---\n${(await readFile(path.join(logs, file), "utf8")).slice(-12_000)}`);
+      }
+    }
+    throw error;
   } finally {
     const stopped = spawnSync(process.execPath, [path.resolve(__dirname, "../dist/cli.mjs"), "stop"], {
       env, encoding: "utf8", timeout: 35_000,
