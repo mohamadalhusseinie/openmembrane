@@ -44,9 +44,11 @@ Status: complete (delivered as part of Phase 1).
 
 The `IngestionService` provides a transport-agnostic ingestion API. It accepts session summaries/transcripts, returns candidate/save/pending/reject results, logs diagnostics, supports project identification, and keeps raw conversation storage off by default.
 
-## Phase 4: First Tool Adapter
+## Phase 4: Tool Adapters
 
-Build one thin adapter before attempting broad integration.
+Status: complete. Thin adapters ship for OpenCode (`@openmembrane/adapter-opencode`), Claude Code (`@openmembrane/adapter-claude-code`), Codex (`@openmembrane/adapter-codex`) and VS Code / GitHub Copilot (`openmembrane-vscode`), sharing `@openmembrane/adapter-hooks` and the local daemon. Cursor and Claude Desktop use the MCP fallback. See [setup guides](setup/).
+
+Original scope: build one thin adapter before attempting broad integration.
 
 Candidate first adapters:
 
