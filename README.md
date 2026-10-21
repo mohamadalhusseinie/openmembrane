@@ -107,10 +107,14 @@ confidential memories unless you explicitly opt in.
 
 ## Configuring Your AI Tool
 
-Pick the integration for your tool. Adapters capture sessions and retrieve
-memory automatically through the local daemon; MCP is the fallback for tools
-without an adapter. Every setup needs the CLI installed first
-(`npm install -g openmembrane`).
+Pick the integration for your tool. OpenCode, Claude Code and Codex adapters
+capture sessions through the local daemon; retrieval and stored-memory egress
+to the model provider require the opt-ins described in each guide (Claude Code
+and Codex also need separate MCP setup for retrieval). VS Code cannot capture
+ordinary Copilot chats automatically: use explicit export capture, or opt-in
+auto-save for the extension's own participant exchanges. MCP is the fallback for
+tools without an adapter. The CLI is required for every integration except VS
+Code, whose extension bundles it (`npm install -g openmembrane`).
 
 | Tool | Integration | Setup guide |
 |------|-------------|-------------|
