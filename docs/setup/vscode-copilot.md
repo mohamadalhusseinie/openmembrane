@@ -1,6 +1,8 @@
 # OpenMembrane Local Private Setup: VS Code Copilot
 
-VS Code with GitHub Copilot supports MCP servers. No adapter code is needed — just configuration.
+VS Code with GitHub Copilot supports the OpenMembrane extension for automatic
+MCP registration, local daemon startup, chat retrieval and candidate review.
+Manual MCP configuration remains an alternative.
 
 This guide configures the current [Local Private mode](../deployment-modes.md#local-private).
 Local Private remains the default. [GitHub Team](../deployment-modes.md#github-team)
@@ -9,11 +11,55 @@ are separate from team sync.
 
 ## Prerequisites
 
-- Node.js >= 18
-- `openmembrane` installed: `npm install -g openmembrane`
+- For manual MCP setup: Node.js >= 18 and `openmembrane` installed with
+  `npm install -g openmembrane`
 - VS Code with GitHub Copilot extension (agent mode)
 
-## Configuration
+## Extension setup (recommended)
+
+The extension is currently distributed from source as a VSIX, not through a
+Marketplace listing. In the OpenMembrane repository, run:
+
+```sh
+npm ci
+npm run package -w packages/adapter-vscode
+```
+
+Run **Extensions: Install from VSIX...**, select the generated file in
+`packages/adapter-vscode/`, and open a trusted project in VS Code 1.104 or newer.
+The extension bundles the CLI, so a global `openmembrane` installation is not
+required for this path. Accept VS Code's MCP trust/start prompt and enable the
+OpenMembrane tools in Copilot Chat. No `.vscode/mcp.json` is needed; remove any
+old manual registration to avoid duplicates.
+
+Use `@openmembrane /rules`, `/recall <query>`, or `/review`. The command palette
+also exposes candidate review in a webview, static file export (with
+confirmation), diagnostics, and **Save chat session to OpenMembrane**.
+Multi-root workspaces prompt for the target project.
+
+**Capture boundary:** stable VS Code APIs do not expose all Copilot chat
+transcripts or session-end events. Export a chat using **Chat: Export Chat...**,
+then run **Save chat session to OpenMembrane**, choose the export, and confirm.
+JSON exports are decoded to message text before daemon redaction; tool payloads,
+reference metadata, and thinking parts are excluded. Normalized transcripts
+must contain at most 100,000 characters (selected files must be at most 1 MB).
+`/save` captures only history
+visible to `@openmembrane`. The opt-in `openmembrane.autoSave` setting defaults
+to `false` and captures only completed `/rules` and `/recall` exchanges handled
+by that participant, not other Copilot chats.
+Participant conversation IDs are retained in chat response metadata across saves;
+imports use the export's path as their stable identity. Re-saving an extended
+conversation or updating the same export file therefore honors earlier candidate
+rejections. Moving an export to a different path starts a new import identity.
+
+Capture goes through the local daemon's redaction/extraction/approval pipeline.
+An explicitly configured external extractor can receive redacted captures;
+check daemon policy before saving sensitive chats. Enabling MCP retrieval for
+Copilot can send retrieved memory to Copilot's model. See the
+[extension README](../../packages/adapter-vscode/README.md) for details,
+build/host-test instructions, and limitations.
+
+## Manual MCP configuration (alternative)
 
 Add the OpenMembrane MCP server to your VS Code settings.
 

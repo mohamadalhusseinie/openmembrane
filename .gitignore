@@ -3,5 +3,7 @@ node_modules/
 dist/
 coverage/
 *.log
+*.vsix
+.vscode-test/
 .npmrc
 docs/superpowers/

@@ -48,3 +48,16 @@ jobs:
 
       - name: Build Codex adapter
         run: npm run build -w @openmembrane/adapter-codex
+
+      - name: Test VS Code extension host
+        if: runner.os != 'Linux'
+        timeout-minutes: 5
+        run: npm run test:host -w packages/adapter-vscode
+
+      - name: Test VS Code extension host (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: xvfb-run -a npm run test:host -w packages/adapter-vscode
+
+      - name: Package VS Code extension
+        run: npm run package -w packages/adapter-vscode

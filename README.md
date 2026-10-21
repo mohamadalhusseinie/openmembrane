@@ -145,7 +145,15 @@ configured separately and requires explicit permission for stored-memory egress.
 
 ### VS Code / GitHub Copilot
 
-Add to `.vscode/mcp.json` in your project:
+The [VS Code extension](packages/adapter-vscode/README.md) bundles the CLI,
+starts the local daemon and registers MCP retrieval without manual configuration.
+It also adds `@openmembrane /rules`, `/recall`, `/review`, candidate review,
+export and diagnostics commands, and explicit chat export capture. Stable
+VS Code APIs do not expose all Copilot sessions; opt-in auto-save covers only
+the extension's own participant exchanges.
+See [VS Code setup](docs/setup/vscode-copilot.md) for VSIX installation.
+
+Alternatively, add to `.vscode/mcp.json` in your project:
 
 ```json
 {

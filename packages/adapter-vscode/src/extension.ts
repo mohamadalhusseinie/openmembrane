@@ -1,0 +1,246 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import * as vscode from "vscode";
+import { createDaemonAutoLaunch, OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
+import { openReview } from "./review";
+import { exportedChatTranscript, originalParticipantResponse, transcriptTurn } from "./transcript";
+
+export interface ExtensionApi {
+  participant: vscode.ChatParticipant;
+  mcpProvider: vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition>;
+}
+
+function isHostFile(uri: vscode.Uri): boolean {
+  return uri.scheme === "file" || (vscode.env.remoteName !== undefined && uri.scheme === "vscode-remote");
+}
+
+function conversationId(history: vscode.ChatContext): string {
+  for (const turn of history.history) {
+    if (turn instanceof vscode.ChatRequestTurn || turn.participant !== "openmembrane.chat") continue;
+    const id: unknown = turn.result.metadata?.["openmembraneSessionId"];
+    if (typeof id === "string" && /^vscode-[a-f0-9-]{36}$/.test(id)) return id;
+  }
+  return `vscode-${randomUUID()}`;
+}
+
+function assistantText(turn: vscode.ChatResponseTurn): string {
+  const raw = originalParticipantResponse(turn.participant, turn.result);
+  if (raw !== undefined) return raw;
+  return turn.response.flatMap((part) => part instanceof vscode.ChatResponseMarkdownPart ? [part.value.value] : []).join("\n");
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<ExtensionApi | undefined> {
+  if (!vscode.workspace.isTrusted) return;
+  const output = vscode.window.createOutputChannel("OpenMembrane");
+  const changed = new vscode.EventEmitter<void>();
+  context.subscriptions.push(output, changed);
+  const cli = context.asAbsolutePath(join("dist", "cli.mjs"));
+  const clients = new Map<string, OpenMembraneClient>();
+
+  function report(error: unknown): string {
+    const message = error instanceof OpenMembraneClientError
+      ? `${error.safeMessage} [${error.code}]${error.diagnosticId ? ` (diagnostic: ${error.diagnosticId})` : ""}`
+      : "OpenMembrane operation failed. Check the selected workspace, input file, and local daemon diagnostics.";
+    output.appendLine(message);
+    void vscode.window.showErrorMessage(message);
+    return message;
+  }
+
+  function createClient(folder: vscode.WorkspaceFolder, requestTimeoutMs: number): OpenMembraneClient {
+    return new OpenMembraneClient({
+      projectRoot: folder.uri.fsPath,
+      requestTimeoutMs,
+      autoLaunch: createDaemonAutoLaunch(process.execPath, [cli, "serve"], {
+        cwd: folder.uri.fsPath,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      }),
+    });
+  }
+
+  function client(folder: vscode.WorkspaceFolder): OpenMembraneClient {
+    let value = clients.get(folder.uri.fsPath);
+    if (!value) {
+      value = createClient(folder, 30 * 60_000);
+      clients.set(folder.uri.fsPath, value);
+    }
+    return value;
+  }
+
+  function folders(): readonly vscode.WorkspaceFolder[] {
+    return (vscode.workspace.workspaceFolders ?? []).filter((folder) => isHostFile(folder.uri));
+  }
+
+  async function selectFolder(): Promise<vscode.WorkspaceFolder> {
+    const all = folders();
+    if (all.length === 0) throw new OpenMembraneClientError("E_VSCODE_WORKSPACE", "Open a local workspace folder to use OpenMembrane.");
+    if (all.length === 1) return all[0]!;
+    const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: "Choose the OpenMembrane project" });
+    if (!picked || !isHostFile(picked.uri)) throw new vscode.CancellationError();
+    return picked;
+  }
+
+  async function save(daemon: OpenMembraneClient, transcript: string, sessionId: string): Promise<void> {
+    if (!transcript.trim() || transcript.length > 100_000) {
+      throw new OpenMembraneClientError("E_VSCODE_TRANSCRIPT", "Choose a non-empty chat export of at most 100,000 characters. Split larger exports before saving.");
+    }
+    const result = await daemon.ingest({
+      tool: "vscode-copilot",
+      sessionId,
+      transcript,
+    });
+    const states = new Map<string, number>();
+    for (const proposal of result.proposals ?? []) {
+      states.set(proposal.state, (states.get(proposal.state) ?? 0) + 1);
+    }
+    const proposals = result.proposalCount === undefined ? "" :
+      ` ${result.proposalCount} team proposals (${[...states].map(([state, count]) => `${state}: ${count}`).join(", ")}). Check team review/diagnostics for publication status.`;
+    void vscode.window.showInformationMessage(
+      `OpenMembrane: ${result.savedCount} saved, ${result.pendingCount} pending, ${result.rejectedCount} rejected.${proposals}`,
+    );
+  }
+
+  const review = async (folder: vscode.WorkspaceFolder): Promise<void> => {
+    await openReview(client(folder), folder.name, report, context.subscriptions);
+  };
+
+  function register(id: string, handler: (folder: vscode.WorkspaceFolder) => Promise<void>): void {
+    context.subscriptions.push(vscode.commands.registerCommand(id, async () => {
+      try {
+        await handler(await selectFolder());
+      } catch (error) {
+        if (!(error instanceof vscode.CancellationError)) report(error);
+      }
+    }));
+  }
+
+  register("openmembrane.review", review);
+  register("openmembrane.export", async (folder) => {
+    const result = await client(folder).exportStaticMemoryFiles({ preview: true });
+    const answer = await vscode.window.showWarningMessage(
+      `Write ${result.files.length} static memory files in ${folder.name}? Existing exports will be replaced. These files may be committed or sent to AI tools.`,
+      { modal: true }, "Export",
+    );
+    if (answer !== "Export") return;
+    await client(folder).exportStaticMemoryFiles({});
+    void vscode.window.showInformationMessage("OpenMembrane static files exported.");
+  });
+  register("openmembrane.diagnostics", async (folder) => {
+    const diagnostics = await client(folder).getDiagnostics({ limit: 100 });
+    output.clear();
+    output.appendLine(`Diagnostics: ${folder.name}`);
+    for (const event of diagnostics) {
+      output.appendLine(`${event.createdAt} [${event.severity}] ${event.code} (${event.id}): ${event.message}`);
+    }
+    if (diagnostics.length === 0) output.appendLine("No diagnostics.");
+    output.show(true);
+  });
+  register("openmembrane.saveChat", async (folder) => {
+    const files = await vscode.window.showOpenDialog({
+      title: "Select an exported Copilot chat transcript",
+      canSelectMany: false, canSelectFolders: false,
+      filters: { "Chat transcripts": ["json", "md", "txt"] },
+    });
+    const file = files?.[0];
+    if (!file) return;
+    if (!isHostFile(file) || (await stat(file.fsPath)).size > 1_000_000) {
+      throw new OpenMembraneClientError("E_VSCODE_TRANSCRIPT", "Choose a local transcript smaller than 1 MB.");
+    }
+    const transcript = exportedChatTranscript(await readFile(file.fsPath, "utf8"), file.fsPath);
+    const answer = await vscode.window.showWarningMessage(
+      `Send the selected chat export to OpenMembrane for ${folder.name}? The daemon will redact secrets and apply its configured extraction policy, which may use an external provider.`,
+      { modal: true }, "Save session",
+    );
+    if (answer === "Save session") {
+      await save(client(folder), transcript, `vscode-import-${createHash("sha256").update(file.fsPath).digest("hex")}`);
+    }
+  });
+
+  const mcpProvider: ExtensionApi["mcpProvider"] = {
+    onDidChangeMcpServerDefinitions: changed.event,
+    provideMcpServerDefinitions: () => folders().map((folder) => {
+      const definition = new vscode.McpStdioServerDefinition(
+        `OpenMembrane (${folder.name})`, process.execPath, [cli, "mcp"],
+        { ELECTRON_RUN_AS_NODE: "1" }, context.extension.packageJSON.version as string,
+      );
+      definition.cwd = folder.uri;
+      return definition;
+    }),
+  };
+  context.subscriptions.push(
+    vscode.lm.registerMcpServerDefinitionProvider("openmembrane", mcpProvider),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      clients.clear();
+      changed.fire();
+      void bootstrap();
+    }),
+  );
+
+  const participant = vscode.chat.createChatParticipant("openmembrane.chat", async (request, history, stream, token) => {
+    const sessionId = conversationId(history);
+    const metadata: { openmembraneSessionId: string; openmembraneResponseText?: string } = { openmembraneSessionId: sessionId };
+    const chatResult = { metadata };
+    try {
+      const folder = await selectFolder();
+      if (token.isCancellationRequested) return chatResult;
+      const daemon = client(folder);
+      const prompt = request.prompt.trim();
+      const verb = prompt.match(/^\S+/)?.[0] ?? "";
+      const command = request.command ?? verb.toLowerCase();
+      const query = request.command ? prompt : prompt.slice(verb.length).trimStart();
+      let response: string;
+      if (command === "rules") {
+        const result = await daemon.getProjectRules({});
+        response = result.rules.map((rule) => rule.content).join("\n\n") || "No project rules saved.";
+      } else if (command === "recall") {
+        if (!query) {
+          stream.markdown("Use `@openmembrane /recall <query>`.");
+          return chatResult;
+        }
+        const result = await daemon.getRelevantContext({ query });
+        response = result.memories.map((memory) => memory.content).join("\n\n") || "No relevant memories found.";
+      } else if (command === "review") {
+        const candidates = await daemon.listMemoryCandidates({ limit: null });
+        stream.markdown(`${candidates.length} pending candidate(s). Opening the review panel.`);
+        await review(folder);
+        return chatResult;
+      } else if (command === "save") {
+        const transcript = history.history.map((turn) => turn instanceof vscode.ChatRequestTurn
+          ? transcriptTurn("user", turn.prompt, turn.command)
+          : transcriptTurn("assistant", assistantText(turn)),
+        ).join("\n\n");
+        await save(daemon, transcript, sessionId);
+        stream.markdown("Visible @openmembrane history sent to the daemon.");
+        return chatResult;
+      } else {
+        stream.markdown("Use `/rules`, `/recall <query>`, `/review`, or `/save`. To capture other Copilot chats, export the chat and run **Save chat session to OpenMembrane**.");
+        return chatResult;
+      }
+      if (token.isCancellationRequested) return chatResult;
+      metadata.openmembraneResponseText = response;
+      // Stored content is data, not trusted Markdown commands or links.
+      const text = new vscode.MarkdownString();
+      text.appendText(response);
+      stream.markdown(text);
+      if (vscode.workspace.getConfiguration("openmembrane", folder.uri).get<boolean>("autoSave", false)) {
+        await save(daemon, `${transcriptTurn("user", request.command ? request.prompt : query, command)}\n\n${transcriptTurn("assistant", response)}`, sessionId);
+      }
+    } catch (error) {
+      if (!(error instanceof vscode.CancellationError)) return { ...chatResult, errorDetails: { message: report(error) } };
+    }
+    return chatResult;
+  });
+  context.subscriptions.push(participant);
+
+  async function bootstrap(): Promise<void> {
+    const folder = folders()[0];
+    if (!folder) return;
+    try {
+      await createClient(folder, 1_000).health();
+    } catch (error) {
+      report(error);
+    }
+  }
+  await bootstrap();
+  return { participant, mcpProvider };
+}
