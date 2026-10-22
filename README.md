@@ -28,7 +28,7 @@ No manual effort. No data leaves your machine unless you choose it. Safe, privat
 - **Secure by default** — secrets are detected and rejected before they ever reach storage
 - **Self-managing** — deduplicates, resolves conflicts, and filters noise on its own
 - **Local Private by default** — memory is stored locally in git-ignored `.openmembrane/`
-- **Tool-agnostic** — works with any AI coding tool via MCP (Claude, Copilot, Cursor, OpenCode, and more)
+- **Tool-agnostic** — dedicated adapters for OpenCode, Claude Code, Codex and VS Code/Copilot, plus MCP for Cursor, Claude Desktop and others
 
 ## Installation
 
@@ -107,7 +107,26 @@ confidential memories unless you explicitly opt in.
 
 ## Configuring Your AI Tool
 
-OpenMembrane runs as an MCP server over stdio. Add it to your AI tool's MCP configuration:
+Pick the integration for your tool. OpenCode, Claude Code and Codex adapters
+capture sessions through the local daemon; retrieval and stored-memory egress
+to the model provider require the opt-ins described in each guide (Claude Code
+and Codex also need separate MCP setup for retrieval). VS Code cannot capture
+ordinary Copilot chats automatically: use explicit export capture, or opt-in
+auto-save for the extension's own participant exchanges. MCP is the fallback for
+tools without an adapter. The CLI is required for every integration except VS
+Code, whose extension bundles it (`npm install -g openmembrane`).
+
+| Tool | Integration | Setup guide |
+|------|-------------|-------------|
+| OpenCode | `@openmembrane/adapter-opencode` plugin | [OpenCode setup](docs/setup/opencode.md) |
+| Claude Code | `@openmembrane/adapter-claude-code` hooks | [Claude Code setup](docs/setup/claude-code.md) |
+| VS Code / GitHub Copilot | VS Code extension | [VS Code setup](docs/setup/vscode-copilot.md) |
+| Codex | `@openmembrane/adapter-codex` hooks | [Codex setup](docs/setup/codex.md) |
+| Cursor | MCP config (fallback) | [Cursor setup](docs/setup/cursor.md) |
+| Claude Desktop | MCP config (fallback) | [below](#claude-desktop) |
+
+The MCP server runs over stdio and auto-starts the daemon on its first tool
+call. Add it to your AI tool's MCP configuration:
 
 ### Claude Desktop
 
@@ -296,7 +315,8 @@ Package responsibilities:
 - `packages/core`: domain types, extraction interface, policy checks, classification, deduplication, conflict detection, and pipeline orchestration.
 - `packages/storage`: local JSON persistence for saved memory, pending approvals, and audit events.
 - `packages/service`: project-scoped operations, storage lifecycle, and GitHub Team synchronization owned by the daemon.
-- `packages/client`: authenticated local-daemon client used by MCP, CLI, and review UI.
+- `packages/protocol`: versioned daemon HTTP schemas and shared endpoint resolution.
+- `packages/client`: authenticated local-daemon client used by MCP, CLI, review UI, and adapters.
 - `packages/exporters`: static fallback file generation for AI tools that read project instruction files.
 - `packages/shared`: small runtime helpers for IDs, time, and result types.
 - `apps/mcp-server`: local MCP server exposing saved memory and approval workflows to AI tools.
@@ -366,6 +386,8 @@ npm run build
 
 ## Documentation
 
+- [Setup guides](docs/setup/) — per-tool installation for OpenCode, Claude Code, Codex, VS Code/Copilot and Cursor
+- [Daemon Protocol](docs/daemon-protocol.md) — transport, authentication and lifecycle
 - [Architecture](docs/architecture.md) — pipeline design, type schemas, MCP tool surface, package dependencies
 - [Security and Privacy](docs/security-and-privacy.md) — secret handling, data storage rules, LLM usage policy
 - [Product Vision](docs/product-vision.md) — product thesis, UX workflow, memory quality criteria

@@ -29,6 +29,7 @@ session transcript or summary
 
 ```text
 apps/
+  daemon/
   mcp-server/
   review-ui/
 
@@ -37,7 +38,14 @@ packages/
   storage/
   exporters/
   service/
+  protocol/
+  client/
   shared/
+  adapter-hooks/
+  adapter-opencode/
+  adapter-claude-code/
+  adapter-codex/
+  adapter-vscode/
 ```
 
 ## Package Dependency Graph
@@ -68,7 +76,25 @@ and `close()`. Project references use an explicit storage directory and ID first
 then `OPENMEMBRANE_HOME` / `OPENMEMBRANE_PROJECT_ID`, then
 `<projectRoot>/.openmembrane` / the project directory name. Store sets are reused
 by resolved storage directory and closed at shutdown. The service runs in-process;
-it does not start a daemon or network listener.
+it does not itself start a listener; the daemon hosts it.
+
+## Daemon Architecture
+
+```text
+OpenCode / Claude Code / Codex / VS Code adapters, MCP clients, CLI, Review UI
+                              |
+                 @openmembrane/client (bearer token)
+                              |
+     Unix socket (macOS/Linux) or 127.0.0.1 TCP (Windows)
+                              |
+       apps/daemon -> packages/service -> packages/storage
+```
+
+- **Protocol:** versioned `/v1` HTTP contract in `@openmembrane/protocol`; see [Daemon Protocol](daemon-protocol.md).
+- **Transport and auth:** owner-only Unix socket, or loopback TCP on Windows. Every request except the data-free health check carries a random per-startup bearer token from the private run directory. See [Security and Privacy](security-and-privacy.md).
+- **Single writer:** only the daemon writes storage. Adapters, CLI, MCP and the review UI never open stores; storage imports are restricted to `packages/storage`, `packages/service`, `apps/daemon` and tests (`npm run check:storage-imports`).
+- **Lifecycle:** `openmembrane serve|start|status|stop`; MCP and adapters auto-start it where documented.
+- **Adapters** stay thin: they capture and retrieve; policy, redaction and extraction stay in the daemon.
 
 ## Package Responsibilities
 

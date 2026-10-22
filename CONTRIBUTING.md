@@ -39,6 +39,8 @@ npm run build
 
 See [Architecture](docs/architecture.md) for the package layout, dependency graph, and type schemas.
 
+The daemon (`apps/daemon`) is the only process that writes storage. CLI, review UI, MCP server and adapters talk to it through `@openmembrane/client` and must not construct project services or stores. Storage imports (including relative and dynamic imports) are restricted to `packages/storage`, `packages/service`, `apps/daemon` and tests; `npm run check:storage-imports` enforces this. See [Daemon Protocol](docs/daemon-protocol.md).
+
 ## Code Style
 
 - TypeScript strict mode with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`

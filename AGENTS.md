@@ -41,6 +41,7 @@ packages/exporters/  — Static fallback file generation (AGENTS.md, CLAUDE.md, 
 packages/shared/     — IDs, time helpers, generic result types
 packages/protocol/   — Versioned local-daemon HTTP schemas and shared endpoint resolution
 packages/client/     — Authenticated local-daemon client used by CLI and review UI
+packages/adapter-*/ — Thin tool adapters (hooks, OpenCode, Claude Code, Codex, VS Code); daemon clients only
 apps/mcp-server/     — MCP server (tool registration, validation, error responses)
 apps/daemon/         — Per-user HTTP daemon, token authentication, project routing,
                        single-instance locking, and CLI lifecycle
