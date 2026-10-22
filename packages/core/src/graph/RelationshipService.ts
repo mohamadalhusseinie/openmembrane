@@ -41,6 +41,7 @@ export class RelationshipService {
   private readonly memoryStore: MemoryStore;
   private readonly pendingCandidateStore: PendingCandidateStore;
   private readonly auditLogStore: AuditLogStore;
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: RelationshipServiceOptions) {
     this.relationshipStore = options.relationshipStore;
@@ -75,7 +76,11 @@ export class RelationshipService {
     return visible;
   }
 
-  async createManual(projectId: string, input: CreateManualRelationshipInput): Promise<Relationship> {
+  createManual(projectId: string, input: CreateManualRelationshipInput): Promise<Relationship> {
+    return this.serialize(() => this.createManualUnlocked(projectId, input));
+  }
+
+  private async createManualUnlocked(projectId: string, input: CreateManualRelationshipInput): Promise<Relationship> {
     validateEntityRef(input.source, "source");
     validateEntityRef(input.target, "target");
     await this.assertEntityExists(projectId, input.source);
@@ -106,7 +111,11 @@ export class RelationshipService {
   }
 
   /** Manual relationships are marked removed; other origins are overridden by a manual removal and kept as evidence. */
-  async remove(projectId: string, relationshipId: string, rationale = "Removed by user."): Promise<Relationship> {
+  remove(projectId: string, relationshipId: string, rationale = "Removed by user."): Promise<Relationship> {
+    return this.serialize(() => this.removeUnlocked(projectId, relationshipId, rationale));
+  }
+
+  private async removeUnlocked(projectId: string, relationshipId: string, rationale: string): Promise<Relationship> {
     const target = await this.relationshipStore.findById(projectId, relationshipId);
     if (!target) {
       throw new OpenMembraneError({
@@ -161,16 +170,28 @@ export class RelationshipService {
   }
 
   /** Makes the active records of one system origin match `drafts`; stale records are marked removed, never deleted. */
-  async replaceSystemRelationships(
+  replaceSystemRelationships(
     projectId: string,
     origin: Exclude<RelationshipOrigin, "manual">,
     drafts: RelationshipDraft[],
   ): Promise<Relationship[]> {
+    return this.serialize(() => this.replaceSystemRelationshipsUnlocked(projectId, origin, drafts));
+  }
+
+  private async replaceSystemRelationshipsUnlocked(
+    projectId: string,
+    origin: Exclude<RelationshipOrigin, "manual">,
+    drafts: RelationshipDraft[],
+  ): Promise<Relationship[]> {
+    const secretCandidateIds = new Set(
+      (await this.pendingCandidateStore.list(projectId)).filter((candidate) => candidate.sensitivity === "secret").map((candidate) => candidate.id),
+    );
     const now = nowIso();
     const existing = new Map((await this.listEvidence(projectId)).filter((item) => item.origin === origin).map((item) => [item.id, item]));
     const saved: Relationship[] = [];
     const wanted = new Set<string>();
     for (const draft of drafts) {
+      if ([draft.source, draft.target].some((ref) => ref.kind === "candidate" && secretCandidateIds.has(ref.id))) continue;
       const id = systemRelationshipId(origin, draft);
       if (wanted.has(id)) continue;
       wanted.add(id);
@@ -200,6 +221,13 @@ export class RelationshipService {
       await this.relationshipStore.save({ ...previous, status: "removed", updatedAt: now, removedAt: now });
     }
     return saved;
+  }
+
+  /** Serializes read-modify-write sequences so concurrent callers cannot interleave. */
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(operation);
+    this.queue = result.catch(() => undefined);
+    return result;
   }
 
   private async assertEntityExists(projectId: string, ref: EntityRef): Promise<void> {

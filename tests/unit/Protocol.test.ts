@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  absolutePathSchema, collaborationStatusResponseSchema, endpoints, errorResponseSchema,
+  absolutePathSchema, auditResponseSchema, collaborationStatusResponseSchema, endpoints, errorResponseSchema,
   ingestRequestSchema, memoryMutationResponseSchema, rememberRequestSchema, resolveDaemonPaths,
 } from "@openmembrane/protocol";
 import type { EndpointName } from "@openmembrane/protocol";
@@ -26,6 +26,13 @@ describe("v1 protocol", () => {
       }
     });
   }
+
+  it("accepts relationship audit events", () => {
+    const events = (["relationship_created", "relationship_removed"] as const).map((type) => ({
+      id: `audit_${type}`, projectId: "project-a", type, entityId: "rel_1", createdAt: "2026-05-08T00:00:00.000Z",
+    }));
+    expect(auditResponseSchema.parse(events)).toEqual(events);
+  });
 
   it("validates required inputs and existing MCP bounds", () => {
     expect(absolutePathSchema.safeParse("relative").success).toBe(false);

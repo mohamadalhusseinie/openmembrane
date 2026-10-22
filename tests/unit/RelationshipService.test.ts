@@ -98,6 +98,14 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     await service.remove("project-a", first.id);
     expect(await service.list("project-a")).toEqual([]);
   });
+  it("skips system relationships that reference secret candidates", async () => {
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_s", sensitivity: "secret" }));
+    const saved = await service.replaceSystemRelationships("project-a", "inferred", [
+      { source: { kind: "candidate", id: "cand_s" }, target: { kind: "memory", id: "mem_1" }, type: "related_to", confidence: 0.8, rationale: "Shared tags." },
+    ]);
+    expect(saved).toEqual([]);
+    expect(await service.listEvidence("project-a")).toEqual([]);
+  });
   it("marks stale derived relationships removed without deleting them", async () => {
     await stores.pendingCandidateStore.save(candidate({ id: "cand_1", duplicateOf: "mem_1" }));
     await service.syncDerived("project-a");
