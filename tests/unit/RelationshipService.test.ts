@@ -77,6 +77,27 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(await service.listEvidence("project-a")).toHaveLength(2);
   });
 
+  it("projects duplicates recorded only in the rejection audit log", async () => {
+    await stores.auditLogStore.append({
+      id: "audit_dup",
+      projectId: "project-a",
+      type: "candidate_rejected",
+      entityId: "cand_gone",
+      createdAt: "2026-05-08T00:00:00.000Z",
+      details: { reason: "Duplicate memory already exists.", duplicateOf: "mem_1" },
+    });
+    await stores.auditLogStore.append({ id: "audit_other", projectId: "project-a", type: "candidate_rejected", entityId: "cand_x", createdAt: "2026-05-08T00:00:00.000Z", details: { reason: "Noise." } });
+    const derived = await service.syncDerived("project-a");
+    expect(derived.map((item) => [item.source.id, item.type, item.target.id])).toEqual([["cand_gone", "duplicate_of", "mem_1"]]);
+  });
+
+  it("keeps concurrent manual creation to a single record", async () => {
+    const [first, second] = await Promise.all([service.createManual("project-a", link()), service.createManual("project-a", link())]);
+    expect(first.id).toBe(second.id);
+    expect(await service.list("project-a")).toHaveLength(1);
+    await service.remove("project-a", first.id);
+    expect(await service.list("project-a")).toEqual([]);
+  });
   it("marks stale derived relationships removed without deleting them", async () => {
     await stores.pendingCandidateStore.save(candidate({ id: "cand_1", duplicateOf: "mem_1" }));
     await service.syncDerived("project-a");
@@ -134,3 +155,4 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(await service.list("project-b")).toHaveLength(1);
   });
 });
+

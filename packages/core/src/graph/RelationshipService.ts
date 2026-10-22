@@ -87,7 +87,7 @@ export class RelationshipService {
     const matches = evidence.filter((item) => relationshipKey(item) === key);
     const existing = matches.find((item) => item.origin === "manual");
     const relationship: Relationship = {
-      id: existing?.id ?? createId("rel"),
+      id: systemRelationshipId("manual", input),
       projectId,
       source: input.source,
       target: input.target,
@@ -122,7 +122,7 @@ export class RelationshipService {
     const existingManual = matches.find((item) => item.origin === "manual");
     const removed: Relationship = {
       ...(existingManual ?? target),
-      id: existingManual?.id ?? createId("rel"),
+      id: systemRelationshipId("manual", target),
       origin: "manual",
       confidence: 1,
       rationale,
@@ -139,7 +139,7 @@ export class RelationshipService {
 
   /** Projects existing duplicate and conflict metadata as derived relationships. */
   async syncDerived(projectId: string): Promise<Relationship[]> {
-    const candidates = await this.pendingCandidateStore.list(projectId);
+    const [candidates, audit] = await Promise.all([this.pendingCandidateStore.list(projectId), this.auditLogStore.list(projectId)]);
     const drafts: RelationshipDraft[] = [];
     for (const candidate of candidates) {
       if (candidate.sensitivity === "secret") continue;
@@ -150,6 +150,12 @@ export class RelationshipService {
       for (const memoryId of candidate.conflictWith ?? []) {
         drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
       }
+    }
+    // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
+    for (const event of audit) {
+      const duplicateOf = event.details?.duplicateOf;
+      if (event.type !== "candidate_rejected" || !event.entityId || typeof duplicateOf !== "string") continue;
+      drafts.push({ source: { kind: "candidate", id: event.entityId }, target: { kind: "memory", id: duplicateOf }, type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
     }
     return this.replaceSystemRelationships(projectId, "derived", drafts);
   }

@@ -62,8 +62,8 @@ export function relationshipKey(relationship: Pick<Relationship, "source" | "tar
   return JSON.stringify([relationship.source.kind, relationship.source.id, relationship.type, relationship.target.kind, relationship.target.id]);
 }
 
-/** Deterministic id so repeated inference or projection updates one record instead of duplicating it. */
-export function systemRelationshipId(origin: Exclude<RelationshipOrigin, "manual">, relationship: Pick<Relationship, "source" | "target" | "type">): string {
+/** Deterministic id so repeated or concurrent writes for one origin and key update a single record. */
+export function systemRelationshipId(origin: RelationshipOrigin, relationship: Pick<Relationship, "source" | "target" | "type">): string {
   return `rel_${origin}_${createHash("sha256").update(relationshipKey(relationship)).digest("hex").slice(0, 32)}`;
 }
 
