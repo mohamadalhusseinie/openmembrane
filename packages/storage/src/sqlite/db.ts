@@ -89,6 +89,24 @@ function initSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_diag_projectId ON diagnostics_log(projectId);
+
+    CREATE TABLE IF NOT EXISTS relationships (
+      id TEXT NOT NULL,
+      projectId TEXT NOT NULL,
+      sourceKind TEXT NOT NULL,
+      sourceId TEXT NOT NULL,
+      targetKind TEXT NOT NULL,
+      targetId TEXT NOT NULL,
+      type TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      rationale TEXT NOT NULL,
+      status TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      removedAt TEXT,
+      PRIMARY KEY (projectId, id)
+    );
     `);
     if (!hasSessionIndex) {
       db.exec(`

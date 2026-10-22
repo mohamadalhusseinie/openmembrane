@@ -36,7 +36,9 @@ export interface AuditEvent {
     | "candidate_rejected"
     | "memory_superseded"
     | "memory_proposed"
-    | "memory_updated";
+    | "memory_updated"
+    | "relationship_created"
+    | "relationship_removed";
   entityId?: string;
   createdAt: string;
   details?: Record<string, unknown>;
