@@ -196,7 +196,10 @@ export class RelationshipService {
     const saved: Relationship[] = [];
     const wanted = new Set<string>();
     for (const draft of drafts) {
-      if ([draft.source, draft.target].some((ref) => ref.kind === "candidate" && secretCandidateIds.has(ref.id))) continue;
+      if (
+        !(await this.isSystemEndpointEligible(projectId, draft.source, secretCandidateIds)) ||
+        !(await this.isSystemEndpointEligible(projectId, draft.target, secretCandidateIds))
+      ) continue;
       const id = systemRelationshipId(origin, draft);
       if (wanted.has(id)) continue;
       wanted.add(id);
@@ -226,6 +229,18 @@ export class RelationshipService {
       await this.relationshipStore.save({ ...previous, status: "removed", updatedAt: now, removedAt: now });
     }
     return saved;
+  }
+
+  private async isSystemEndpointEligible(projectId: string, ref: EntityRef, secretCandidateIds: Set<string>): Promise<boolean> {
+    if (ref.kind === "memory") return (await this.memoryStore.findById(projectId, ref.id)) !== undefined;
+    if (ref.kind === "candidate") {
+      if (secretCandidateIds.has(ref.id)) return false;
+      const candidate = await this.pendingCandidateStore.findById(projectId, ref.id);
+      return candidate !== undefined
+        ? !this.isSecretCandidate(candidate)
+        : this.isHistoricalCandidate(projectId, ref.id);
+    }
+    return true;
   }
 
   /** Serializes read-modify-write sequences so concurrent callers cannot interleave. */

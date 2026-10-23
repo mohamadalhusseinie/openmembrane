@@ -191,9 +191,10 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     const draft = { ...link(), confidence: 0.7, rationale: "Shared session." };
     expect(systemRelationshipId("inferred", draft)).not.toBe(systemRelationshipId("derived", draft));
     await service.replaceSystemRelationships("project-a", "inferred", [draft]);
+    await stores.memoryStore.save(entry({ id: "mem_1", projectId: "project-b" }));
+    await stores.memoryStore.save(entry({ id: "mem_2", projectId: "project-b" }));
     await service.replaceSystemRelationships("project-b", "inferred", [draft]);
     expect(await service.list("project-a")).toHaveLength(1);
     expect(await service.list("project-b")).toHaveLength(1);
   });
 });
-
