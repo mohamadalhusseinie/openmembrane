@@ -1,6 +1,8 @@
 import { createId, nowIso } from "@openmembrane/shared";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
-import type { AuditLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
+import { SecretDetector } from "../filtering/SecretDetector";
+import type { MemoryCandidate } from "../types/MemoryCandidate";
+import type { AuditEvent, AuditLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
 import {
   relationshipKey,
   systemRelationshipId,
@@ -41,6 +43,7 @@ export class RelationshipService {
   private readonly memoryStore: MemoryStore;
   private readonly pendingCandidateStore: PendingCandidateStore;
   private readonly auditLogStore: AuditLogStore;
+  private readonly secretDetector = new SecretDetector();
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: RelationshipServiceOptions) {
@@ -147,26 +150,28 @@ export class RelationshipService {
   }
 
   /** Projects existing duplicate and conflict metadata as derived relationships. */
-  async syncDerived(projectId: string): Promise<Relationship[]> {
-    const [candidates, audit] = await Promise.all([this.pendingCandidateStore.list(projectId), this.auditLogStore.list(projectId)]);
-    const drafts: RelationshipDraft[] = [];
-    for (const candidate of candidates) {
-      if (candidate.sensitivity === "secret") continue;
-      const source: EntityRef = { kind: "candidate", id: candidate.id };
-      if (candidate.duplicateOf) {
-        drafts.push({ source, target: { kind: "memory", id: candidate.duplicateOf }, type: "duplicate_of", confidence: 1, rationale: "Recorded as a duplicate during extraction." });
+  syncDerived(projectId: string): Promise<Relationship[]> {
+    return this.serialize(async () => {
+      const [candidates, audit] = await Promise.all([this.pendingCandidateStore.list(projectId), this.auditLogStore.list(projectId)]);
+      const pendingIds = new Set(candidates.map((candidate) => candidate.id));
+      const refFor = (id: string): EntityRef => ({ kind: pendingIds.has(id) || id.startsWith("cand_") ? "candidate" : "memory", id });
+      const drafts: RelationshipDraft[] = [];
+      for (const candidate of candidates) {
+        if (this.isSecretCandidate(candidate)) continue;
+        const source: EntityRef = { kind: "candidate", id: candidate.id };
+        if (candidate.duplicateOf) {
+          drafts.push({ source, target: refFor(candidate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Recorded as a duplicate during extraction." });
+        }
+        for (const memoryId of candidate.conflictWith ?? []) {
+          drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
+        }
       }
-      for (const memoryId of candidate.conflictWith ?? []) {
-        drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
+      // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
+      for (const duplicate of duplicateRejections(audit)) {
+        drafts.push({ source: { kind: "candidate", id: duplicate.candidateId }, target: refFor(duplicate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
       }
-    }
-    // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
-    for (const event of audit) {
-      const duplicateOf = event.details?.duplicateOf;
-      if (event.type !== "candidate_rejected" || !event.entityId || typeof duplicateOf !== "string") continue;
-      drafts.push({ source: { kind: "candidate", id: event.entityId }, target: { kind: "memory", id: duplicateOf }, type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
-    }
-    return this.replaceSystemRelationships(projectId, "derived", drafts);
+      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", drafts);
+    });
   }
 
   /** Makes the active records of one system origin match `drafts`; stale records are marked removed, never deleted. */
@@ -184,7 +189,7 @@ export class RelationshipService {
     drafts: RelationshipDraft[],
   ): Promise<Relationship[]> {
     const secretCandidateIds = new Set(
-      (await this.pendingCandidateStore.list(projectId)).filter((candidate) => candidate.sensitivity === "secret").map((candidate) => candidate.id),
+      (await this.pendingCandidateStore.list(projectId)).filter((candidate) => this.isSecretCandidate(candidate)).map((candidate) => candidate.id),
     );
     const now = nowIso();
     const existing = new Map((await this.listEvidence(projectId)).filter((item) => item.origin === origin).map((item) => [item.id, item]));
@@ -236,12 +241,24 @@ export class RelationshipService {
     }
     if (ref.kind === "candidate") {
       const candidate = await this.pendingCandidateStore.findById(projectId, ref.id);
-      if (!candidate || candidate.sensitivity === "secret") {
+      if (candidate ? this.isSecretCandidate(candidate) : !(await this.isHistoricalCandidate(projectId, ref.id))) {
         throw new OpenMembraneError({ code: "CANDIDATE_NOT_FOUND", message: `Candidate ${ref.id} not found.`, safeMessage: "That candidate does not exist." });
       }
     }
   }
 
+  private isSecretCandidate(candidate: MemoryCandidate): boolean {
+    return candidate.sensitivity === "secret" || this.secretDetector.containsSecret(candidate.content);
+  }
+
+  /** Candidates that left the pending queue stay referenceable when a non-secret duplicate rejection or existing relationship names them. */
+  private async isHistoricalCandidate(projectId: string, candidateId: string): Promise<boolean> {
+    const [audit, evidence] = await Promise.all([this.auditLogStore.list(projectId), this.listEvidence(projectId)]);
+    return (
+      duplicateRejections(audit).some((duplicate) => duplicate.candidateId === candidateId) ||
+      evidence.some((item) => [item.source, item.target].some((ref) => ref.kind === "candidate" && ref.id === candidateId))
+    );
+  }
   private audit(projectId: string, type: "relationship_created" | "relationship_removed", relationship: Relationship, createdAt: string, overridden: Relationship[]): Promise<void> {
     return this.auditLogStore.append({
       id: createId("audit"),
@@ -263,4 +280,15 @@ const originPriority: Record<RelationshipOrigin, number> = { manual: 0, derived:
 
 function byOriginPriority(left: Relationship, right: Relationship): number {
   return originPriority[left.origin] - originPriority[right.origin];
+}
+
+function duplicateRejections(audit: AuditEvent[]): Array<{ candidateId: string; duplicateOf: string }> {
+  const rejections: Array<{ candidateId: string; duplicateOf: string }> = [];
+  for (const event of audit) {
+    const duplicateOf = event.details?.duplicateOf;
+    if (event.type === "candidate_rejected" && event.entityId && typeof duplicateOf === "string") {
+      rejections.push({ candidateId: event.entityId, duplicateOf });
+    }
+  }
+  return rejections;
 }

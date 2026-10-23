@@ -106,6 +106,39 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(saved).toEqual([]);
     expect(await service.listEvidence("project-a")).toEqual([]);
   });
+  it("restores audit-only duplicates after removal", async () => {
+    await stores.auditLogStore.append({
+      id: "audit_dup", projectId: "project-a", type: "candidate_rejected", entityId: "cand_gone",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { duplicateOf: "mem_1" },
+    });
+    const [derived] = await service.syncDerived("project-a");
+    await service.remove("project-a", derived!.id);
+    expect(await service.list("project-a")).toEqual([]);
+    const restored = await service.createManual("project-a", {
+      source: { kind: "candidate", id: "cand_gone" }, target: { kind: "memory", id: "mem_1" }, type: "duplicate_of", rationale: "Confirmed.",
+    });
+    expect(restored.status).toBe("active");
+    await expect(service.createManual("project-a", { ...link(), source: { kind: "candidate", id: "cand_unknown" } })).rejects.toMatchObject({ code: "CANDIDATE_NOT_FOUND" });
+  });
+
+  it("keeps duplicates of pending candidates as candidate references", async () => {
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_old" }));
+    await stores.auditLogStore.append({
+      id: "audit_dup", projectId: "project-a", type: "candidate_rejected", entityId: "cand_new",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { duplicateOf: "cand_old" },
+    });
+    const derived = await service.syncDerived("project-a");
+    expect(derived.map((item) => item.target)).toEqual([{ kind: "candidate", id: "cand_old" }]);
+  });
+
+  it("excludes candidates whose content contains a secret despite a non-secret label", async () => {
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_leak", content: "Use key AKIAABCDEFGHIJKLMNOP for deploys.", duplicateOf: "mem_1" }));
+    await expect(service.createManual("project-a", { ...link(), source: { kind: "candidate", id: "cand_leak" } })).rejects.toMatchObject({ code: "CANDIDATE_NOT_FOUND" });
+    expect(await service.syncDerived("project-a")).toEqual([]);
+    expect(await service.replaceSystemRelationships("project-a", "inferred", [
+      { source: { kind: "candidate", id: "cand_leak" }, target: { kind: "memory", id: "mem_1" }, type: "related_to", confidence: 0.8, rationale: "Shared tags." },
+    ])).toEqual([]);
+  });
   it("marks stale derived relationships removed without deleting them", async () => {
     await stores.pendingCandidateStore.save(candidate({ id: "cand_1", duplicateOf: "mem_1" }));
     await service.syncDerived("project-a");
