@@ -4,6 +4,7 @@ export * from "./CollaborationStore";
 export * from "./DiagnosticsLogStore";
 export * from "./MemoryStore";
 export * from "./PendingCandidateStore";
+export * from "./RelationshipStore";
 export type { MasterIndex, TypeIndex, TypeIndexEntry } from "./indexTypes";
 export { emptyMasterIndex, emptyTypeIndex } from "./indexTypes";
 export {
