@@ -15,6 +15,8 @@ export * from "./extraction/MockMemoryExtractor";
 export * from "./extraction/ExtractionDiagnostics";
 export * from "./extraction/createExtractor";
 export * from "./filtering/NoiseFilter";
+export * from "./graph/Relationship";
+export * from "./graph/RelationshipService";
 export * from "./filtering/SafetyFilter";
 export * from "./filtering/SecretDetector";
 export * from "./pipeline/MemoryPipeline";

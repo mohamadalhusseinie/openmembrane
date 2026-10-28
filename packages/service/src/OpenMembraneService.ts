@@ -1,6 +1,6 @@
 import { env } from "node:process";
 import { rankMemories } from "@openmembrane/core";
-import type { AuditEvent, DiagnosticEvent, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
+import type { AuditEvent, CreateManualRelationshipInput, DiagnosticEvent, Relationship, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
 import { createStores } from "@openmembrane/storage";
 import type { StoreSet, StorageBackend } from "@openmembrane/storage";
 import { createProjectState, resolveProjectRef } from "./factory";
@@ -17,6 +17,11 @@ export type ProjectService = ReturnType<typeof createProjectOperations> & {
   pendingCandidateCount: () => Promise<number>;
   recordDiagnostic: (event: Omit<DiagnosticEvent, "projectId">) => Promise<void>;
   listReviewAuditLog: (limit: number) => Promise<AuditEvent[]>;
+  listRelationships: () => Promise<Relationship[]>;
+  listRelationshipEvidence: () => Promise<Relationship[]>;
+  refreshDerivedRelationships: () => Promise<Relationship[]>;
+  createRelationship: (input: CreateManualRelationshipInput) => Promise<Relationship>;
+  removeRelationship: (input: { relationshipId: string; rationale?: string }) => Promise<Relationship>;
   retryEligiblePublications: () => Promise<void>;
   checkCollaborationAvailability: () => ReturnType<ProjectState["githubTeamService"]["checkAvailability"]>;
   listCandidates: (options?: { limit?: number }) => ReturnType<ReturnType<typeof createProjectOperations>["listMemoryCandidates"]>;
@@ -106,6 +111,11 @@ export class OpenMembraneService {
           },
           recordDiagnostic: (event) => state.diagnosticsLogStore.append({ ...event, projectId: resolved.projectId }),
           listReviewAuditLog: (limit) => operations.listAuditLog({ limit, order: "append" }),
+          listRelationships: () => state.relationshipService.list(resolved.projectId),
+          listRelationshipEvidence: () => state.relationshipService.listEvidence(resolved.projectId),
+          refreshDerivedRelationships: () => state.relationshipService.syncDerived(resolved.projectId),
+          createRelationship: (input) => state.relationshipService.createManual(resolved.projectId, input),
+          removeRelationship: (input) => state.relationshipService.remove(resolved.projectId, input.relationshipId, input.rationale),
           async retryEligiblePublications() {
             await state.githubTeamService.retryEligiblePublications(resolved.projectId);
           },

@@ -1,6 +1,6 @@
 import { basename, resolve } from "node:path";
 import { env } from "node:process";
-import { IngestionService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, MockMemoryExtractor, createExtractor, loadExtractionConfig } from "@openmembrane/core";
+import { IngestionService, RelationshipService, MemoryApprovalService, MemoryPipeline, MemoryUpdateService, MockMemoryExtractor, createExtractor, loadExtractionConfig } from "@openmembrane/core";
 import type { AuditLogStore, CollaborationStore, DiagnosticsLogStore, ExtractionDiagnostics, MemoryExtractor, MemoryStore, PendingCandidateStore } from "@openmembrane/core";
 import { LlmMemoryExtractor } from "@openmembrane/extractor-llm";
 import { AnthropicMemoryExtractor } from "@openmembrane/extractor-anthropic";
@@ -32,6 +32,7 @@ export interface ProjectState {
   ingestionService: IngestionService;
   localIngestionService: IngestionService;
   exportService: StaticMemoryExportService;
+  relationshipService: RelationshipService;
   collaborationStore: CollaborationStore;
   githubTeamService: GitHubTeamService;
 }
@@ -56,7 +57,7 @@ export async function createProjectState(
   stores: StoreSet,
 ): Promise<ProjectState> {
   const { projectRoot, storageDir, projectId: defaultProjectId } = resolveProjectRef(ref);
-  const { memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore } = stores;
+  const { memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore, relationshipStore } = stores;
 
   const onDiagnostics = (diagnostics: ExtractionDiagnostics): void => {
     const severity = diagnostics.errors.length > 0 ? "warning" as const : "info" as const;
@@ -125,6 +126,7 @@ export async function createProjectState(
   const localIngestionService = new IngestionService({
     pipeline: new MemoryPipeline({ ...pipelineStores, extractor: new MockMemoryExtractor() }),
   });
+  const relationshipService = new RelationshipService({ relationshipStore, memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore });
   const exportService = new StaticMemoryExportService();
   const collaborationStore = new JsonCollaborationStore(storageDir);
   const githubTeamService = new GitHubTeamService({
@@ -149,6 +151,7 @@ export async function createProjectState(
     ingestionService,
     localIngestionService,
     exportService,
+    relationshipService,
     collaborationStore,
     githubTeamService,
   };

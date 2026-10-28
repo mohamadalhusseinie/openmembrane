@@ -190,7 +190,7 @@ export const auditEventSchema = z.object({
   id: text, projectId: text,
   type: z.enum([
     "session_ingested", "candidate_extracted", "memory_saved", "candidate_queued", "candidate_rejected",
-    "memory_superseded", "memory_proposed", "memory_updated",
+    "memory_superseded", "memory_proposed", "memory_updated", "relationship_created", "relationship_removed",
   ] satisfies [AuditEvent["type"], ...AuditEvent["type"][]]),
   entityId: text.optional(), createdAt: text, details: z.record(z.string(), z.unknown()).optional(),
 });

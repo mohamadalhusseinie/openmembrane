@@ -192,6 +192,51 @@ function rejectMemorySavedAuditWrites(
 }
 
 describe("Project service operations", () => {
+  it.each(["json", "sqlite"] as const)("persists project-scoped relationship operations through the %s service facade", async (storageBackend) => {
+    const storageDir = await mkdtemp(join(tmpdir(), "openmembrane-relationships-"));
+    const projectRoot = await mkdtemp(join(tmpdir(), "openmembrane-relationships-project-"));
+    tempDirs.push(storageDir, projectRoot);
+    const ref = { projectId: "project-a", projectRoot, storageDir, storageBackend };
+    const service = createOpenMembraneService();
+    services.push(service);
+    const context = await service.projectState(ref);
+    await context.memoryStore.save(entry());
+    await context.pendingCandidateStore.save(candidate({ duplicateOf: "mem_1" }));
+    const project = await service.forProject(ref);
+    const other = await service.forProject({ ...ref, projectId: "project-b" });
+    const [derived] = await project.refreshDerivedRelationships();
+    expect(derived).toMatchObject({ projectId: "project-a", origin: "derived", type: "duplicate_of" });
+    expect(await project.listRelationships()).toEqual([derived]);
+    expect(await other.listRelationshipEvidence()).toEqual([]);
+    await expect(other.removeRelationship({ relationshipId: derived!.id })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    const removed = await project.removeRelationship({ relationshipId: derived!.id, rationale: "Not a duplicate." });
+    expect(removed).toMatchObject({ origin: "manual", status: "removed" });
+    expect(await project.listRelationships()).toEqual([]);
+    expect(await project.listRelationshipEvidence()).toHaveLength(2);
+    const input = {
+      source: { kind: "candidate" as const, id: "cand_1" },
+      target: { kind: "memory" as const, id: "mem_1" },
+      type: "duplicate_of" as const,
+      rationale: "Confirmed on review.",
+    };
+    await expect(other.createRelationship(input)).rejects.toMatchObject({ code: "CANDIDATE_NOT_FOUND" });
+    const manual = await project.createRelationship(input);
+    expect(manual.id).toBe(removed.id);
+    expect(await project.listRelationships()).toEqual([manual]);
+    expect((await project.listReviewAuditLog(100)).map((event) => event.type)).toEqual([
+      "relationship_created", "relationship_removed",
+    ]);
+
+    await service.close();
+    const reopened = createOpenMembraneService();
+    services.push(reopened);
+    const restored = await reopened.forProject(ref);
+    expect(await restored.listRelationships()).toEqual([manual]);
+    expect(await restored.listRelationshipEvidence()).toHaveLength(2);
+    expect(await restored.refreshDerivedRelationships()).toEqual([derived]);
+    expect(await restored.listRelationships()).toEqual([manual]);
+  });
+
   it("configures GitHub Team mode with a validated private repository", async () => {
     const { context, handlers } = await createHandlers({ githubRunner: new GitHubModeRunner() });
 
