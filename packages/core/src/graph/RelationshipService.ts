@@ -2,13 +2,14 @@ import { createId, nowIso } from "@openmembrane/shared";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
-import type { AuditEvent, AuditLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
+import type { AuditEvent, AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
 import {
   relationshipKey,
   systemRelationshipId,
   validateEntityRef,
   validateRelationship,
   type EntityRef,
+  type EntityKind,
   type Relationship,
   type RelationshipOrigin,
   type RelationshipStore,
@@ -36,6 +37,14 @@ export interface RelationshipServiceOptions {
   memoryStore: MemoryStore;
   pendingCandidateStore: PendingCandidateStore;
   auditLogStore: AuditLogStore;
+  diagnosticsLogStore: DiagnosticsLogStore;
+}
+
+interface RelationshipSnapshot {
+  candidates: MemoryCandidate[];
+  audit: AuditEvent[];
+  evidence: Relationship[];
+  diagnosticIds: Set<string>;
 }
 
 export class RelationshipService {
@@ -43,6 +52,7 @@ export class RelationshipService {
   private readonly memoryStore: MemoryStore;
   private readonly pendingCandidateStore: PendingCandidateStore;
   private readonly auditLogStore: AuditLogStore;
+  private readonly diagnosticsLogStore: DiagnosticsLogStore;
   private readonly secretDetector = new SecretDetector();
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -51,6 +61,7 @@ export class RelationshipService {
     this.memoryStore = options.memoryStore;
     this.pendingCandidateStore = options.pendingCandidateStore;
     this.auditLogStore = options.auditLogStore;
+    this.diagnosticsLogStore = options.diagnosticsLogStore;
   }
 
   /** Every stored record, including removed and overridden evidence. */
@@ -86,11 +97,13 @@ export class RelationshipService {
   private async createManualUnlocked(projectId: string, input: CreateManualRelationshipInput): Promise<Relationship> {
     validateEntityRef(input.source, "source");
     validateEntityRef(input.target, "target");
-    await this.assertEntityExists(projectId, input.source);
-    await this.assertEntityExists(projectId, input.target);
+    const snapshot = await this.snapshot(projectId);
+    const eligible = await this.eligibleEntities(projectId, [input.source, input.target], snapshot);
+    this.assertEntityExists(input.source, eligible);
+    this.assertEntityExists(input.target, eligible);
 
     const now = nowIso();
-    const evidence = await this.listEvidence(projectId);
+    const evidence = snapshot.evidence;
     const key = relationshipKey(input);
     const matches = evidence.filter((item) => relationshipKey(item) === key);
     const existing = matches.find((item) => item.origin === "manual");
@@ -152,7 +165,8 @@ export class RelationshipService {
   /** Projects existing duplicate and conflict metadata as derived relationships. */
   syncDerived(projectId: string): Promise<Relationship[]> {
     return this.serialize(async () => {
-      const [candidates, audit] = await Promise.all([this.pendingCandidateStore.list(projectId), this.auditLogStore.list(projectId)]);
+      const snapshot = await this.snapshot(projectId);
+      const { candidates, audit } = snapshot;
       const pendingIds = new Set(candidates.map((candidate) => candidate.id));
       const refFor = (id: string): EntityRef => ({ kind: pendingIds.has(id) || id.startsWith("cand_") ? "candidate" : "memory", id });
       const drafts: RelationshipDraft[] = [];
@@ -170,7 +184,7 @@ export class RelationshipService {
       for (const duplicate of duplicateRejections(audit)) {
         drafts.push({ source: { kind: "candidate", id: duplicate.candidateId }, target: refFor(duplicate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
       }
-      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", drafts);
+      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", drafts, snapshot);
     });
   }
 
@@ -187,18 +201,20 @@ export class RelationshipService {
     projectId: string,
     origin: Exclude<RelationshipOrigin, "manual">,
     drafts: RelationshipDraft[],
+    snapshot?: RelationshipSnapshot,
   ): Promise<Relationship[]> {
-    const secretCandidateIds = new Set(
-      (await this.pendingCandidateStore.list(projectId)).filter((candidate) => this.isSecretCandidate(candidate)).map((candidate) => candidate.id),
-    );
+    snapshot ??= await this.snapshot(projectId);
+    const refs = drafts.flatMap((draft) => [draft.source, draft.target]);
+    for (const ref of refs) validateEntityRef(ref, "endpoint");
+    const eligible = await this.eligibleEntities(projectId, refs, snapshot);
     const now = nowIso();
-    const existing = new Map((await this.listEvidence(projectId)).filter((item) => item.origin === origin).map((item) => [item.id, item]));
+    const existing = new Map(snapshot.evidence.filter((item) => item.origin === origin).map((item) => [item.id, item]));
     const saved: Relationship[] = [];
     const wanted = new Set<string>();
     for (const draft of drafts) {
       if (
-        !(await this.isSystemEndpointEligible(projectId, draft.source, secretCandidateIds)) ||
-        !(await this.isSystemEndpointEligible(projectId, draft.target, secretCandidateIds))
+        !this.isEndpointEligible(draft.source, eligible) ||
+        !this.isEndpointEligible(draft.target, eligible)
       ) continue;
       const id = systemRelationshipId(origin, draft);
       if (wanted.has(id)) continue;
@@ -231,16 +247,46 @@ export class RelationshipService {
     return saved;
   }
 
-  private async isSystemEndpointEligible(projectId: string, ref: EntityRef, secretCandidateIds: Set<string>): Promise<boolean> {
-    if (ref.kind === "memory") return (await this.memoryStore.findById(projectId, ref.id)) !== undefined;
-    if (ref.kind === "candidate") {
-      if (secretCandidateIds.has(ref.id)) return false;
-      const candidate = await this.pendingCandidateStore.findById(projectId, ref.id);
-      return candidate !== undefined
-        ? !this.isSecretCandidate(candidate)
-        : this.isHistoricalCandidate(projectId, ref.id);
+  private async snapshot(projectId: string): Promise<RelationshipSnapshot> {
+    const [candidates, audit, evidence, diagnostics] = await Promise.all([
+      this.pendingCandidateStore.list(projectId),
+      this.auditLogStore.list(projectId),
+      this.listEvidence(projectId),
+      this.diagnosticsLogStore.list(projectId, { limit: Number.MAX_SAFE_INTEGER }),
+    ]);
+    return { candidates, audit, evidence, diagnosticIds: new Set(diagnostics.map((event) => event.id)) };
+  }
+
+  private async eligibleEntities(
+    projectId: string,
+    refs: EntityRef[],
+    snapshot: RelationshipSnapshot,
+  ): Promise<Partial<Record<EntityKind, Set<string>>>> {
+    const memoryIds = new Set(refs.filter((ref) => ref.kind === "memory").map((ref) => ref.id));
+    // list() omits superseded memories, which are still valid graph endpoints.
+    const memories = await Promise.all([...memoryIds].map((id) => this.memoryStore.findById(projectId, id)));
+    const candidateIds = new Set<string>();
+    for (const duplicate of duplicateRejections(snapshot.audit)) {
+      candidateIds.add(duplicate.candidateId);
+      if (duplicate.duplicateOf.startsWith("cand_")) candidateIds.add(duplicate.duplicateOf);
     }
-    return true;
+    // Durable duplicate audit evidence survives queue removal; relationships alone do not prove eligibility.
+    for (const candidate of snapshot.candidates) {
+      if (this.isSecretCandidate(candidate)) candidateIds.delete(candidate.id);
+      else candidateIds.add(candidate.id);
+    }
+    return {
+      memory: new Set(memories.filter((memory) => memory !== undefined).map((memory) => memory.id)),
+      candidate: candidateIds,
+      audit_event: new Set(snapshot.audit.map((event) => event.id)),
+      diagnostic: snapshot.diagnosticIds,
+    };
+  }
+
+  private isEndpointEligible(ref: EntityRef, eligible: Partial<Record<EntityKind, Set<string>>>): boolean {
+    // Tags and sessions are virtual groupings, not independently persisted entities.
+    if (ref.kind === "tag" || ref.kind === "session") return true;
+    return eligible[ref.kind]?.has(ref.id) === true;
   }
 
   /** Serializes read-modify-write sequences so concurrent callers cannot interleave. */
@@ -250,30 +296,21 @@ export class RelationshipService {
     return result;
   }
 
-  private async assertEntityExists(projectId: string, ref: EntityRef): Promise<void> {
-    if (ref.kind === "memory" && !(await this.memoryStore.findById(projectId, ref.id))) {
+  private assertEntityExists(ref: EntityRef, eligible: Partial<Record<EntityKind, Set<string>>>): void {
+    if (this.isEndpointEligible(ref, eligible)) return;
+    if (ref.kind === "memory") {
       throw new OpenMembraneError({ code: "MEMORY_NOT_FOUND", message: `Memory ${ref.id} not found.`, safeMessage: "That memory does not exist." });
     }
     if (ref.kind === "candidate") {
-      const candidate = await this.pendingCandidateStore.findById(projectId, ref.id);
-      if (candidate ? this.isSecretCandidate(candidate) : !(await this.isHistoricalCandidate(projectId, ref.id))) {
-        throw new OpenMembraneError({ code: "CANDIDATE_NOT_FOUND", message: `Candidate ${ref.id} not found.`, safeMessage: "That candidate does not exist." });
-      }
+      throw new OpenMembraneError({ code: "CANDIDATE_NOT_FOUND", message: `Candidate ${ref.id} not found.`, safeMessage: "That candidate does not exist." });
     }
+    throw new OpenMembraneError({ code: "VALIDATION_ERROR", message: "That relationship endpoint does not exist in this project." });
   }
 
   private isSecretCandidate(candidate: MemoryCandidate): boolean {
     return candidate.sensitivity === "secret" || this.secretDetector.containsSecret(candidate.content);
   }
 
-  /** Candidates that left the pending queue stay referenceable when a non-secret duplicate rejection or existing relationship names them. */
-  private async isHistoricalCandidate(projectId: string, candidateId: string): Promise<boolean> {
-    const [audit, evidence] = await Promise.all([this.auditLogStore.list(projectId), this.listEvidence(projectId)]);
-    return (
-      duplicateRejections(audit).some((duplicate) => duplicate.candidateId === candidateId) ||
-      evidence.some((item) => [item.source, item.target].some((ref) => ref.kind === "candidate" && ref.id === candidateId))
-    );
-  }
   private audit(projectId: string, type: "relationship_created" | "relationship_removed", relationship: Relationship, createdAt: string, overridden: Relationship[]): Promise<void> {
     return this.auditLogStore.append({
       id: createId("audit"),

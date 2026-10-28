@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +21,7 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     stores.close?.();
     await rm(dir, { recursive: true, force: true });
   });
@@ -131,8 +132,121 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(derived.map((item) => item.target)).toEqual([{ kind: "candidate", id: "cand_old" }]);
   });
 
+  it("preserves audit-backed duplicate targets after they leave the pending queue", async () => {
+    await stores.auditLogStore.append({
+      id: "audit_dup", projectId: "project-a", type: "candidate_rejected", entityId: "cand_new",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { duplicateOf: "cand_old" },
+    });
+    await stores.auditLogStore.append({
+      id: "audit_rejected", projectId: "project-a", type: "candidate_rejected", entityId: "cand_old",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { rejectedByUser: true },
+    });
+    const derived = await service.syncDerived("project-a");
+    expect(derived).toHaveLength(1);
+    expect(derived[0]?.target).toEqual({ kind: "candidate", id: "cand_old" });
+    const manual = await service.createManual("project-a", {
+      ...link(), source: { kind: "candidate", id: "cand_old" },
+    });
+    expect(manual.origin).toBe("manual");
+  });
+
+  it("does not use removed relationship evidence to authorize a purged candidate", async () => {
+    await stores.pendingCandidateStore.save(candidate());
+    const created = await service.createManual("project-a", {
+      ...link(), source: { kind: "candidate", id: "cand_1" },
+    });
+    await service.remove("project-a", created.id);
+    await stores.pendingCandidateStore.remove("project-a", "cand_1");
+    await expect(service.createManual("project-a", {
+      ...link(), source: { kind: "candidate", id: "cand_1" },
+    })).rejects.toMatchObject({ code: "CANDIDATE_NOT_FOUND" });
+    expect(await service.replaceSystemRelationships("project-a", "inferred", [{
+      ...link(), confidence: 0.8, source: { kind: "candidate", id: "cand_1" },
+    }])).toEqual([]);
+    expect(await service.listEvidence("project-a")).toHaveLength(1);
+  });
+
+  it.each(["audit_event", "diagnostic"] as const)("validates %s endpoints against their project stores", async (kind) => {
+    if (kind === "audit_event") {
+      for (const projectId of ["project-a", "project-b"]) {
+        await stores.auditLogStore.append({
+          id: `audit_${projectId}`, projectId, type: "memory_saved", createdAt: "2026-05-08T00:00:00.000Z",
+        });
+      }
+    } else {
+      for (const projectId of ["project-a", "project-b"]) {
+        await stores.diagnosticsLogStore.append({
+          id: `diag_${projectId}`, projectId, severity: "info", code: "TEST",
+          message: "Test diagnostic.", createdAt: "2026-05-08T00:00:00.000Z",
+        });
+      }
+    }
+    const prefix = kind === "audit_event" ? "audit" : "diag";
+    for (const endpoint of ["source", "target"] as const) {
+      for (const id of ["missing", `${prefix}_project-b`]) {
+        await expect(service.createManual("project-a", {
+          ...link(), [endpoint]: { kind, id },
+        })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+        expect(await service.replaceSystemRelationships("project-a", "inferred", [{
+          ...link(), confidence: 0.8, [endpoint]: { kind, id },
+        }])).toEqual([]);
+      }
+    }
+    const source = { kind, id: `${prefix}_project-a` };
+    const manual = await service.createManual("project-a", { ...link(), source });
+    expect(manual.source).toEqual(source);
+    expect(await service.replaceSystemRelationships("project-a", "inferred", [{
+      ...link(), confidence: 0.8, source,
+    }])).toHaveLength(1);
+  });
+
+  it("checks diagnostics beyond the default recent-event limit", async () => {
+    for (let index = 0; index < 101; index++) {
+      await stores.diagnosticsLogStore.append({
+        id: `diag_${index}`, projectId: "project-a", severity: "info", code: "TEST",
+        message: "Test diagnostic.", createdAt: new Date(index * 1000).toISOString(),
+      });
+    }
+    expect((await stores.diagnosticsLogStore.list("project-a")).some((event) => event.id === "diag_0")).toBe(false);
+    const created = await service.createManual("project-a", { ...link(), source: { kind: "diagnostic", id: "diag_0" } });
+    expect(created.source.id).toBe("diag_0");
+  });
+
+  it("reads each project snapshot once and resolves each distinct memory once during refresh", async () => {
+    await stores.memoryStore.supersede("project-a", "mem_1", "mem_2");
+    for (let index = 0; index < 5; index++) {
+      await stores.auditLogStore.append({
+        id: `audit_dup_${index}`, projectId: "project-a", type: "candidate_rejected", entityId: `cand_${index}`,
+        createdAt: "2026-05-08T00:00:00.000Z", details: { duplicateOf: "mem_1" },
+      });
+    }
+    const pending = vi.spyOn(stores.pendingCandidateStore, "list");
+    const audit = vi.spyOn(stores.auditLogStore, "list");
+    const evidence = vi.spyOn(stores.relationshipStore, "list");
+    const diagnostics = vi.spyOn(stores.diagnosticsLogStore, "list");
+    const memory = vi.spyOn(stores.memoryStore, "findById");
+    expect(await service.syncDerived("project-a")).toHaveLength(5);
+    for (const spy of [pending, audit, evidence, diagnostics, memory]) expect(spy).toHaveBeenCalledTimes(1);
+    expect(memory).toHaveBeenCalledWith("project-a", "mem_1");
+  });
+
+  it("keeps distinct relationship types independent until explicitly removed", async () => {
+    const [inferred] = await service.replaceSystemRelationships("project-a", "inferred", [{
+      ...link(), type: "related_to", confidence: 0.8,
+    }]);
+    const manual = await service.createManual("project-a", link({ type: "conflicts_with" }));
+    expect(await service.list("project-a")).toHaveLength(2);
+    await service.remove("project-a", inferred!.id, "Replaced with a more specific relationship.");
+    expect(await service.list("project-a")).toEqual([manual]);
+    expect((await service.listEvidence("project-a")).find((item) => item.id === inferred!.id)?.status).toBe("active");
+  });
+
   it("excludes candidates whose content contains a secret despite a non-secret label", async () => {
     await stores.pendingCandidateStore.save(candidate({ id: "cand_leak", content: "Use key AKIAABCDEFGHIJKLMNOP for deploys.", duplicateOf: "mem_1" }));
+    await stores.auditLogStore.append({
+      id: "audit_leak", projectId: "project-a", type: "candidate_rejected", entityId: "cand_leak",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { duplicateOf: "mem_1" },
+    });
     await expect(service.createManual("project-a", { ...link(), source: { kind: "candidate", id: "cand_leak" } })).rejects.toMatchObject({ code: "CANDIDATE_NOT_FOUND" });
     expect(await service.syncDerived("project-a")).toEqual([]);
     expect(await service.replaceSystemRelationships("project-a", "inferred", [

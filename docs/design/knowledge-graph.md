@@ -73,6 +73,18 @@ must remain separate from inferred and derived relationships. A manual
 relationship or removal overrides a conflicting inference without deleting the
 underlying inferred evidence.
 
+Override identity is the directed source, target, and relationship type.
+Different types between the same endpoints can coexist: `related_to` and
+`conflicts_with`, for example, are not mutually exclusive. To correct a type,
+remove the original relationship and create the replacement; the removal keeps
+the original inferred evidence but prevents it from resurfacing.
+
+Memory, candidate, audit-event, and diagnostic references are validated within
+their project. Historical candidates remain referenceable through durable
+duplicate-rejection audit metadata, including candidate targets; a removed
+relationship alone cannot authorize a purged candidate. Tags and sessions are
+virtual groupings rather than separately persisted records.
+
 Creating, removing, or overriding a manual relationship writes an audit event.
 Graph relationships are informative only and never trigger destructive memory
 actions.

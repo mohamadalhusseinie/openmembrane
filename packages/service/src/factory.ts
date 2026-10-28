@@ -126,7 +126,7 @@ export async function createProjectState(
   const localIngestionService = new IngestionService({
     pipeline: new MemoryPipeline({ ...pipelineStores, extractor: new MockMemoryExtractor() }),
   });
-  const relationshipService = new RelationshipService({ relationshipStore, memoryStore, pendingCandidateStore, auditLogStore });
+  const relationshipService = new RelationshipService({ relationshipStore, memoryStore, pendingCandidateStore, auditLogStore, diagnosticsLogStore });
   const exportService = new StaticMemoryExportService();
   const collaborationStore = new JsonCollaborationStore(storageDir);
   const githubTeamService = new GitHubTeamService({
