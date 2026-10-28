@@ -105,6 +105,20 @@ matching session identifier, and a confidence value. Low-confidence text-only
 matches are not persisted or returned by default. Inference is deduplicated,
 bounded for the 500-entity target, and deterministic for identical inputs.
 
+The implementation (`inferRelationships` in `packages/core`) combines signals
+with a noisy-OR score: shared tags, a shared source session, and text
+similarity (token Jaccard over at most 64 tokens per entity) each contribute;
+compatible scope and type only strengthen another signal. Defaults: at most 500
+entities, at most 8 `related_to` links per entity, a 0.4 minimum confidence,
+and a 0.6 minimum for text-only matches. Each entity contributes at most 32
+tags (from at most 128 inspected); secret-like tags and session identifiers,
+checked in any letter case, are excluded before scoring. A rationale that would
+look secret-like falls back to value-free evidence. Duplicate, conflict, and
+supersession metadata produce typed links with confidence 1 and suppress
+redundant `related_to` links. The project service exposes this as
+`refreshInferredRelationships`, which validates the full batch before persisting
+results with `inferred` origin.
+
 ## Review UI And API
 
 Add a Knowledge Graph view to `apps/review-ui`, served by the existing

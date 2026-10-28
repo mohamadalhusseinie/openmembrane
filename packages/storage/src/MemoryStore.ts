@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryEntry, MemorySearchOptions, MemoryStore, MemoryType } from "@openmembrane/core";
+import type { MemoryEntry, MemoryListOptions, MemorySearchOptions, MemoryStore, MemoryType } from "@openmembrane/core";
 import { OpenMembraneError } from "@openmembrane/core";
 import { nowIso } from "@openmembrane/shared";
 import type { TypeIndex } from "./indexTypes";
@@ -26,10 +26,10 @@ export class JsonMemoryStore implements MemoryStore {
     }
   }
 
-  async list(projectId: string): Promise<MemoryEntry[]> {
+  async list(projectId: string, options: MemoryListOptions = {}): Promise<MemoryEntry[]> {
     await this.ensureMigrated();
     const entries = await listEntries<MemoryEntry>(this.baseDir);
-    return entries.filter((m) => m.projectId === projectId && m.status === "active");
+    return entries.filter((m) => m.projectId === projectId && (options.includeSuperseded || m.status === "active"));
   }
 
   async findById(projectId: string, memoryId: string): Promise<MemoryEntry | undefined> {

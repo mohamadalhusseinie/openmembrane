@@ -92,5 +92,12 @@ describe("MemoryClassifier", () => {
       const result = classifier.classify(candidate({ tags: ["react", "", "  ", "angular"] }));
       expect(result.tags).toEqual(["react", "angular"]);
     });
+
+    it("drops secret-like tags, including case-sensitive patterns hidden by lowercasing", () => {
+      const result = classifier.classify(candidate({
+        tags: ["React", "AKIAABCDEFGHIJKLMNOP", "ghp_abcdefghijklmnopqrstuvwxyz", "[REDACTED:jwt]"],
+      }));
+      expect(result.tags).toEqual(["react"]);
+    });
   });
 });

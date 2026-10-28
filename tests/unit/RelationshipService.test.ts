@@ -92,6 +92,64 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(derived.map((item) => [item.source.id, item.type, item.target.id])).toEqual([["cand_gone", "duplicate_of", "mem_1"]]);
   });
 
+  it("persists inferred relationships with rationale and confidence, and lets manual removal override them", async () => {
+    await stores.memoryStore.save(entry({ id: "mem_3", content: "Deploy with blue-green releases.", scope: "deployment" }));
+    await stores.memoryStore.supersede("project-a", "mem_3");
+    await stores.auditLogStore.append({
+      id: "audit_sup", projectId: "project-a", type: "memory_superseded", entityId: "mem_3",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { supersededBy: "cand_2" },
+    });
+    await stores.memoryStore.save(entry({ id: "mem_2_new", content: "Deploy with canary releases.", scope: "deployment" }));
+    await stores.auditLogStore.append({
+      id: "audit_sup2", projectId: "project-a", type: "memory_superseded", entityId: "mem_3",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { supersededBy: "mem_2_new" },
+    });
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_s", sensitivity: "secret" }));
+
+    const inferred = await service.syncInferred("project-a");
+    const summary = inferred.map((item) => [item.source.id, item.type, item.target.id]);
+    expect(summary).toEqual(expect.arrayContaining([["mem_1", "related_to", "mem_2"], ["mem_2_new", "supersedes", "mem_3"]]));
+    expect(summary.flat()).not.toContain("cand_s");
+    expect(inferred.every((item) => item.origin === "inferred" && item.rationale.length > 0 && item.confidence > 0)).toBe(true);
+    const byId = (left: { id: string }, right: { id: string }) => left.id.localeCompare(right.id);
+    expect([...(await service.listEvidence("project-a"))].sort(byId)).toEqual([...inferred].sort(byId));
+
+    const again = await service.syncInferred("project-a");
+    expect(again).toEqual(inferred);
+
+    const related = inferred.find((item) => item.type === "related_to")!;
+    await service.remove("project-a", related.id);
+    await service.syncInferred("project-a");
+    expect((await service.list("project-a")).some((item) => item.id === related.id)).toBe(false);
+    expect((await service.listEvidence("project-a")).find((item) => item.id === related.id)).toMatchObject({ status: "active", origin: "inferred" });
+  });
+
+  it("infers supersession recorded by the public supersede operation", async () => {
+    await stores.memoryStore.save(entry({ id: "mem_old", content: "Old deployment rule.", scope: "deployment" }));
+    await stores.memoryStore.supersede("project-a", "mem_old", "mem_2");
+    await stores.auditLogStore.append({
+      id: "audit_pub", projectId: "project-a", type: "memory_superseded", entityId: "mem_old",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { reason: "Superseded via tool.", replacementId: "mem_2" },
+    });
+    const inferred = await service.syncInferred("project-a");
+    expect(inferred.map((item) => [item.source.id, item.type, item.target.id])).toContainEqual(["mem_2", "supersedes", "mem_old"]);
+  });
+
+  it("infers supersession from stored metadata without an audit event", async () => {
+    await stores.memoryStore.save(entry({ id: "mem_old", content: "Old deployment rule.", scope: "deployment" }));
+    await stores.memoryStore.supersede("project-a", "mem_old", "mem_2");
+    const inferred = await service.syncInferred("project-a");
+    expect(inferred.map((item) => [item.source.id, item.type, item.target.id])).toContainEqual(["mem_2", "supersedes", "mem_old"]);
+  });
+
+  it("validates every inferred draft before writing any", async () => {
+    await expect(service.replaceSystemRelationships("project-a", "inferred", [
+      { source: { kind: "memory", id: "mem_1" }, target: { kind: "memory", id: "mem_2" }, type: "related_to", confidence: 0.5, rationale: "Valid." },
+      { source: { kind: "memory", id: "mem_2" }, target: { kind: "memory", id: "mem_1" }, type: "related_to", confidence: 0.5, rationale: "token = abcdefgh12345678" },
+    ])).rejects.toMatchObject({ code: "SECRET_CANDIDATE" });
+    expect(await service.listEvidence("project-a")).toEqual([]);
+  });
+
   it("keeps concurrent manual creation to a single record", async () => {
     const [first, second] = await Promise.all([service.createManual("project-a", link()), service.createManual("project-a", link())]);
     expect(first.id).toBe(second.id);

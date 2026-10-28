@@ -235,6 +235,9 @@ describe("Project service operations", () => {
     expect(await restored.listRelationshipEvidence()).toHaveLength(2);
     expect(await restored.refreshDerivedRelationships()).toEqual([derived]);
     expect(await restored.listRelationships()).toEqual([manual]);
+    const inferred = await restored.refreshInferredRelationships();
+    expect(inferred).toEqual([expect.objectContaining({ type: "duplicate_of", source: { kind: "candidate", id: "cand_1" } })]);
+    expect(inferred.every((item) => item.projectId === "project-a" && item.origin === "inferred")).toBe(true);
   });
 
   it("configures GitHub Team mode with a validated private repository", async () => {
@@ -1090,6 +1093,19 @@ describe("Project service operations", () => {
     if (result.saved.length > 0) {
       expect(result.saved[0]!.content).not.toContain("sk-proj-");
     }
+  });
+
+  it("remember: drops secret-like tags before saving", async () => {
+    const { context, handlers } = await createHandlers();
+    const result = await handlers.remember({
+      content: "Rotate cloud credentials through the vault service.",
+      type: "coding_rule",
+      confidence: "high",
+      tags: ["Cloud", "AKIAABCDEFGHIJKLMNOP"]
+    });
+    expect(result.savedCount).toBe(1);
+    const [saved] = await context.memoryStore.list("project-a");
+    expect(saved!.tags).toEqual(["cloud"]);
   });
 
   it("remember: deduplicates identical content", async () => {

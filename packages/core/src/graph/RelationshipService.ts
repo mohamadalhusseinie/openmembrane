@@ -2,6 +2,7 @@ import { createId, nowIso } from "@openmembrane/shared";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
+import { inferRelationships, type RelationshipInferenceOptions, type Supersession } from "./RelationshipInference";
 import type { AuditEvent, AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
 import {
   relationshipKey,
@@ -188,6 +189,17 @@ export class RelationshipService {
     });
   }
 
+  /** Recomputes inferred relationships locally from approved signals and persists them with rationale and confidence. */
+  syncInferred(projectId: string, options?: RelationshipInferenceOptions): Promise<Relationship[]> {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(projectId);
+      const supersessions = supersessionEvents(snapshot.audit);
+      const memories = await this.memoryStore.list(projectId, { includeSuperseded: true });
+      const drafts = inferRelationships({ memories, candidates: snapshot.candidates, supersessions }, options);
+      return this.replaceSystemRelationshipsUnlocked(projectId, "inferred", drafts, snapshot);
+    });
+  }
+
   /** Makes the active records of one system origin match `drafts`; stale records are marked removed, never deleted. */
   replaceSystemRelationships(
     projectId: string,
@@ -209,8 +221,8 @@ export class RelationshipService {
     const eligible = await this.eligibleEntities(projectId, refs, snapshot);
     const now = nowIso();
     const existing = new Map(snapshot.evidence.filter((item) => item.origin === origin).map((item) => [item.id, item]));
-    const saved: Relationship[] = [];
     const wanted = new Set<string>();
+    const pending: Array<{ relationship: Relationship; previous: Relationship | undefined }> = [];
     for (const draft of drafts) {
       if (
         !this.isEndpointEligible(draft.source, eligible) ||
@@ -234,7 +246,12 @@ export class RelationshipService {
         updatedAt: now,
       };
       validateRelationship(relationship);
-      if (previous && previous.status === "active" && previous.confidence === draft.confidence && previous.rationale === draft.rationale) {
+      pending.push({ relationship, previous });
+    }
+    // Every record is validated before the first write so an invalid draft cannot leave a partial refresh.
+    const saved: Relationship[] = [];
+    for (const { relationship, previous } of pending) {
+      if (previous && previous.status === "active" && previous.confidence === relationship.confidence && previous.rationale === relationship.rationale) {
         saved.push(previous);
         continue;
       }
@@ -332,6 +349,18 @@ const originPriority: Record<RelationshipOrigin, number> = { manual: 0, derived:
 
 function byOriginPriority(left: Relationship, right: Relationship): number {
   return originPriority[left.origin] - originPriority[right.origin];
+}
+
+/** Pipeline events record `supersededBy`; the public supersede operation records `replacementId`. */
+function supersessionEvents(audit: AuditEvent[]): Supersession[] {
+  const supersessions: Supersession[] = [];
+  for (const event of audit) {
+    const replacement = event.details?.supersededBy ?? event.details?.replacementId;
+    if (event.type === "memory_superseded" && event.entityId && typeof replacement === "string" && replacement) {
+      supersessions.push({ supersededId: event.entityId, supersededBy: replacement });
+    }
+  }
+  return supersessions;
 }
 
 function duplicateRejections(audit: AuditEvent[]): Array<{ candidateId: string; duplicateOf: string }> {

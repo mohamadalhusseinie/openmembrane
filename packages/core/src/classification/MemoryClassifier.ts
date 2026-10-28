@@ -8,8 +8,14 @@ export class MemoryClassifier {
     return {
       ...candidate,
       sensitivity: this.classifySensitivity(candidate),
-      tags: normalizeTags(candidate.tags)
+      tags: this.normalizeTags(candidate.tags)
     };
+  }
+
+  /** Drops secret-like tags before lowercasing, which would hide case-sensitive patterns such as AWS keys. */
+  private normalizeTags(tags: string[]): string[] {
+    const safe = tags.map((tag) => tag.trim()).filter((tag) => tag && !this.secretDetector.containsSecret(tag));
+    return [...new Set(safe.map((tag) => tag.toLowerCase()).filter((tag) => !this.secretDetector.containsSecret(tag)))];
   }
 
   private classifySensitivity(candidate: MemoryCandidate): Sensitivity {
@@ -31,8 +37,4 @@ export class MemoryClassifier {
 
     return candidate.sensitivity;
   }
-}
-
-function normalizeTags(tags: string[]): string[] {
-  return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
 }
