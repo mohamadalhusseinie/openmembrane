@@ -106,6 +106,49 @@ describe("inferRelationships", () => {
     expect(JSON.stringify(drafts)).not.toMatch(/secret|ghp_/);
   });
 
+  it("excludes case-sensitive secret tags and secret session ids from scoring", () => {
+    for (const secret of ["AKIAABCDEFGHIJKLMNOP", "akiaabcdefghijklmnop"]) {
+      const drafts = inferRelationships({
+        memories: [
+          entry({ id: "mem_1", content: "Alpha beta gamma.", tags: [secret], source: { kind: "session", sessionId: secret } }),
+          entry({ id: "mem_2", content: "Delta epsilon zeta.", tags: [secret], source: { kind: "session", sessionId: secret } }),
+        ],
+        candidates: [],
+      });
+      expect(drafts).toEqual([]);
+    }
+  });
+
+  it("falls back to value-free rationale when combined evidence looks secret-like", () => {
+    const [draft] = inferRelationships({
+      memories: [
+        entry({ id: "mem_1", content: "Alpha beta gamma.", tags: ["token=abcdefg"] }),
+        entry({ id: "mem_2", content: "Delta epsilon zeta.", tags: ["token=abcdefg"] }),
+      ],
+      candidates: [],
+    });
+    expect(draft!.rationale).toBe("Inferred from shared tags (1); same scope and type: frontend coding_rule.");
+  });
+
+  it("resolves conflicting duplicate ids independently of input order", () => {
+    const a = entry({ id: "mem_a", content: "Alpha beta gamma.", tags: ["alpha"] });
+    const a2 = entry({ id: "mem_a", content: "Alpha beta gamma.", tags: ["different"] });
+    const b = entry({ id: "mem_b", content: "Delta epsilon zeta.", tags: ["alpha"] });
+    expect(inferRelationships({ memories: [b, a2, a], candidates: [] })).toEqual(inferRelationships({ memories: [a, a2, b], candidates: [] }));
+    const reordered = Object.fromEntries(Object.entries(a).reverse()) as typeof a;
+    expect(inferRelationships({ memories: [a2, reordered, b], candidates: [] })).toEqual(inferRelationships({ memories: [a, a2, b], candidates: [] }));
+  });
+
+  it("bounds tag work for entities with many tags", () => {
+    const tags = Array.from({ length: 2000 }, (_, index) => `tag-${index}`);
+    const secretTags = Array.from({ length: 10000 }, (_, index) => `AKIA${String(index).padStart(16, "0")}`);
+    const memories = Array.from({ length: 500 }, (_, index) => entry({ id: `mem_${index}`, content: `Item ${index}.`, tags: index % 2 ? tags : secretTags }));
+    const started = performance.now();
+    const drafts = inferRelationships({ memories, candidates: [] });
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(drafts.length).toBeGreaterThan(0);
+  });
+
   it("produces identical output for identical input regardless of order", () => {
     const memories = Array.from({ length: 30 }, (_, index) =>
       entry({ id: `mem_${index}`, content: `Rule ${index % 5} for module ${index % 3}.`, tags: [`t${index % 4}`], source: { kind: "session", sessionId: `s${index % 6}` } }),

@@ -124,6 +124,32 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect((await service.listEvidence("project-a")).find((item) => item.id === related.id)).toMatchObject({ status: "active", origin: "inferred" });
   });
 
+  it("infers supersession recorded by the public supersede operation", async () => {
+    await stores.memoryStore.save(entry({ id: "mem_old", content: "Old deployment rule.", scope: "deployment" }));
+    await stores.memoryStore.supersede("project-a", "mem_old", "mem_2");
+    await stores.auditLogStore.append({
+      id: "audit_pub", projectId: "project-a", type: "memory_superseded", entityId: "mem_old",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { reason: "Superseded via tool.", replacementId: "mem_2" },
+    });
+    const inferred = await service.syncInferred("project-a");
+    expect(inferred.map((item) => [item.source.id, item.type, item.target.id])).toContainEqual(["mem_2", "supersedes", "mem_old"]);
+  });
+
+  it("infers supersession from stored metadata without an audit event", async () => {
+    await stores.memoryStore.save(entry({ id: "mem_old", content: "Old deployment rule.", scope: "deployment" }));
+    await stores.memoryStore.supersede("project-a", "mem_old", "mem_2");
+    const inferred = await service.syncInferred("project-a");
+    expect(inferred.map((item) => [item.source.id, item.type, item.target.id])).toContainEqual(["mem_2", "supersedes", "mem_old"]);
+  });
+
+  it("validates every inferred draft before writing any", async () => {
+    await expect(service.replaceSystemRelationships("project-a", "inferred", [
+      { source: { kind: "memory", id: "mem_1" }, target: { kind: "memory", id: "mem_2" }, type: "related_to", confidence: 0.5, rationale: "Valid." },
+      { source: { kind: "memory", id: "mem_2" }, target: { kind: "memory", id: "mem_1" }, type: "related_to", confidence: 0.5, rationale: "token = abcdefgh12345678" },
+    ])).rejects.toMatchObject({ code: "SECRET_CANDIDATE" });
+    expect(await service.listEvidence("project-a")).toEqual([]);
+  });
+
   it("keeps concurrent manual creation to a single record", async () => {
     const [first, second] = await Promise.all([service.createManual("project-a", link()), service.createManual("project-a", link())]);
     expect(first.id).toBe(second.id);

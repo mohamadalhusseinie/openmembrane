@@ -2,7 +2,6 @@ import { createId, nowIso } from "@openmembrane/shared";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
-import type { MemoryEntry } from "../types/MemoryEntry";
 import { inferRelationships, type RelationshipInferenceOptions, type Supersession } from "./RelationshipInference";
 import type { AuditEvent, AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
 import {
@@ -195,13 +194,8 @@ export class RelationshipService {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(projectId);
       const supersessions = supersessionEvents(snapshot.audit);
-      // list() omits superseded memories; audit events identify them so supersession links can be inferred.
-      const active = await this.memoryStore.list(projectId);
-      const activeIds = new Set(active.map((memory) => memory.id));
-      const supersededIds = [...new Set(supersessions.map((item) => item.supersededId))].filter((id) => !activeIds.has(id)).sort();
-      const superseded = (await Promise.all(supersededIds.map((id) => this.memoryStore.findById(projectId, id))))
-        .filter((memory): memory is MemoryEntry => memory !== undefined);
-      const drafts = inferRelationships({ memories: [...active, ...superseded], candidates: snapshot.candidates, supersessions }, options);
+      const memories = await this.memoryStore.list(projectId, { includeSuperseded: true });
+      const drafts = inferRelationships({ memories, candidates: snapshot.candidates, supersessions }, options);
       return this.replaceSystemRelationshipsUnlocked(projectId, "inferred", drafts, snapshot);
     });
   }
@@ -227,8 +221,8 @@ export class RelationshipService {
     const eligible = await this.eligibleEntities(projectId, refs, snapshot);
     const now = nowIso();
     const existing = new Map(snapshot.evidence.filter((item) => item.origin === origin).map((item) => [item.id, item]));
-    const saved: Relationship[] = [];
     const wanted = new Set<string>();
+    const pending: Array<{ relationship: Relationship; previous: Relationship | undefined }> = [];
     for (const draft of drafts) {
       if (
         !this.isEndpointEligible(draft.source, eligible) ||
@@ -252,7 +246,12 @@ export class RelationshipService {
         updatedAt: now,
       };
       validateRelationship(relationship);
-      if (previous && previous.status === "active" && previous.confidence === draft.confidence && previous.rationale === draft.rationale) {
+      pending.push({ relationship, previous });
+    }
+    // Every record is validated before the first write so an invalid draft cannot leave a partial refresh.
+    const saved: Relationship[] = [];
+    for (const { relationship, previous } of pending) {
+      if (previous && previous.status === "active" && previous.confidence === relationship.confidence && previous.rationale === relationship.rationale) {
         saved.push(previous);
         continue;
       }
@@ -352,12 +351,13 @@ function byOriginPriority(left: Relationship, right: Relationship): number {
   return originPriority[left.origin] - originPriority[right.origin];
 }
 
+/** Pipeline events record `supersededBy`; the public supersede operation records `replacementId`. */
 function supersessionEvents(audit: AuditEvent[]): Supersession[] {
   const supersessions: Supersession[] = [];
   for (const event of audit) {
-    const supersededBy = event.details?.supersededBy;
-    if (event.type === "memory_superseded" && event.entityId && typeof supersededBy === "string") {
-      supersessions.push({ supersededId: event.entityId, supersededBy });
+    const replacement = event.details?.supersededBy ?? event.details?.replacementId;
+    if (event.type === "memory_superseded" && event.entityId && typeof replacement === "string" && replacement) {
+      supersessions.push({ supersededId: event.entityId, supersededBy: replacement });
     }
   }
   return supersessions;
