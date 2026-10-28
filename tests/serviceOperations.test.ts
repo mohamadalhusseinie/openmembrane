@@ -235,6 +235,9 @@ describe("Project service operations", () => {
     expect(await restored.listRelationshipEvidence()).toHaveLength(2);
     expect(await restored.refreshDerivedRelationships()).toEqual([derived]);
     expect(await restored.listRelationships()).toEqual([manual]);
+    const inferred = await restored.refreshInferredRelationships();
+    expect(inferred).toEqual([expect.objectContaining({ type: "duplicate_of", source: { kind: "candidate", id: "cand_1" } })]);
+    expect(inferred.every((item) => item.projectId === "project-a" && item.origin === "inferred")).toBe(true);
   });
 
   it("configures GitHub Team mode with a validated private repository", async () => {

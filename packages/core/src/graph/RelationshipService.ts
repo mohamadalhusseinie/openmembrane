@@ -2,6 +2,8 @@ import { createId, nowIso } from "@openmembrane/shared";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
+import type { MemoryEntry } from "../types/MemoryEntry";
+import { inferRelationships, type RelationshipInferenceOptions, type Supersession } from "./RelationshipInference";
 import type { AuditEvent, AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
 import {
   relationshipKey,
@@ -188,6 +190,22 @@ export class RelationshipService {
     });
   }
 
+  /** Recomputes inferred relationships locally from approved signals and persists them with rationale and confidence. */
+  syncInferred(projectId: string, options?: RelationshipInferenceOptions): Promise<Relationship[]> {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(projectId);
+      const supersessions = supersessionEvents(snapshot.audit);
+      // list() omits superseded memories; audit events identify them so supersession links can be inferred.
+      const active = await this.memoryStore.list(projectId);
+      const activeIds = new Set(active.map((memory) => memory.id));
+      const supersededIds = [...new Set(supersessions.map((item) => item.supersededId))].filter((id) => !activeIds.has(id)).sort();
+      const superseded = (await Promise.all(supersededIds.map((id) => this.memoryStore.findById(projectId, id))))
+        .filter((memory): memory is MemoryEntry => memory !== undefined);
+      const drafts = inferRelationships({ memories: [...active, ...superseded], candidates: snapshot.candidates, supersessions }, options);
+      return this.replaceSystemRelationshipsUnlocked(projectId, "inferred", drafts, snapshot);
+    });
+  }
+
   /** Makes the active records of one system origin match `drafts`; stale records are marked removed, never deleted. */
   replaceSystemRelationships(
     projectId: string,
@@ -332,6 +350,17 @@ const originPriority: Record<RelationshipOrigin, number> = { manual: 0, derived:
 
 function byOriginPriority(left: Relationship, right: Relationship): number {
   return originPriority[left.origin] - originPriority[right.origin];
+}
+
+function supersessionEvents(audit: AuditEvent[]): Supersession[] {
+  const supersessions: Supersession[] = [];
+  for (const event of audit) {
+    const supersededBy = event.details?.supersededBy;
+    if (event.type === "memory_superseded" && event.entityId && typeof supersededBy === "string") {
+      supersessions.push({ supersededId: event.entityId, supersededBy });
+    }
+  }
+  return supersessions;
 }
 
 function duplicateRejections(audit: AuditEvent[]): Array<{ candidateId: string; duplicateOf: string }> {
