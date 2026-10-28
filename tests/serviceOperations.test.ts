@@ -1095,6 +1095,19 @@ describe("Project service operations", () => {
     }
   });
 
+  it("remember: drops secret-like tags before saving", async () => {
+    const { context, handlers } = await createHandlers();
+    const result = await handlers.remember({
+      content: "Rotate cloud credentials through the vault service.",
+      type: "coding_rule",
+      confidence: "high",
+      tags: ["Cloud", "AKIAABCDEFGHIJKLMNOP"]
+    });
+    expect(result.savedCount).toBe(1);
+    const [saved] = await context.memoryStore.list("project-a");
+    expect(saved!.tags).toEqual(["cloud"]);
+  });
+
   it("remember: deduplicates identical content", async () => {
     const { handlers } = await createHandlers();
     const first = await handlers.remember({
