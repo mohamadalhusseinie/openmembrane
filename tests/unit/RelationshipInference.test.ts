@@ -179,4 +179,39 @@ describe("inferRelationships", () => {
     expect(Math.max(...degree.values())).toBeLessThanOrEqual(8);
     expect(drafts.length).toBeLessThanOrEqual((500 * 8) / 2);
   });
+
+  it("reserves entity budget for pending candidates when memories fill the cap", () => {
+    const memories = Array.from({ length: 500 }, (_, index) =>
+      entry({ id: `mem_${String(index).padStart(3, "0")}`, content: `Unique memory ${index}.`, tags: ["shared"] }),
+    );
+    const candidates = Array.from({ length: 5 }, (_, index) => candidate({ id: `cand_${index}`, tags: ["shared"] }));
+    const drafts = inferRelationships({ memories, candidates });
+    const endpoints = new Set(drafts.flatMap((draft) => [`${draft.source.kind}:${draft.source.id}`, `${draft.target.kind}:${draft.target.id}`]));
+    expect([...endpoints].some((key) => key.startsWith("candidate:"))).toBe(true);
+    expect(endpoints.size).toBeLessThanOrEqual(500);
+  });
+
+  it("caps metadata links per entity", () => {
+    const memories = Array.from({ length: 400 }, (_, index) => entry({ id: `mem_${String(index).padStart(3, "0")}`, content: `Memory ${index}.` }));
+    const hub = candidate({ id: "cand_hub", conflictWith: memories.map((memory) => memory.id) });
+    const supersessions = memories.slice(1).map((memory) => ({ supersededId: memory.id, supersededBy: "mem_000" }));
+    const drafts = inferRelationships({ memories, candidates: [hub], supersessions });
+    const degree = new Map<string, number>();
+    for (const draft of drafts.filter((item) => item.type !== "related_to")) {
+      for (const ref of [draft.source, draft.target]) degree.set(ref.id, (degree.get(ref.id) ?? 0) + 1);
+    }
+    expect(Math.max(...degree.values())).toBeLessThanOrEqual(32);
+    expect(drafts.length).toBeLessThan(400 * 32);
+  });
+
+  it("clamps invalid options to safe bounds", () => {
+    const memories = [entry({ id: "mem_a", tags: ["x"] }), entry({ id: "mem_b", tags: ["x"] })];
+    const defaults = inferRelationships({ memories, candidates: [] });
+    expect(defaults.length).toBe(1);
+    expect(inferRelationships({ memories, candidates: [] }, { maxEntities: Number.NaN, maxLinksPerEntity: Number.POSITIVE_INFINITY, minConfidence: Number.NaN })).toEqual(defaults);
+    expect(inferRelationships({ memories, candidates: [] }, { maxLinksPerEntity: -5 })).toEqual([]);
+    expect(inferRelationships({ memories, candidates: [] }, { maxEntities: 0 })).toEqual([]);
+    expect(inferRelationships({ memories, candidates: [] }, { minConfidence: 5 })).toEqual(inferRelationships({ memories, candidates: [] }, { minConfidence: 1 }));
+    expect(inferRelationships({ memories, candidates: [] }, { minConfidence: -1 })).toEqual(inferRelationships({ memories, candidates: [] }, { minConfidence: 0 }));
+  });
 });

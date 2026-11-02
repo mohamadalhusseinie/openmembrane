@@ -24,12 +24,22 @@ export class JsonRelationshipStore implements RelationshipStore {
     return rows.find((row) => row.projectId === projectId && row.id === relationshipId);
   }
 
-  save(relationship: Relationship): Promise<Relationship> {
+  async save(relationship: Relationship): Promise<Relationship> {
+    await this.saveMany([relationship]);
+    return relationship;
+  }
+
+  saveMany(relationships: Relationship[]): Promise<Relationship[]> {
+    if (relationships.length === 0) return Promise.resolve([]);
     const write = this.writes.then(async () => {
       const rows = await readJsonArray<Relationship>(this.filePath);
-      const index = rows.findIndex((row) => row.projectId === relationship.projectId && row.id === relationship.id);
-      if (index >= 0) rows[index] = relationship;
-      else rows.push(relationship);
+      const positions = new Map(rows.map((row, index) => [`${row.projectId}\u0000${row.id}`, index]));
+      for (const relationship of relationships) {
+        const key = `${relationship.projectId}\u0000${relationship.id}`;
+        const index = positions.get(key);
+        if (index !== undefined) rows[index] = relationship;
+        else positions.set(key, rows.push(relationship) - 1);
+      }
       const temporary = `${this.filePath}.${randomUUID()}.tmp`;
       try {
         await writeJsonArray(temporary, rows);
@@ -37,7 +47,7 @@ export class JsonRelationshipStore implements RelationshipStore {
       } finally {
         await rm(temporary, { force: true });
       }
-      return relationship;
+      return relationships;
     });
     this.writes = write.catch(() => undefined);
     return write;

@@ -114,10 +114,15 @@ and a 0.6 minimum for text-only matches. Each entity contributes at most 32
 tags (from at most 128 inspected); secret-like tags and session identifiers,
 checked in any letter case, are excluded before scoring. A rationale that would
 look secret-like falls back to value-free evidence. Duplicate, conflict, and
-supersession metadata produce typed links with confidence 1 and suppress
-redundant `related_to` links. The project service exposes this as
+supersession metadata produce typed links with confidence 1 (at most 32 per
+entity) and suppress redundant `related_to` links. Metadata edges already
+projected as `derived` are not recorded again as `inferred`, so each
+relationship has one provenance record. Pending candidates are guaranteed 20% of
+the entity budget so saved memories cannot starve them. Options are clamped to
+safe bounds. The project service exposes this as
 `refreshInferredRelationships`, which validates the full batch before persisting
-results with `inferred` origin.
+it in one write with `inferred` origin. Daemon and client exposure arrives with
+the graph API.
 
 ## Review UI And API
 

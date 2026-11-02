@@ -12,10 +12,9 @@ export class MemoryClassifier {
     };
   }
 
-  /** Drops secret-like tags before lowercasing, which would hide case-sensitive patterns such as AWS keys. */
   private normalizeTags(tags: string[]): string[] {
-    const safe = tags.map((tag) => tag.trim()).filter((tag) => tag && !this.secretDetector.containsSecret(tag));
-    return [...new Set(safe.map((tag) => tag.toLowerCase()).filter((tag) => !this.secretDetector.containsSecret(tag)))];
+    const safe = tags.map((tag) => tag.trim()).filter((tag) => tag && !this.secretDetector.containsSecretInAnyCase(tag));
+    return [...new Set(safe.map((tag) => tag.toLowerCase()))];
   }
 
   private classifySensitivity(candidate: MemoryCandidate): Sensitivity {

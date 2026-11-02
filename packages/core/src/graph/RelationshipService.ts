@@ -167,35 +167,44 @@ export class RelationshipService {
   syncDerived(projectId: string): Promise<Relationship[]> {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(projectId);
-      const { candidates, audit } = snapshot;
-      const pendingIds = new Set(candidates.map((candidate) => candidate.id));
-      const refFor = (id: string): EntityRef => ({ kind: pendingIds.has(id) || id.startsWith("cand_") ? "candidate" : "memory", id });
-      const drafts: RelationshipDraft[] = [];
-      for (const candidate of candidates) {
-        if (this.isSecretCandidate(candidate)) continue;
-        const source: EntityRef = { kind: "candidate", id: candidate.id };
-        if (candidate.duplicateOf) {
-          drafts.push({ source, target: refFor(candidate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Recorded as a duplicate during extraction." });
-        }
-        for (const memoryId of candidate.conflictWith ?? []) {
-          drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
-        }
-      }
-      // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
-      for (const duplicate of duplicateRejections(audit)) {
-        drafts.push({ source: { kind: "candidate", id: duplicate.candidateId }, target: refFor(duplicate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
-      }
-      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", drafts, snapshot);
+      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", this.derivedDrafts(snapshot), snapshot);
     });
   }
 
-  /** Recomputes inferred relationships locally from approved signals and persists them with rationale and confidence. */
+  private derivedDrafts(snapshot: RelationshipSnapshot): RelationshipDraft[] {
+    const { candidates, audit } = snapshot;
+    const pendingIds = new Set(candidates.map((candidate) => candidate.id));
+    const refFor = (id: string): EntityRef => ({ kind: pendingIds.has(id) || id.startsWith("cand_") ? "candidate" : "memory", id });
+    const drafts: RelationshipDraft[] = [];
+    for (const candidate of candidates) {
+      if (this.isSecretCandidate(candidate)) continue;
+      const source: EntityRef = { kind: "candidate", id: candidate.id };
+      if (candidate.duplicateOf) {
+        drafts.push({ source, target: refFor(candidate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Recorded as a duplicate during extraction." });
+      }
+      for (const memoryId of candidate.conflictWith ?? []) {
+        drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
+      }
+    }
+    // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
+    for (const duplicate of duplicateRejections(audit)) {
+      drafts.push({ source: { kind: "candidate", id: duplicate.candidateId }, target: refFor(duplicate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
+    }
+    return drafts;
+  }
+
+  /**
+   * Recomputes inferred relationships locally from approved signals and persists them with rationale and confidence.
+   * Edges already projected as derived are not duplicated, so each relationship key has a single owner.
+   */
   syncInferred(projectId: string, options?: RelationshipInferenceOptions): Promise<Relationship[]> {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(projectId);
       const supersessions = supersessionEvents(snapshot.audit);
       const memories = await this.memoryStore.list(projectId, { includeSuperseded: true });
-      const drafts = inferRelationships({ memories, candidates: snapshot.candidates, supersessions }, options);
+      const derivedKeys = new Set(this.derivedDrafts(snapshot).map(relationshipKey));
+      const drafts = inferRelationships({ memories, candidates: snapshot.candidates, supersessions }, options)
+        .filter((draft) => !derivedKeys.has(relationshipKey(draft)));
       return this.replaceSystemRelationshipsUnlocked(projectId, "inferred", drafts, snapshot);
     });
   }
@@ -248,19 +257,22 @@ export class RelationshipService {
       validateRelationship(relationship);
       pending.push({ relationship, previous });
     }
-    // Every record is validated before the first write so an invalid draft cannot leave a partial refresh.
+    // Every record is validated before the first write, and all changes go out in one batch.
     const saved: Relationship[] = [];
+    const writes: Relationship[] = [];
     for (const { relationship, previous } of pending) {
       if (previous && previous.status === "active" && previous.confidence === relationship.confidence && previous.rationale === relationship.rationale) {
         saved.push(previous);
         continue;
       }
-      saved.push(await this.relationshipStore.save(relationship));
+      writes.push(relationship);
+      saved.push(relationship);
     }
     for (const previous of existing.values()) {
       if (wanted.has(previous.id) || previous.status === "removed") continue;
-      await this.relationshipStore.save({ ...previous, status: "removed", updatedAt: now, removedAt: now });
+      writes.push({ ...previous, status: "removed", updatedAt: now, removedAt: now });
     }
+    await this.relationshipStore.saveMany(writes);
     return saved;
   }
 

@@ -99,5 +99,10 @@ describe("MemoryClassifier", () => {
       }));
       expect(result.tags).toEqual(["react"]);
     });
+
+    it("drops lowercase secret-like tags", () => {
+      const result = classifier.classify(candidate({ tags: ["react", "akiaabcdefghijklmnop"] }));
+      expect(result.tags).toEqual(["react"]);
+    });
   });
 });

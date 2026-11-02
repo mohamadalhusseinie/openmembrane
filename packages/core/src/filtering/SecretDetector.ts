@@ -60,6 +60,11 @@ export class SecretDetector {
     return this.scan(text).length > 0 || /\[REDACTED:[^\]]+\]/.test(text);
   }
 
+  /** For values that may have been case-folded, which hides case-sensitive patterns such as AWS keys. */
+  containsSecretInAnyCase(text: string): boolean {
+    return this.containsSecret(text) || this.containsSecret(text.toLowerCase()) || this.containsSecret(text.toUpperCase());
+  }
+
   redact(text: string): RedactionResult {
     const findings = this.scan(text);
     if (findings.length === 0) {

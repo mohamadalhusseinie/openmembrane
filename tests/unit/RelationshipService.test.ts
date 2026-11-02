@@ -92,6 +92,28 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(derived.map((item) => [item.source.id, item.type, item.target.id])).toEqual([["cand_gone", "duplicate_of", "mem_1"]]);
   });
 
+  it("records metadata edges once regardless of refresh order", async () => {
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_1", duplicateOf: "mem_1", conflictWith: ["mem_2"] }));
+    for (const order of [["syncDerived", "syncInferred"], ["syncInferred", "syncDerived"]] as const) {
+      for (const name of order) await service[name]("project-a");
+      const evidence = await service.listEvidence("project-a");
+      const keys = evidence.filter((item) => item.status === "active" && ["duplicate_of", "conflicts_with"].includes(item.type)).map((item) => `${item.type}:${item.source.id}:${item.target.id}`);
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(keys).toHaveLength(2);
+    }
+  });
+
+  it("refreshes 500 entities in bounded time", async () => {
+    for (let index = 0; index < 500; index += 1) {
+      await stores.memoryStore.save(entry({ id: `mem_big_${String(index).padStart(3, "0")}`, content: `Distinct guidance number ${index}.`, tags: ["shared", `g${index % 25}`] }));
+    }
+    const started = performance.now();
+    const inferred = await service.syncInferred("project-a");
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(inferred.length).toBeGreaterThan(0);
+    expect((await service.syncInferred("project-a")).length).toBe(inferred.length);
+  }, 30_000);
+
   it("persists inferred relationships with rationale and confidence, and lets manual removal override them", async () => {
     await stores.memoryStore.save(entry({ id: "mem_3", content: "Deploy with blue-green releases.", scope: "deployment" }));
     await stores.memoryStore.supersede("project-a", "mem_3");

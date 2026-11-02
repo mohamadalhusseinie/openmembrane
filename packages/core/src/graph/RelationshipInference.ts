@@ -20,10 +20,12 @@ export interface RelationshipInferenceInput {
 }
 
 export interface RelationshipInferenceOptions {
-  /** Maximum entities considered; extra entities are dropped deterministically. */
+  /** Maximum entities considered (1-500); extra entities are dropped deterministically. */
   maxEntities?: number;
   /** Maximum inferred `related_to` links per entity. */
   maxLinksPerEntity?: number;
+  /** Maximum duplicate, conflict, and supersession links per entity. */
+  maxMetadataLinksPerEntity?: number;
   /** Minimum confidence for `related_to` links. */
   minConfidence?: number;
   /** Text-only links below this confidence are omitted unless `includeLowConfidenceTextMatches` is set. */
@@ -34,10 +36,16 @@ export interface RelationshipInferenceOptions {
 export const defaultInferenceOptions = {
   maxEntities: 500,
   maxLinksPerEntity: 8,
+  maxMetadataLinksPerEntity: 32,
   minConfidence: 0.4,
   minTextOnlyConfidence: 0.6,
   includeLowConfidenceTextMatches: false,
 } as const satisfies Required<RelationshipInferenceOptions>;
+
+const hardMaxEntities = 500;
+const hardMaxLinksPerEntity = 64;
+/** Share of the entity budget reserved for pending candidates so saved memories cannot starve them. */
+const candidateEntityShare = 0.2;
 
 const tagWeight = 0.3;
 const maxTagScore = 0.6;
@@ -68,13 +76,21 @@ const secretDetector = new SecretDetector();
 
 /** Deterministic, local relationship inference: identical input always yields identical, sorted drafts. */
 export function inferRelationships(input: RelationshipInferenceInput, options: RelationshipInferenceOptions = {}): RelationshipDraft[] {
-  const settings = { ...defaultInferenceOptions, ...options };
+  const settings = resolveOptions(options);
   const entities = collectEntities(input, settings.maxEntities);
   const drafts = new Map<string, RelationshipDraft>();
   const linkedPairs = new Set<string>();
 
-  for (const draft of metadataDrafts(input, entities)) {
-    if (refKey(draft.source) === refKey(draft.target)) continue;
+  const metadata = [...new Map(metadataDrafts(input, entities).map((draft) => [relationshipKey(draft), draft])).values()]
+    .filter((draft) => refKey(draft.source) !== refKey(draft.target))
+    .sort((left, right) => compare(relationshipKey(left), relationshipKey(right)));
+  const metadataDegree = new Map<string, number>();
+  for (const draft of metadata) {
+    const source = refKey(draft.source);
+    const target = refKey(draft.target);
+    if ((metadataDegree.get(source) ?? 0) >= settings.maxMetadataLinksPerEntity || (metadataDegree.get(target) ?? 0) >= settings.maxMetadataLinksPerEntity) continue;
+    metadataDegree.set(source, (metadataDegree.get(source) ?? 0) + 1);
+    metadataDegree.set(target, (metadataDegree.get(target) ?? 0) + 1);
     drafts.set(relationshipKey(draft), draft);
     linkedPairs.add(pairKey(draft.source, draft.target));
   }
@@ -105,6 +121,22 @@ export function inferRelationships(input: RelationshipInferenceInput, options: R
   return [...drafts.entries()].sort(([left], [right]) => compare(left, right)).map(([, draft]) => draft);
 }
 
+function resolveOptions(options: RelationshipInferenceOptions): Required<RelationshipInferenceOptions> {
+  const integer = (value: number | undefined, fallback: number, min: number, max: number): number =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.floor(value))) : fallback;
+  const fraction = (value: number | undefined, fallback: number): number =>
+    typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+  const defaults = defaultInferenceOptions;
+  return {
+    maxEntities: integer(options.maxEntities, defaults.maxEntities, 1, hardMaxEntities),
+    maxLinksPerEntity: integer(options.maxLinksPerEntity, defaults.maxLinksPerEntity, 0, hardMaxLinksPerEntity),
+    maxMetadataLinksPerEntity: integer(options.maxMetadataLinksPerEntity, defaults.maxMetadataLinksPerEntity, 0, hardMaxLinksPerEntity),
+    minConfidence: fraction(options.minConfidence, defaults.minConfidence),
+    minTextOnlyConfidence: fraction(options.minTextOnlyConfidence, defaults.minTextOnlyConfidence),
+    includeLowConfidenceTextMatches: options.includeLowConfidenceTextMatches === true,
+  };
+}
+
 function collectEntities(input: RelationshipInferenceInput, maxEntities: number): InferenceEntity[] {
   // Equal ids are resolved by a canonical content tiebreak so duplicate records never depend on input order.
   const memories = [...input.memories]
@@ -113,12 +145,16 @@ function collectEntities(input: RelationshipInferenceInput, maxEntities: number)
   const candidates = [...input.candidates]
     .filter((candidate) => candidate.sensitivity !== "secret" && !secretDetector.containsSecret(candidate.content))
     .sort((left, right) => compare(left.id, right.id) || compare(canonicalJson(left), canonicalJson(right)));
-  const entities: InferenceEntity[] = [];
-  const seen = new Set<string>();
-  for (const [kind, item] of [
+  const all = [
     ...memories.map((memory) => ["memory", memory] as const),
     ...candidates.map((candidate) => ["candidate", candidate] as const),
-  ]) {
+  ];
+  const reserved = candidates.slice(0, Math.ceil(maxEntities * candidateEntityShare));
+  // Reserved candidates are admitted first; the remaining budget is filled in memory-then-candidate order.
+  const ordered = [...reserved.map((candidate) => ["candidate", candidate] as const), ...all];
+  const entities: InferenceEntity[] = [];
+  const seen = new Set<string>();
+  for (const [kind, item] of ordered) {
     const ref: EntityRef = { kind, id: item.id };
     const key = refKey(ref);
     if (seen.has(key)) continue;
@@ -161,7 +197,7 @@ function safeSessionId(sessionId: string | undefined): string | undefined {
 }
 
 function containsSecretInAnyCase(value: string): boolean {
-  return secretDetector.containsSecret(value) || secretDetector.containsSecret(value.toLowerCase()) || secretDetector.containsSecret(value.toUpperCase());
+  return secretDetector.containsSecretInAnyCase(value);
 }
 
 function metadataDrafts(input: RelationshipInferenceInput, entities: InferenceEntity[]): RelationshipDraft[] {
