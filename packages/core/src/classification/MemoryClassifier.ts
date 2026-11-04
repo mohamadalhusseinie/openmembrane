@@ -13,8 +13,10 @@ export class MemoryClassifier {
   }
 
   private normalizeTags(tags: string[]): string[] {
-    const safe = tags.map((tag) => tag.trim()).filter((tag) => tag && !this.secretDetector.containsSecretInAnyCase(tag));
-    return [...new Set(safe.map((tag) => tag.toLowerCase()))];
+    const safe = tags
+      .map((tag) => tag.trim().toLowerCase())
+      .filter((tag) => tag && !this.secretDetector.containsSecretInAnyCase(tag));
+    return [...new Set(safe)];
   }
 
   private classifySensitivity(candidate: MemoryCandidate): Sensitivity {

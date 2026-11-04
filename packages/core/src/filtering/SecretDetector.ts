@@ -62,9 +62,16 @@ export class SecretDetector {
 
   /** For values that may have been case-folded, which hides case-sensitive patterns such as AWS keys. */
   containsSecretInAnyCase(text: string): boolean {
+    const lowered = text.toLowerCase();
     return (
       this.containsSecret(text) ||
-      secretPatterns.some(({ pattern }) => new RegExp(pattern.source, pattern.flags.replace("g", "") + (pattern.flags.includes("i") ? "" : "i")).test(text))
+      this.containsSecret(lowered) ||
+      /\[redacted:[^\]]+\]/i.test(text) ||
+      secretPatterns.some(({ pattern }) => {
+        const flags = pattern.flags.replace("g", "");
+        const insensitive = new RegExp(pattern.source, flags.includes("i") ? flags : `${flags}i`);
+        return insensitive.test(text) || insensitive.test(lowered);
+      })
     );
   }
 

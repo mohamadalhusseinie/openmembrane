@@ -113,6 +113,14 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(await active()).toEqual([]);
   });
 
+  it("does not project derived edges to memories with secret-like content", async () => {
+    await stores.memoryStore.save(entry({ id: "mem_secret", content: "token = abcdefgh12345678" }));
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_1", duplicateOf: "mem_secret", conflictWith: ["mem_secret"] }));
+    await service.syncInferred("project-a");
+    const evidence = await service.listEvidence("project-a");
+    expect(evidence.filter((item) => [item.source.id, item.target.id].includes("mem_secret"))).toEqual([]);
+  });
+
   it("refreshes 500 entities in bounded time", async () => {
     for (let index = 0; index < 500; index += 1) {
       await stores.memoryStore.save(entry({ id: `mem_big_${String(index).padStart(3, "0")}`, content: `Distinct guidance number ${index}.`, tags: ["shared", `g${index % 25}`] }));

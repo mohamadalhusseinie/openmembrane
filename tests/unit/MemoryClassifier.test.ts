@@ -101,7 +101,8 @@ describe("MemoryClassifier", () => {
     });
 
     it("drops lowercase secret-like tags", () => {
-      const result = classifier.classify(candidate({ tags: ["react", "akiaabcdefghijklmnop", "eyjhbgcioijiuzi1niisinr5cci6.eyjzdwiioiixmjm0nty3odkwiiwibmftzsi6.sflkxwrjsmeki2ihlnqwf4a2fq2c"] }));
+      const kelvin = "sk-" + "\u212A".repeat(16);
+      const result = classifier.classify(candidate({ tags: ["react", "[redacted:jwt]", kelvin, "akiaabcdefghijklmnop", "eyjhbgcioijiuzi1niisinr5cci6.eyjzdwiioiixmjm0nty3odkwiiwibmftzsi6.sflkxwrjsmeki2ihlnqwf4a2fq2c"] }));
       expect(result.tags).toEqual(["react"]);
     });
   });

@@ -307,7 +307,7 @@ export class RelationshipService {
       else candidateIds.add(candidate.id);
     }
     return {
-      memory: new Set(memories.filter((memory) => memory !== undefined).map((memory) => memory.id)),
+      memory: new Set(memories.filter((memory) => memory !== undefined && !this.secretDetector.containsSecret(memory.content)).map((memory) => memory!.id)),
       candidate: candidateIds,
       audit_event: new Set(snapshot.audit.map((event) => event.id)),
       diagnostic: snapshot.diagnosticIds,
