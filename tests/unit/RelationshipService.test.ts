@@ -103,6 +103,16 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     }
   });
 
+  it("persists derived metadata on a fresh store and drops stale derived edges when inferring", async () => {
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_1", duplicateOf: "mem_1", conflictWith: ["mem_2"] }));
+    await service.syncInferred("project-a");
+    const active = () => service.list("project-a").then((items) => items.filter((item) => item.origin === "derived").map((item) => item.type).sort());
+    expect(await active()).toEqual(["conflicts_with", "duplicate_of"]);
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_1" }));
+    await service.syncInferred("project-a");
+    expect(await active()).toEqual([]);
+  });
+
   it("refreshes 500 entities in bounded time", async () => {
     for (let index = 0; index < 500; index += 1) {
       await stores.memoryStore.save(entry({ id: `mem_big_${String(index).padStart(3, "0")}`, content: `Distinct guidance number ${index}.`, tags: ["shared", `g${index % 25}`] }));

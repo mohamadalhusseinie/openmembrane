@@ -88,11 +88,11 @@ export function inferRelationships(input: RelationshipInferenceInput, options: R
   for (const draft of metadata) {
     const source = refKey(draft.source);
     const target = refKey(draft.target);
+    linkedPairs.add(pairKey(draft.source, draft.target));
     if ((metadataDegree.get(source) ?? 0) >= settings.maxMetadataLinksPerEntity || (metadataDegree.get(target) ?? 0) >= settings.maxMetadataLinksPerEntity) continue;
     metadataDegree.set(source, (metadataDegree.get(source) ?? 0) + 1);
     metadataDegree.set(target, (metadataDegree.get(target) ?? 0) + 1);
     drafts.set(relationshipKey(draft), draft);
-    linkedPairs.add(pairKey(draft.source, draft.target));
   }
 
   const related: RelationshipDraft[] = [];

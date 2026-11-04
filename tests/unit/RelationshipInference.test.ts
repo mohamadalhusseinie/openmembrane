@@ -192,8 +192,8 @@ describe("inferRelationships", () => {
   });
 
   it("caps metadata links per entity", () => {
-    const memories = Array.from({ length: 400 }, (_, index) => entry({ id: `mem_${String(index).padStart(3, "0")}`, content: `Memory ${index}.` }));
-    const hub = candidate({ id: "cand_hub", conflictWith: memories.map((memory) => memory.id) });
+    const memories = Array.from({ length: 400 }, (_, index) => entry({ id: `mem_${String(index).padStart(3, "0")}`, content: `Memory ${index}.`, tags: ["x"] }));
+    const hub = candidate({ id: "cand_hub", tags: ["x"], conflictWith: memories.map((memory) => memory.id) });
     const supersessions = memories.slice(1).map((memory) => ({ supersededId: memory.id, supersededBy: "mem_000" }));
     const drafts = inferRelationships({ memories, candidates: [hub], supersessions });
     const degree = new Map<string, number>();
@@ -202,6 +202,9 @@ describe("inferRelationships", () => {
     }
     expect(Math.max(...degree.values())).toBeLessThanOrEqual(32);
     expect(drafts.length).toBeLessThan(400 * 32);
+    const targets = new Set(drafts.filter((item) => item.source.id === "cand_hub" || item.target.id === "cand_hub").map((item) => item.target.id === "cand_hub" ? item.source.id : item.target.id));
+    expect(drafts.filter((item) => item.type === "related_to" && (item.source.id === "cand_hub" || item.target.id === "cand_hub"))).toEqual([]);
+    expect(targets.size).toBeLessThanOrEqual(32);
   });
 
   it("clamps invalid options to safe bounds", () => {

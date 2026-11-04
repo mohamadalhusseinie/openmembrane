@@ -200,9 +200,11 @@ export class RelationshipService {
   syncInferred(projectId: string, options?: RelationshipInferenceOptions): Promise<Relationship[]> {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(projectId);
+      const derivedDrafts = this.derivedDrafts(snapshot);
+      await this.replaceSystemRelationshipsUnlocked(projectId, "derived", derivedDrafts, snapshot);
       const supersessions = supersessionEvents(snapshot.audit);
       const memories = await this.memoryStore.list(projectId, { includeSuperseded: true });
-      const derivedKeys = new Set(this.derivedDrafts(snapshot).map(relationshipKey));
+      const derivedKeys = new Set(derivedDrafts.map(relationshipKey));
       const drafts = inferRelationships({ memories, candidates: snapshot.candidates, supersessions }, options)
         .filter((draft) => !derivedKeys.has(relationshipKey(draft)));
       return this.replaceSystemRelationshipsUnlocked(projectId, "inferred", drafts, snapshot);

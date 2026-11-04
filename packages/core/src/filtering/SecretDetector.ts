@@ -62,7 +62,10 @@ export class SecretDetector {
 
   /** For values that may have been case-folded, which hides case-sensitive patterns such as AWS keys. */
   containsSecretInAnyCase(text: string): boolean {
-    return this.containsSecret(text) || this.containsSecret(text.toLowerCase()) || this.containsSecret(text.toUpperCase());
+    return (
+      this.containsSecret(text) ||
+      secretPatterns.some(({ pattern }) => new RegExp(pattern.source, pattern.flags.replace("g", "") + (pattern.flags.includes("i") ? "" : "i")).test(text))
+    );
   }
 
   redact(text: string): RedactionResult {
