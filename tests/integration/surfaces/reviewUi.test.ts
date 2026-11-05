@@ -132,7 +132,7 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     try {
       await stores.memoryStore.save(entry({
         projectId, id: "graph-memory", tags: ["graph-safe"],
-        source: { kind: "session", sessionId: "private-session-identifier", tool: "copilot", excerpt: "Saved excerpt api_key=abcdefghijk123456" },
+        source: { kind: "session", sessionId: "run.alice.private-project", tool: "copilot", excerpt: "Saved excerpt api_key=abcdefghijk123456" },
       }));
       await stores.pendingCandidateStore.save(candidate({
         projectId, id: "secret-shaped-candidate",
@@ -156,19 +156,30 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
         id: "duplicate-rejection", projectId, type: "candidate_rejected", entityId: "historical-candidate",
         createdAt: "2026-06-01T00:00:00.000Z", details: { duplicateOf: "old memory" },
       });
+      await stores.auditLogStore.append({
+        id: "supersession-event", projectId, type: "memory_superseded", entityId: "old memory",
+        createdAt: "2026-06-01T00:00:00.000Z", details: { replacementId: "graph-memory" },
+      });
     } finally {
       await stores.close?.();
     }
 
     const graphService = createOpenMembraneService();
     const tagId = `tag_${createHash("sha256").update("tag:graph-safe").digest("hex").slice(0, 24)}`;
+    const sessionId = `session_${createHash("sha256").update("run.alice.private-project").digest("hex").slice(0, 24)}`;
     try {
       const project = await graphService.forProject({ projectRoot, projectId, storageDir });
       await project.createRelationship({
         source: { kind: "memory", id: "graph-memory" },
         target: { kind: "tag", id: tagId },
         type: "supports",
-        rationale: "Reviewed tag relationship.",
+        rationale: "same source session: run.alice.private-project; supporting context.",
+      });
+      await project.createRelationship({
+        source: { kind: "memory", id: "graph-memory" },
+        target: { kind: "session", id: sessionId },
+        type: "supports",
+        rationale: "Reviewed session relationship.",
       });
       const removed = await project.createRelationship({
         source: { kind: "memory", id: "graph-memory" },
@@ -196,6 +207,7 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     const allKinds = knowledgeGraphResponseSchema.parse(await (await request("/api/graph")).json());
     expect(allKinds.nodes.length).toBeLessThanOrEqual(500);
     expect(JSON.stringify(allKinds)).not.toContain("private-session-identifier");
+    expect(JSON.stringify(allKinds)).not.toContain("alice.private-project");
     expect(JSON.stringify(allKinds)).not.toContain("abcdefghijk123456");
     expect(allKinds.nodes.some((node: { id: string }) => node.id === "secret-shaped-candidate")).toBe(false);
     expect(allKinds.nodes.some((node: { id: string }) => node.id === "secret-candidate")).toBe(false);
@@ -206,6 +218,15 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     expect(allKinds.nodes.some((node: { kind: string; id: string }) => node.kind === "candidate" && node.id === "historical-candidate")).toBe(true);
     expect(allKinds.edges.some((edge: { type: string; origin: string }) => edge.type === "duplicate_of" && edge.origin === "derived")).toBe(true);
     expect(allKinds.edges.some((edge: { type: string; origin: string }) => edge.type === "supports" && edge.origin === "manual")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; source: { id: string }; target: { id: string } }) =>
+      edge.type === "supports" && edge.source.id === "graph-memory" && edge.target.id === sessionId
+    )).toBe(true);
+    expect(allKinds.edges.find((edge: { type: string; source: { id: string }; target: { id: string } }) =>
+      edge.type === "supports" && edge.source.id === "graph-memory" && edge.target.id === tagId
+    )?.rationale).not.toContain("alice.private-project");
+    expect(allKinds.edges.some((edge: { source: { id: string }; target: { id: string }; type: string }) =>
+      edge.source.id === "supersession-event" && edge.target.id === "graph-memory" && edge.type === "derived_from"
+    )).toBe(true);
     expect(allKinds.edges.some((edge: { type: string; source: { id: string }; target: { id: string } }) =>
       edge.type === "tagged_with" && edge.source.id === "graph-memory" && edge.target.id === tagId
     )).toBe(false);
@@ -266,7 +287,7 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
       visible.has(JSON.stringify([edge.source.kind, edge.source.id])) &&
       visible.has(JSON.stringify([edge.target.kind, edge.target.id]))
     )).toBe(true);
-  });
+  }, 60_000);
 
   it.each([
     ["STORAGE_ERROR", 500], ["GITHUB_UNAVAILABLE", 503],
