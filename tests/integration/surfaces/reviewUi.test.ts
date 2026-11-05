@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import { diagnosticsResponseSchema, exportResponseSchema, knowledgeGraphResponse
 import { setupSurfaceDaemon } from "./helpers";
 import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import { MemoryApprovalService } from "@openmembrane/core";
+import { createOpenMembraneService } from "@openmembrane/service";
 import { createStores } from "@openmembrane/storage";
 import { candidate, entry } from "../../unit/helpers";
 
@@ -125,7 +127,7 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
   });
 
   it("serves bounded, filtered graph data and privacy-safe entity details through the daemon client", async () => {
-    const { request, storageDir, projectId } = await setup();
+    const { request, storageDir, projectId, projectRoot } = await setup();
     const stores = await createStores({ backend: "json", baseDir: storageDir });
     try {
       await stores.memoryStore.save(entry({
@@ -145,8 +147,38 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
         message: "Diagnostic api_key=abcdefghijk123456", entityId: "graph-memory",
         createdAt: "2026-06-01T00:00:00.000Z",
       });
+      await stores.diagnosticsLogStore.append({
+        id: "orphan-diagnostic", projectId, severity: "warning", code: "ORPHAN_DIAGNOSTIC",
+        message: "This event references an entity that is not in the graph.", entityId: "missing-memory",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+      await stores.auditLogStore.append({
+        id: "duplicate-rejection", projectId, type: "candidate_rejected", entityId: "historical-candidate",
+        createdAt: "2026-06-01T00:00:00.000Z", details: { duplicateOf: "old memory" },
+      });
     } finally {
       await stores.close?.();
+    }
+
+    const graphService = createOpenMembraneService();
+    const tagId = `tag_${createHash("sha256").update("tag:graph-safe").digest("hex").slice(0, 24)}`;
+    try {
+      const project = await graphService.forProject({ projectRoot, projectId, storageDir });
+      await project.createRelationship({
+        source: { kind: "memory", id: "graph-memory" },
+        target: { kind: "tag", id: tagId },
+        type: "supports",
+        rationale: "Reviewed tag relationship.",
+      });
+      const removed = await project.createRelationship({
+        source: { kind: "memory", id: "graph-memory" },
+        target: { kind: "tag", id: tagId },
+        type: "tagged_with",
+        rationale: "Manual replacement for the generated tag edge.",
+      });
+      await project.removeRelationship({ relationshipId: removed.id, rationale: "Hide this generated grouping edge." });
+    } finally {
+      await graphService.close();
     }
 
     const graphResponse = await request("/api/graph?kind=memory&kind=tag&limit=20");
@@ -170,6 +202,14 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "session")).toBe(true);
     expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "audit_event")).toBe(true);
     expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "diagnostic")).toBe(true);
+    expect(allKinds.nodes.some((node: { id: string }) => node.id === "orphan-diagnostic")).toBe(false);
+    expect(allKinds.nodes.some((node: { kind: string; id: string }) => node.kind === "candidate" && node.id === "historical-candidate")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; origin: string }) => edge.type === "duplicate_of" && edge.origin === "derived")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; origin: string }) => edge.type === "supports" && edge.origin === "manual")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; source: { id: string }; target: { id: string } }) =>
+      edge.type === "tagged_with" && edge.source.id === "graph-memory" && edge.target.id === tagId
+    )).toBe(false);
+    expect(allKinds.nodes.some((node: { label: string }) => node.label.includes("EXTRACTION_MOCK_FALLBACK"))).toBe(true);
 
     const detail = await request("/api/graph/entities/memory/graph-memory");
     expect(detail.status).toBe(200);

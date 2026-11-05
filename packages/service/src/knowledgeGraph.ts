@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   OpenMembraneError,
   SecretDetector,
+  relationshipKey,
 } from "@openmembrane/core";
 import type {
   AuditEvent,
@@ -172,6 +173,9 @@ function referencedEntityIds(event: AuditEvent | DiagnosticEvent, known: Map<str
   if ("type" in event && event.type === "memory_superseded") {
     add(event.details?.supersededBy);
   }
+  if ("type" in event && event.type === "candidate_rejected") {
+    add(event.details?.duplicateOf);
+  }
   return [...refs.values()];
 }
 
@@ -199,7 +203,7 @@ function addLifecycleNodes(
   for (const event of diagnostics) {
     if (!safeId(event.id)) continue;
     const targets = referencedEntityIds(event, nodes);
-    if (targets.length === 0) continue;
+    if (event.entityId !== undefined && targets.length === 0) continue;
     const summary = redact(event.message, 500);
     addNode(nodes, {
       id: event.id,
@@ -215,14 +219,29 @@ function addLifecycleNodes(
   }
 }
 
+function addHistoricalCandidates(nodes: Map<string, KnowledgeGraphNode>, audit: readonly AuditEvent[]): void {
+  for (const event of audit) {
+    const duplicateOf = event.details?.duplicateOf;
+    if (event.type !== "candidate_rejected" || !event.entityId || typeof duplicateOf !== "string" ||
+      !safeId(event.entityId) || !safeId(duplicateOf)) continue;
+    const key = refKey({ kind: "candidate", id: event.entityId });
+    if (nodes.has(key)) continue;
+    addNode(nodes, {
+      id: event.entityId,
+      kind: "candidate",
+      label: "Rejected duplicate candidate",
+      summary: "Historical duplicate candidate; details are no longer available.",
+      createdAt: event.createdAt,
+    });
+  }
+}
+
 function sanitizedRelationship(
   relationship: Relationship,
   nodes: Map<string, KnowledgeGraphNode>,
   sessionIds: readonly string[],
 ): KnowledgeGraphEdge | undefined {
   if (relationship.status !== "active" ||
-    relationship.source.kind === "session" || relationship.source.kind === "tag" ||
-    relationship.target.kind === "session" || relationship.target.kind === "tag" ||
     !nodes.has(refKey(relationship.source)) || !nodes.has(refKey(relationship.target)) ||
     !safeId(relationship.source.id) || !safeId(relationship.target.id)) return undefined;
   let rationale = relationship.rationale.replace(/same source session:\s*[^;.]+/gi, "same source session");
@@ -246,12 +265,13 @@ function sanitizedRelationship(
 
 async function graphSnapshot(state: ProjectState, projectId: string): Promise<GraphSnapshot> {
   await state.relationshipService.syncInferred(projectId);
-  const [memories, candidates, audit, diagnostics, relationships] = await Promise.all([
+  const [memories, candidates, audit, diagnostics, relationships, evidence] = await Promise.all([
     state.memoryStore.list(projectId, { includeSuperseded: true }),
     state.pendingCandidateStore.list(projectId),
     state.auditLogStore.list(projectId),
     state.diagnosticsLogStore.list(projectId, { limit: 5_000 }),
     state.relationshipService.list(projectId),
+    state.relationshipService.listEvidence(projectId),
   ]);
   const nodes = new Map<string, KnowledgeGraphNode>();
   const edges = new Map<string, KnowledgeGraphEdge>();
@@ -260,7 +280,13 @@ async function graphSnapshot(state: ProjectState, projectId: string): Promise<Gr
     if (candidate.sensitivity === "secret") continue;
     addMemoryLikeNode(nodes, edges, candidate, "candidate");
   }
-  addLifecycleNodes(nodes, edges, audit.slice(-5_000), diagnostics);
+  const recentAudit = audit.slice(-5_000);
+  addHistoricalCandidates(nodes, recentAudit);
+  addLifecycleNodes(nodes, edges, recentAudit, diagnostics);
+  const manualKeys = new Set(evidence.filter((item) => item.origin === "manual").map(relationshipKey));
+  for (const [id, edge] of edges) {
+    if (manualKeys.has(relationshipKey(edge))) edges.delete(id);
+  }
 
   const rawSessionIds = [...new Set([...memories, ...candidates]
     .map((item) => item.source.sessionId)
