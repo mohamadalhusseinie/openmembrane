@@ -183,6 +183,51 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     }
   });
 
+  it("prioritizes memories over large event histories and keeps bounded entity edges self-contained", async () => {
+    const { client, storageDir, projectId } = await setup();
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      for (let index = 0; index < 510; index++) {
+        await stores.auditLogStore.append({
+          id: `graph-history-${index}`, projectId, type: "memory_saved", entityId: "old memory",
+          createdAt: `2026-06-01T00:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        });
+      }
+    } finally {
+      await stores.close?.();
+    }
+
+    const eventHeavy = await client.getKnowledgeGraph();
+    expect(eventHeavy.nodes).toHaveLength(500);
+    expect(eventHeavy.nodes.some((node) => node.kind === "memory")).toBe(true);
+    expect(eventHeavy.nodes.some((node) => node.kind === "candidate")).toBe(true);
+
+    const memoryStores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      for (let index = 0; index < 500; index++) {
+        await memoryStores.memoryStore.save(entry({
+          projectId,
+          id: `bounded-memory-${index}`,
+          content: `Unique graph fixture memory ${index} stores a separate convention.`,
+        }));
+      }
+    } finally {
+      await memoryStores.close?.();
+    }
+
+    const detail = await client.getKnowledgeGraphEntity({ kind: "session", id: "session_unknown" });
+    expect(detail.neighbors).toHaveLength(499);
+    expect(detail.truncated).toBe(true);
+    const visible = new Set([
+      JSON.stringify([detail.entity.kind, detail.entity.id]),
+      ...detail.neighbors.map((node) => JSON.stringify([node.kind, node.id])),
+    ]);
+    expect(detail.edges.every((edge) =>
+      visible.has(JSON.stringify([edge.source.kind, edge.source.id])) &&
+      visible.has(JSON.stringify([edge.target.kind, edge.target.id]))
+    )).toBe(true);
+  });
+
   it.each([
     ["STORAGE_ERROR", 500], ["GITHUB_UNAVAILABLE", 503],
   ])("preserves daemon %s HTTP failures in proxy responses", async (code, status) => {

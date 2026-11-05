@@ -304,13 +304,43 @@ function matchingNodes(snapshot: GraphSnapshot, query: KnowledgeGraphQuery = {})
   return nodes;
 }
 
-function boundedNodes(snapshot: GraphSnapshot, query: KnowledgeGraphQuery = {}, focus?: EntityRef): KnowledgeGraphNode[] {
-  const nodes = matchingNodes(snapshot, query);
-  if (focus) {
-    const index = nodes.findIndex((node) => refKey({ kind: node.kind, id: node.id }) === refKey(focus));
-    if (index >= 0) nodes.unshift(...nodes.splice(index, 1));
+function boundedNodes(snapshot: GraphSnapshot, query: KnowledgeGraphQuery = {}): KnowledgeGraphNode[] {
+  const limit = Math.min(query.limit ?? defaultEntityLimit, maxEntityLimit);
+  const matches = matchingNodes(snapshot, query);
+  const memories = matches.filter((node) => node.kind === "memory");
+  const candidates = matches.filter((node) => node.kind === "candidate");
+  const primaryCount = memories.length + candidates.length;
+  const selected: KnowledgeGraphNode[] = [];
+  if (primaryCount > limit) {
+    const candidateBudget = Math.min(candidates.length, Math.ceil(limit * 0.2));
+    const memoryBudget = Math.min(memories.length, limit - candidateBudget);
+    selected.push(...memories.slice(0, memoryBudget), ...candidates.slice(0, candidateBudget));
+  } else {
+    selected.push(...memories, ...candidates);
   }
-  return nodes.slice(0, Math.min(query.limit ?? defaultEntityLimit, maxEntityLimit));
+  const selectedKeys = new Set(selected.map((node) => refKey({ kind: node.kind, id: node.id })));
+  const context = matches.filter((node) => node.kind !== "memory" && node.kind !== "candidate")
+    .sort((left, right) => contextPriority(left.kind) - contextPriority(right.kind) ||
+      left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id));
+  for (const node of [...matches.filter((item) => item.kind === "memory" || item.kind === "candidate"), ...context]) {
+    if (selected.length >= limit) break;
+    const key = refKey({ kind: node.kind, id: node.id });
+    if (selectedKeys.has(key)) continue;
+    selected.push(node);
+    selectedKeys.add(key);
+  }
+  return selected;
+}
+
+function contextPriority(kind: KnowledgeGraphNode["kind"]): number {
+  switch (kind) {
+    case "tag": return 0;
+    case "session": return 1;
+    case "audit_event": return 2;
+    case "diagnostic": return 3;
+    case "memory":
+    case "candidate": return -1;
+  }
 }
 
 export async function getKnowledgeGraph(
@@ -349,18 +379,28 @@ export async function getKnowledgeGraphEntity(
   const allEdges = [...snapshot.edges.values()].filter((edge) =>
     refKey(edge.source) === refKey(ref) || refKey(edge.target) === refKey(ref)
   ).sort((left, right) => left.id.localeCompare(right.id));
-  const edges = allEdges.slice(0, maxGraphEdges);
-  const neighborRefs = new Map<string, EntityRef>();
+  const allNeighborRefs = new Map<string, EntityRef>();
+  for (const edge of allEdges) {
+    const neighbor = refKey(edge.source) === refKey(ref) ? edge.target : edge.source;
+    allNeighborRefs.set(refKey(neighbor), neighbor);
+  }
+  const boundedNeighborRefs = new Map([...allNeighborRefs].slice(0, maxEntityLimit - 1));
+  const selectedEdges = allEdges.filter((edge) => {
+    const neighbor = refKey(edge.source) === refKey(ref) ? edge.target : edge.source;
+    return boundedNeighborRefs.has(refKey(neighbor));
+  });
+  const edges = selectedEdges.slice(0, maxGraphEdges);
+  const returnedNeighborRefs = new Map<string, EntityRef>();
   for (const edge of edges) {
     const neighbor = refKey(edge.source) === refKey(ref) ? edge.target : edge.source;
-    neighborRefs.set(refKey(neighbor), neighbor);
+    returnedNeighborRefs.set(refKey(neighbor), neighbor);
   }
-  const neighbors = [...neighborRefs.values()]
+  const neighbors = [...returnedNeighborRefs.values()]
     .map((neighbor) => snapshot.nodes.get(refKey(neighbor)))
     .filter((node): node is KnowledgeGraphNode => node !== undefined)
     .slice(0, maxEntityLimit - 1);
   return {
     entity, edges, neighbors,
-    truncated: allEdges.length > edges.length || neighborRefs.size > neighbors.length,
+    truncated: allEdges.length > edges.length || allNeighborRefs.size > neighbors.length,
   };
 }
