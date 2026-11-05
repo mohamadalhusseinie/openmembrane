@@ -92,5 +92,19 @@ describe("MemoryClassifier", () => {
       const result = classifier.classify(candidate({ tags: ["react", "", "  ", "angular"] }));
       expect(result.tags).toEqual(["react", "angular"]);
     });
+
+    it("drops secret-like tags, including case-sensitive patterns hidden by lowercasing", () => {
+      const result = classifier.classify(candidate({
+        tags: ["React", "AKIAABCDEFGHIJKLMNOP", "ghp_abcdefghijklmnopqrstuvwxyz", "[REDACTED:jwt]"],
+      }));
+      expect(result.tags).toEqual(["react"]);
+    });
+
+    it("drops lowercase secret-like tags", () => {
+      const kelvin = "sk-" + "\u212A".repeat(16);
+      const boundary = "\u212Aghp_abcdefghijklmnopqrstuvwxyz";
+      const result = classifier.classify(candidate({ tags: ["react", boundary, "[redacted:jwt]", kelvin, "akiaabcdefghijklmnop", "eyjhbgcioijiuzi1niisinr5cci6.eyjzdwiioiixmjm0nty3odkwiiwibmftzsi6.sflkxwrjsmeki2ihlnqwf4a2fq2c"] }));
+      expect(result.tags).toEqual(["react"]);
+    });
   });
 });

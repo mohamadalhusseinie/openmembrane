@@ -51,6 +51,18 @@ export class SqliteRelationshipStore implements RelationshipStore {
   }
 
   async save(relationship: Relationship): Promise<Relationship> {
+    this.insert(relationship);
+    return relationship;
+  }
+
+  async saveMany(relationships: Relationship[]): Promise<Relationship[]> {
+    this.db.transaction(() => {
+      for (const relationship of relationships) this.insert(relationship);
+    })();
+    return relationships;
+  }
+
+  private insert(relationship: Relationship): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO relationships
@@ -73,6 +85,5 @@ export class SqliteRelationshipStore implements RelationshipStore {
         relationship.updatedAt,
         relationship.removedAt ?? null,
       );
-    return relationship;
   }
 }

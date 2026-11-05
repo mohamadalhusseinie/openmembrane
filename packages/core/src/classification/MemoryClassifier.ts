@@ -8,8 +8,16 @@ export class MemoryClassifier {
     return {
       ...candidate,
       sensitivity: this.classifySensitivity(candidate),
-      tags: normalizeTags(candidate.tags)
+      tags: this.normalizeTags(candidate.tags)
     };
+  }
+
+  private normalizeTags(tags: string[]): string[] {
+    const safe = tags
+      .map((tag) => tag.trim())
+      .filter((tag) => tag && !this.secretDetector.containsSecretInAnyCase(tag))
+      .map((tag) => tag.toLowerCase());
+    return [...new Set(safe.filter((tag) => !this.secretDetector.containsSecretInAnyCase(tag)))];
   }
 
   private classifySensitivity(candidate: MemoryCandidate): Sensitivity {
@@ -31,8 +39,4 @@ export class MemoryClassifier {
 
     return candidate.sensitivity;
   }
-}
-
-function normalizeTags(tags: string[]): string[] {
-  return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
 }

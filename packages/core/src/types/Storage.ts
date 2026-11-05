@@ -10,8 +10,13 @@ export interface MemorySearchOptions {
   tags?: string[];
 }
 
+export interface MemoryListOptions {
+  /** Superseded entries are omitted unless requested. */
+  includeSuperseded?: boolean;
+}
+
 export interface MemoryStore {
-  list(projectId: string): Promise<MemoryEntry[]>;
+  list(projectId: string, options?: MemoryListOptions): Promise<MemoryEntry[]>;
   findById(projectId: string, memoryId: string): Promise<MemoryEntry | undefined>;
   save(entry: MemoryEntry): Promise<MemoryEntry>;
   supersede(projectId: string, memoryId: string, supersededBy?: string): Promise<MemoryEntry>;

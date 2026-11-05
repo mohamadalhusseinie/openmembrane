@@ -20,6 +20,7 @@ export type ProjectService = ReturnType<typeof createProjectOperations> & {
   listRelationships: () => Promise<Relationship[]>;
   listRelationshipEvidence: () => Promise<Relationship[]>;
   refreshDerivedRelationships: () => Promise<Relationship[]>;
+  refreshInferredRelationships: () => Promise<Relationship[]>;
   createRelationship: (input: CreateManualRelationshipInput) => Promise<Relationship>;
   removeRelationship: (input: { relationshipId: string; rationale?: string }) => Promise<Relationship>;
   retryEligiblePublications: () => Promise<void>;
@@ -114,6 +115,7 @@ export class OpenMembraneService {
           listRelationships: () => state.relationshipService.list(resolved.projectId),
           listRelationshipEvidence: () => state.relationshipService.listEvidence(resolved.projectId),
           refreshDerivedRelationships: () => state.relationshipService.syncDerived(resolved.projectId),
+          refreshInferredRelationships: () => state.relationshipService.syncInferred(resolved.projectId),
           createRelationship: (input) => state.relationshipService.createManual(resolved.projectId, input),
           removeRelationship: (input) => state.relationshipService.remove(resolved.projectId, input.relationshipId, input.rationale),
           async retryEligiblePublications() {

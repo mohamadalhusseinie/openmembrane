@@ -2,6 +2,7 @@ import { createId, nowIso } from "@openmembrane/shared";
 import { OpenMembraneError } from "../errors/OpenMembraneError";
 import { SecretDetector } from "../filtering/SecretDetector";
 import type { MemoryCandidate } from "../types/MemoryCandidate";
+import { inferRelationships, type RelationshipInferenceOptions, type Supersession } from "./RelationshipInference";
 import type { AuditEvent, AuditLogStore, DiagnosticsLogStore, MemoryStore, PendingCandidateStore } from "../types/Storage";
 import {
   relationshipKey,
@@ -166,25 +167,47 @@ export class RelationshipService {
   syncDerived(projectId: string): Promise<Relationship[]> {
     return this.serialize(async () => {
       const snapshot = await this.snapshot(projectId);
-      const { candidates, audit } = snapshot;
-      const pendingIds = new Set(candidates.map((candidate) => candidate.id));
-      const refFor = (id: string): EntityRef => ({ kind: pendingIds.has(id) || id.startsWith("cand_") ? "candidate" : "memory", id });
-      const drafts: RelationshipDraft[] = [];
-      for (const candidate of candidates) {
-        if (this.isSecretCandidate(candidate)) continue;
-        const source: EntityRef = { kind: "candidate", id: candidate.id };
-        if (candidate.duplicateOf) {
-          drafts.push({ source, target: refFor(candidate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Recorded as a duplicate during extraction." });
-        }
-        for (const memoryId of candidate.conflictWith ?? []) {
-          drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
-        }
+      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", this.derivedDrafts(snapshot), snapshot);
+    });
+  }
+
+  private derivedDrafts(snapshot: RelationshipSnapshot): RelationshipDraft[] {
+    const { candidates, audit } = snapshot;
+    const pendingIds = new Set(candidates.map((candidate) => candidate.id));
+    const refFor = (id: string): EntityRef => ({ kind: pendingIds.has(id) || id.startsWith("cand_") ? "candidate" : "memory", id });
+    const drafts: RelationshipDraft[] = [];
+    for (const candidate of candidates) {
+      if (this.isSecretCandidate(candidate)) continue;
+      const source: EntityRef = { kind: "candidate", id: candidate.id };
+      if (candidate.duplicateOf) {
+        drafts.push({ source, target: refFor(candidate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Recorded as a duplicate during extraction." });
       }
-      // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
-      for (const duplicate of duplicateRejections(audit)) {
-        drafts.push({ source: { kind: "candidate", id: duplicate.candidateId }, target: refFor(duplicate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
+      for (const memoryId of candidate.conflictWith ?? []) {
+        drafts.push({ source, target: { kind: "memory", id: memoryId }, type: "conflicts_with", confidence: 1, rationale: "Recorded as conflicting during extraction." });
       }
-      return this.replaceSystemRelationshipsUnlocked(projectId, "derived", drafts, snapshot);
+    }
+    // The pipeline rejects duplicates without queueing them, so their metadata survives only in the audit log.
+    for (const duplicate of duplicateRejections(audit)) {
+      drafts.push({ source: { kind: "candidate", id: duplicate.candidateId }, target: refFor(duplicate.duplicateOf), type: "duplicate_of", confidence: 1, rationale: "Rejected as a duplicate during extraction." });
+    }
+    return drafts;
+  }
+
+  /**
+   * Recomputes inferred relationships locally from approved signals and persists them with rationale and confidence.
+   * Edges already projected as derived are not duplicated, so each relationship key has a single owner.
+   */
+  syncInferred(projectId: string, options?: RelationshipInferenceOptions): Promise<Relationship[]> {
+    return this.serialize(async () => {
+      const snapshot = await this.snapshot(projectId);
+      const derivedDrafts = this.derivedDrafts(snapshot);
+      await this.replaceSystemRelationshipsUnlocked(projectId, "derived", derivedDrafts, snapshot);
+      const supersessions = supersessionEvents(snapshot.audit);
+      const memories = await this.memoryStore.list(projectId, { includeSuperseded: true });
+      const derivedKeys = new Set(derivedDrafts.map(relationshipKey));
+      const drafts = inferRelationships({ memories, candidates: snapshot.candidates, supersessions }, options)
+        .filter((draft) => !derivedKeys.has(relationshipKey(draft)));
+      return this.replaceSystemRelationshipsUnlocked(projectId, "inferred", drafts, snapshot);
     });
   }
 
@@ -209,8 +232,8 @@ export class RelationshipService {
     const eligible = await this.eligibleEntities(projectId, refs, snapshot);
     const now = nowIso();
     const existing = new Map(snapshot.evidence.filter((item) => item.origin === origin).map((item) => [item.id, item]));
-    const saved: Relationship[] = [];
     const wanted = new Set<string>();
+    const pending: Array<{ relationship: Relationship; previous: Relationship | undefined }> = [];
     for (const draft of drafts) {
       if (
         !this.isEndpointEligible(draft.source, eligible) ||
@@ -234,16 +257,24 @@ export class RelationshipService {
         updatedAt: now,
       };
       validateRelationship(relationship);
-      if (previous && previous.status === "active" && previous.confidence === draft.confidence && previous.rationale === draft.rationale) {
+      pending.push({ relationship, previous });
+    }
+    // Every record is validated before the first write, and all changes go out in one batch.
+    const saved: Relationship[] = [];
+    const writes: Relationship[] = [];
+    for (const { relationship, previous } of pending) {
+      if (previous && previous.status === "active" && previous.confidence === relationship.confidence && previous.rationale === relationship.rationale) {
         saved.push(previous);
         continue;
       }
-      saved.push(await this.relationshipStore.save(relationship));
+      writes.push(relationship);
+      saved.push(relationship);
     }
     for (const previous of existing.values()) {
       if (wanted.has(previous.id) || previous.status === "removed") continue;
-      await this.relationshipStore.save({ ...previous, status: "removed", updatedAt: now, removedAt: now });
+      writes.push({ ...previous, status: "removed", updatedAt: now, removedAt: now });
     }
+    await this.relationshipStore.saveMany(writes);
     return saved;
   }
 
@@ -276,7 +307,7 @@ export class RelationshipService {
       else candidateIds.add(candidate.id);
     }
     return {
-      memory: new Set(memories.filter((memory) => memory !== undefined).map((memory) => memory.id)),
+      memory: new Set(memories.filter((memory) => memory !== undefined && !this.secretDetector.containsSecret(memory.content)).map((memory) => memory!.id)),
       candidate: candidateIds,
       audit_event: new Set(snapshot.audit.map((event) => event.id)),
       diagnostic: snapshot.diagnosticIds,
@@ -332,6 +363,18 @@ const originPriority: Record<RelationshipOrigin, number> = { manual: 0, derived:
 
 function byOriginPriority(left: Relationship, right: Relationship): number {
   return originPriority[left.origin] - originPriority[right.origin];
+}
+
+/** Pipeline events record `supersededBy`; the public supersede operation records `replacementId`. */
+function supersessionEvents(audit: AuditEvent[]): Supersession[] {
+  const supersessions: Supersession[] = [];
+  for (const event of audit) {
+    const replacement = event.details?.supersededBy ?? event.details?.replacementId;
+    if (event.type === "memory_superseded" && event.entityId && typeof replacement === "string" && replacement) {
+      supersessions.push({ supersededId: event.entityId, supersededBy: replacement });
+    }
+  }
+  return supersessions;
 }
 
 function duplicateRejections(audit: AuditEvent[]): Array<{ candidateId: string; duplicateOf: string }> {

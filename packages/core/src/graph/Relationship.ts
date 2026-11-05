@@ -52,6 +52,8 @@ export interface RelationshipStore {
   list(projectId: string, options?: RelationshipListOptions): Promise<Relationship[]>;
   findById(projectId: string, relationshipId: string): Promise<Relationship | undefined>;
   save(relationship: Relationship): Promise<Relationship>;
+  /** Persists all records with a single read/write cycle. */
+  saveMany(relationships: Relationship[]): Promise<Relationship[]>;
 }
 
 export const maxRelationshipTextLength = 500;

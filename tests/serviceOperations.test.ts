@@ -235,6 +235,9 @@ describe("Project service operations", () => {
     expect(await restored.listRelationshipEvidence()).toHaveLength(2);
     expect(await restored.refreshDerivedRelationships()).toEqual([derived]);
     expect(await restored.listRelationships()).toEqual([manual]);
+    // The duplicate edge is owned by the derived origin, so inference does not record it a second time.
+    expect(await restored.refreshInferredRelationships()).toEqual([]);
+    expect(await restored.listRelationshipEvidence()).toHaveLength(2);
   });
 
   it("configures GitHub Team mode with a validated private repository", async () => {
@@ -1090,6 +1093,19 @@ describe("Project service operations", () => {
     if (result.saved.length > 0) {
       expect(result.saved[0]!.content).not.toContain("sk-proj-");
     }
+  });
+
+  it("remember: drops secret-like tags before saving", async () => {
+    const { context, handlers } = await createHandlers();
+    const result = await handlers.remember({
+      content: "Rotate cloud credentials through the vault service.",
+      type: "coding_rule",
+      confidence: "high",
+      tags: ["Cloud", "AKIAABCDEFGHIJKLMNOP"]
+    });
+    expect(result.savedCount).toBe(1);
+    const [saved] = await context.memoryStore.list("project-a");
+    expect(saved!.tags).toEqual(["cloud"]);
   });
 
   it("remember: deduplicates identical content", async () => {

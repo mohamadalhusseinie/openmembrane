@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { MemoryEntry, MemorySearchOptions, MemoryStore } from "@openmembrane/core";
+import type { MemoryEntry, MemoryListOptions, MemorySearchOptions, MemoryStore } from "@openmembrane/core";
 import { OpenMembraneError } from "@openmembrane/core";
 import { nowIso } from "@openmembrane/shared";
 import { searchEntries } from "../searchEntries";
@@ -51,9 +51,9 @@ export class SqliteMemoryStore implements MemoryStore {
     this.db = db;
   }
 
-  async list(projectId: string): Promise<MemoryEntry[]> {
+  async list(projectId: string, options: MemoryListOptions = {}): Promise<MemoryEntry[]> {
     const rows = this.db
-      .prepare("SELECT * FROM memories WHERE projectId = ? AND status = 'active'")
+      .prepare(`SELECT * FROM memories WHERE projectId = ?${options.includeSuperseded ? "" : " AND status = 'active'"}`)
       .all(projectId) as RawMemoryRow[];
     return rows.map(deserializeMemory);
   }
