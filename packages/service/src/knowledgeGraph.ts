@@ -220,20 +220,26 @@ function addLifecycleNodes(
   }
 }
 
-function addHistoricalCandidates(nodes: Map<string, KnowledgeGraphNode>, audit: readonly AuditEvent[]): void {
+function addHistoricalCandidates(
+  nodes: Map<string, KnowledgeGraphNode>,
+  audit: readonly AuditEvent[],
+  excludedIds: ReadonlySet<string>,
+): void {
   for (const event of audit) {
     const duplicateOf = event.details?.duplicateOf;
     if (event.type !== "candidate_rejected" || !event.entityId || typeof duplicateOf !== "string" ||
       !safeId(event.entityId) || !safeId(duplicateOf)) continue;
-    const key = refKey({ kind: "candidate", id: event.entityId });
-    if (nodes.has(key)) continue;
-    addNode(nodes, {
-      id: event.entityId,
-      kind: "candidate",
-      label: "Rejected duplicate candidate",
-      summary: "Historical duplicate candidate; details are no longer available.",
-      createdAt: event.createdAt,
-    });
+    const candidateIds = [event.entityId, ...(duplicateOf.startsWith("cand_") ? [duplicateOf] : [])];
+    for (const id of candidateIds) {
+      if (excludedIds.has(id) || nodes.has(refKey({ kind: "candidate", id }))) continue;
+      addNode(nodes, {
+        id,
+        kind: "candidate",
+        label: "Rejected duplicate candidate",
+        summary: "Historical duplicate candidate; details are no longer available.",
+        createdAt: event.createdAt,
+      });
+    }
   }
 }
 
@@ -286,8 +292,12 @@ async function graphSnapshot(state: ProjectState, projectId: string): Promise<Gr
     if (candidate.sensitivity === "secret") continue;
     addMemoryLikeNode(nodes, edges, candidate, "candidate");
   }
+  const excludedCandidates = new Set(candidates
+    .filter((candidate) => candidate.sensitivity === "secret" ||
+      secretDetector.containsSecretInAnyCase(candidate.content))
+    .map((candidate) => candidate.id));
+  addHistoricalCandidates(nodes, audit, excludedCandidates);
   const recentAudit = audit.slice(-5_000);
-  addHistoricalCandidates(nodes, recentAudit);
   addLifecycleNodes(nodes, edges, recentAudit, diagnostics);
   const manualKeys = new Set(evidence.filter((item) => item.origin === "manual").map(relationshipKey));
   for (const [id, edge] of edges) {
