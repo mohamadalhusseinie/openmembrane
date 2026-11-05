@@ -4,10 +4,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReviewUiContext } from "../../../apps/review-ui/src/context";
 import { createReviewServer } from "../../../apps/review-ui/src/server";
-import { diagnosticsResponseSchema, exportResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
+import { diagnosticsResponseSchema, exportResponseSchema, knowledgeGraphResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
 import { setupSurfaceDaemon } from "./helpers";
 import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import { MemoryApprovalService } from "@openmembrane/core";
+import { createStores } from "@openmembrane/storage";
+import { candidate, entry } from "../../unit/helpers";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -120,6 +122,65 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
     expect(await client.listAuditLog({ limit: 2 })).toMatchObject([
       { id: "older-append" }, { id: "same-time-append" },
     ]);
+  });
+
+  it("serves bounded, filtered graph data and privacy-safe entity details through the daemon client", async () => {
+    const { request, storageDir, projectId } = await setup();
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      await stores.memoryStore.save(entry({
+        projectId, id: "graph-memory", tags: ["graph-safe"],
+        source: { kind: "session", sessionId: "private-session-identifier", tool: "copilot", excerpt: "Saved excerpt api_key=abcdefghijk123456" },
+      }));
+      await stores.pendingCandidateStore.save(candidate({
+        projectId, id: "secret-shaped-candidate",
+        content: "Do not expose api_key=abcdefghijk123456 in graph data.",
+      }));
+      await stores.auditLogStore.append({
+        id: "graph-audit", projectId, type: "memory_saved", entityId: "graph-memory",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+      await stores.diagnosticsLogStore.append({
+        id: "graph-diagnostic", projectId, severity: "warning", code: "GRAPH_TEST",
+        message: "Diagnostic api_key=abcdefghijk123456", entityId: "graph-memory",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+    } finally {
+      await stores.close?.();
+    }
+
+    const graphResponse = await request("/api/graph?kind=memory&kind=tag&limit=20");
+    expect(graphResponse.status).toBe(200);
+    const graph = knowledgeGraphResponseSchema.parse(await graphResponse.json());
+    expect(graph.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "graph-memory", kind: "memory", sourceExcerpt: expect.stringContaining("[REDACTED:") }),
+      expect.objectContaining({ kind: "tag", label: "tag: graph-safe" }),
+      expect.objectContaining({ kind: "tag", label: "scope: frontend" }),
+      expect.objectContaining({ kind: "tag", label: "type: coding_rule" }),
+    ]));
+    expect(graph.nodes.some((node: { kind: string }) => node.kind === "audit_event" || node.kind === "diagnostic")).toBe(false);
+    expect(graph.edges.some((edge: { type: string }) => edge.type === "tagged_with")).toBe(true);
+
+    const allKinds = knowledgeGraphResponseSchema.parse(await (await request("/api/graph")).json());
+    expect(allKinds.nodes.length).toBeLessThanOrEqual(500);
+    expect(JSON.stringify(allKinds)).not.toContain("private-session-identifier");
+    expect(JSON.stringify(allKinds)).not.toContain("abcdefghijk123456");
+    expect(allKinds.nodes.some((node: { id: string }) => node.id === "secret-shaped-candidate")).toBe(false);
+    expect(allKinds.nodes.some((node: { id: string }) => node.id === "secret-candidate")).toBe(false);
+    expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "session")).toBe(true);
+    expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "audit_event")).toBe(true);
+    expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "diagnostic")).toBe(true);
+
+    const detail = await request("/api/graph/entities/memory/graph-memory");
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({
+      entity: { id: "graph-memory", kind: "memory" },
+      edges: expect.arrayContaining([expect.objectContaining({ type: "derived_from" })]),
+    });
+    expect((await request("/api/graph/entities/memory/missing")).status).toBe(404);
+    for (const path of ["/api/graph?kind=invalid", "/api/graph?relationshipType=invalid", "/api/graph?limit=501"]) {
+      expect((await request(path)).status, path).toBe(400);
+    }
   });
 
   it.each([

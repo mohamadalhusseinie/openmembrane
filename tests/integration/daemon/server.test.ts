@@ -115,6 +115,10 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     expect(await readFile(join(alpha, "AGENTS.md"), "utf8")).toContain("Vitest");
     expect((await call("getDiagnostics", {})).length).toBeGreaterThan(0);
     expect((await call("listAuditLog", {})).length).toBeGreaterThan(0);
+    const graph = await call("getKnowledgeGraph", {});
+    expect(graph.nodes.length).toBeLessThanOrEqual(500);
+    const graphEntity = await call("getKnowledgeGraphEntity", { kind: "memory", id: memoryId });
+    expect(graphEntity.entity.id).toBe(memoryId);
     expect(await call("getCollaborationStatus", {})).toMatchObject({ mode: "local_private" });
     // GitHub configure is covered separately with the CommandRunner seam.
     expect([...covered].sort()).toEqual(Object.keys(endpoints).filter((name) => name !== "configureGitHubTeamMode").sort());

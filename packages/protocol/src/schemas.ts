@@ -2,8 +2,9 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
   collaborationModes, collaborationReviewProviders, confidenceValues, conflictKinds,
-  diagnosticSeverities, MAX_SUMMARY_LENGTH, MAX_TRANSCRIPT_LENGTH, memoryScopes,
-  memoryStatuses, memoryTypes, proposalStates, recommendedActions, retryStatuses, sensitivityValues,
+  diagnosticSeverities, entityKinds, MAX_SUMMARY_LENGTH, MAX_TRANSCRIPT_LENGTH, memoryScopes,
+  memoryStatuses, memoryTypes, proposalStates, recommendedActions, relationshipOrigins, relationshipStatuses,
+  relationshipTypes, retryStatuses, sensitivityValues,
 } from "@openmembrane/core";
 import type { AuditEvent, MemorySource } from "@openmembrane/core";
 
@@ -198,6 +199,50 @@ export const auditRequestSchema = projectRequestSchema.extend({
   limit: limit(500), order: z.enum(["timestamp", "append"]).optional(),
 });
 export const auditResponseSchema = z.array(auditEventSchema);
+export const knowledgeGraphNodeSchema = z.object({
+  id: text.max(500), kind: z.enum(entityKinds), label: text.max(300),
+  summary: z.string().max(500).optional(), content: z.string().max(2_000).optional(),
+  type: z.enum(memoryTypes).optional(), scope: z.enum(memoryScopes).optional(),
+  status: z.enum(memoryStatuses).optional(), sensitivity: z.enum(["public", "internal", "confidential"]).optional(),
+  confidence: z.enum(confidenceValues).optional(), recommendedAction: z.enum(recommendedActions).optional(),
+  severity: z.enum(diagnosticSeverities).optional(),
+  eventType: z.enum([
+    "session_ingested", "candidate_extracted", "memory_saved", "candidate_queued", "candidate_rejected",
+    "memory_superseded", "memory_proposed", "memory_updated", "relationship_created", "relationship_removed",
+  ] satisfies [AuditEvent["type"], ...AuditEvent["type"][]]).optional(),
+  sourceTool: z.string().max(100).optional(), sourceExcerpt: z.string().max(280).optional(),
+  tags: z.array(z.string().min(1).max(200)).max(32).optional(),
+  createdAt: text.optional(), updatedAt: text.optional(),
+}).strict();
+export const knowledgeGraphEntityRefSchema = z.object({
+  kind: z.enum(entityKinds), id: text.max(500),
+}).strict();
+export const knowledgeGraphEdgeSchema = z.object({
+  id: text.max(200), source: knowledgeGraphEntityRefSchema, target: knowledgeGraphEntityRefSchema,
+  type: z.enum(relationshipTypes), origin: z.enum(relationshipOrigins), confidence: z.number().min(0).max(1),
+  rationale: z.string().max(500), status: z.enum(relationshipStatuses),
+  createdAt: text, updatedAt: text, removedAt: text.optional(),
+}).strict();
+export const knowledgeGraphRequestSchema = projectRequestSchema.extend({
+  search: z.string().max(200).optional(),
+  entityKinds: z.array(z.enum(entityKinds)).min(1).max(entityKinds.length).optional(),
+  relationshipTypes: z.array(z.enum(relationshipTypes)).min(1).max(relationshipTypes.length).optional(),
+  limit: limit(500),
+}).strict();
+export const knowledgeGraphResponseSchema = z.object({
+  nodes: z.array(knowledgeGraphNodeSchema).max(500),
+  edges: z.array(knowledgeGraphEdgeSchema).max(5_000),
+  truncated: z.boolean(),
+}).strict();
+export const knowledgeGraphEntityRequestSchema = projectRequestSchema.extend({
+  kind: z.enum(entityKinds), id: text.max(500),
+}).strict();
+export const knowledgeGraphEntityResponseSchema = z.object({
+  entity: knowledgeGraphNodeSchema,
+  edges: z.array(knowledgeGraphEdgeSchema).max(5_000),
+  neighbors: z.array(knowledgeGraphNodeSchema).max(499),
+  truncated: z.boolean(),
+}).strict();
 export const healthRequestSchema = z.object({});
 export const healthResponseSchema = z.object({}).strict();
 export const configureGitHubTeamRequestSchema = projectRequestSchema.extend({ repository: repositoryInputSchema });
