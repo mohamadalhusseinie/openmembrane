@@ -8,10 +8,10 @@ import { entry } from "./helpers";
 import { projectRoot, protocolFixtures } from "./protocolFixtures";
 
 describe("v1 protocol", () => {
-  it("defines all 22 endpoints with unique methods and versioned paths", () => {
-    expect(Object.keys(endpoints)).toHaveLength(22);
+  it("defines all 24 endpoints with unique methods and versioned paths", () => {
+    expect(Object.keys(endpoints)).toHaveLength(24);
     const routes = Object.values(endpoints).map((endpoint) => `${endpoint.method} ${endpoint.path}`);
-    expect(new Set(routes).size).toBe(22);
+    expect(new Set(routes).size).toBe(24);
     for (const endpoint of Object.values(endpoints)) expect(endpoint.path).toMatch(/^\/v1\//);
   });
 
@@ -45,6 +45,10 @@ describe("v1 protocol", () => {
     expect(ingestRequestSchema.safeParse({ projectRoot, summary: "x".repeat(10_001) }).success).toBe(false);
     expect(endpoints.getRelevantContext.request.safeParse({ projectRoot, query: "x", limit: 51 }).success).toBe(false);
     expect(endpoints.getDiagnostics.request.safeParse({ projectRoot, limit: 501 }).success).toBe(false);
+    expect(endpoints.getKnowledgeGraph.request.safeParse({ projectRoot, limit: 501 }).success).toBe(false);
+    expect(endpoints.getKnowledgeGraph.request.safeParse({ projectRoot, relationshipTypes: ["invalid"] }).success).toBe(false);
+    expect(endpoints.getKnowledgeGraph.request.safeParse({ projectRoot, unexpected: true }).success).toBe(false);
+    expect(endpoints.getKnowledgeGraphEntity.request.safeParse({ projectRoot, kind: "invalid", id: "x" }).success).toBe(false);
     expect(endpoints.health.response.safeParse({ projectRoot }).success).toBe(false);
   });
 

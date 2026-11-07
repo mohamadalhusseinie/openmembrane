@@ -40,6 +40,20 @@ export const protocolFixtures: { [K in EndpointName]: { request: EndpointRequest
   exportStaticMemoryFiles: { request: { ...project, targets: ["agents", "claude", "copilot", "cursor", "project_memory"], outputDir: "docs", includeConfidential: true }, response: { projectId: "project-a", files: [{ target: "agents", path: "AGENTS.md", content: "Project instructions", memoryCount: 1 }] } },
   getDiagnostics: { request: { ...project, severity: "warning", code: "EXTRACTION_PROVIDER_ERROR", limit: 500 }, response: [{ id: "diag_1", projectId: "project-a", severity: "warning", code: "EXTRACTION_PROVIDER_ERROR", message: "Extraction failed", operation: "ingest", source: "core", entityId: "session_1", createdAt: "2026-05-08", details: { count: 1 } }] },
   listAuditLog: { request: { ...project, limit: 500 }, response: [{ id: "audit_1", projectId: "project-a", type: "memory_saved", entityId: "mem_1", createdAt: "2026-05-08", details: { manual: true } }] },
+  getKnowledgeGraph: {
+    request: { ...project, search: "Angular", entityKinds: ["memory"], relationshipTypes: ["related_to"], limit: 20 },
+    response: {
+      nodes: [{ id: "mem_1", kind: "memory", label: "Memory: coding rule", content: "Use standalone components.", type: "coding_rule", scope: "frontend", status: "active", sensitivity: "internal", confidence: "high", createdAt: "2026-05-08", updatedAt: "2026-05-08" }],
+      edges: [], truncated: false,
+    },
+  },
+  getKnowledgeGraphEntity: {
+    request: { ...project, kind: "memory", id: "mem_1" },
+    response: {
+      entity: { id: "mem_1", kind: "memory", label: "Memory: coding rule", content: "Use standalone components.", type: "coding_rule", scope: "frontend", status: "active", sensitivity: "internal", confidence: "high", createdAt: "2026-05-08", updatedAt: "2026-05-08" },
+      edges: [], neighbors: [], truncated: false,
+    },
+  },
   health: { request: {}, response: {} },
   configureGitHubTeamMode: { request: { ...project, repository: { host: "github.com", owner: "example", name: "memory" } }, response: { kind: "configured", config: { projectId: "project-a", mode: "github_team", repository: { host: "github.com", owner: "example", name: "memory", defaultBranch: "main" }, checkoutPath: resolve("checkout"), repositoryInitialized: true, createdAt: "2026-05-08", updatedAt: "2026-05-08" } } },
   getCollaborationStatus: { request: project, response: { mode: "github_team", repository: { host: "github.com", owner: "example", name: "memory", defaultBranch: "main" }, proposals: { proposed: 1, active: 2, rejected: 0, syncFailed: 1, conflict: 0 }, retries: [{ memoryId: "mem_1", attempts: 2, nextAttemptAt: "2026-05-09" }] } },

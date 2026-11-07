@@ -161,6 +161,8 @@ export class OpenMembraneClient {
   exportStaticMemoryFiles(input: ClientRequest<"exportStaticMemoryFiles"> = {}): Promise<EndpointResponse<"exportStaticMemoryFiles">> { return this.call("exportStaticMemoryFiles", input); }
   getDiagnostics(input: ClientRequest<"getDiagnostics"> = {}): Promise<EndpointResponse<"getDiagnostics">> { return this.call("getDiagnostics", input); }
   listAuditLog(input: ClientRequest<"listAuditLog"> = {}): Promise<EndpointResponse<"listAuditLog">> { return this.call("listAuditLog", input); }
+  getKnowledgeGraph(input: ClientRequest<"getKnowledgeGraph"> = {}): Promise<EndpointResponse<"getKnowledgeGraph">> { return this.call("getKnowledgeGraph", input); }
+  getKnowledgeGraphEntity(input: ClientRequest<"getKnowledgeGraphEntity">): Promise<EndpointResponse<"getKnowledgeGraphEntity">> { return this.call("getKnowledgeGraphEntity", input); }
   health(): Promise<EndpointResponse<"health">> { return this.call("health", {}); }
   configureGitHubTeamMode(input: ClientRequest<"configureGitHubTeamMode">): Promise<EndpointResponse<"configureGitHubTeamMode">> { return this.call("configureGitHubTeamMode", input); }
   getCollaborationStatus(input: ClientRequest<"getCollaborationStatus"> = {}): Promise<EndpointResponse<"getCollaborationStatus">> { return this.call("getCollaborationStatus", input); }
