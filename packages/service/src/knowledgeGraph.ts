@@ -243,20 +243,24 @@ function addHistoricalCandidates(
   }
 }
 
+function createSessionIdMatcher(sessionIds: readonly string[]): RegExp | undefined {
+  const escapedIds = [...new Set(sessionIds.map((value) => value.trim()).filter(Boolean))]
+    .sort((left, right) => right.length - left.length)
+    .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return escapedIds.length > 0 ? new RegExp(escapedIds.join("|"), "gi") : undefined;
+}
+
 function sanitizedRelationship(
   relationship: Relationship,
   nodes: Map<string, KnowledgeGraphNode>,
-  sessionIds: readonly string[],
+  sessionIdMatcher: RegExp | undefined,
 ): KnowledgeGraphEdge | undefined {
   if (relationship.status !== "active" ||
     !nodes.has(refKey(relationship.source)) || !nodes.has(refKey(relationship.target)) ||
     !safeId(relationship.source.id) || !safeId(relationship.target.id)) return undefined;
-  let rationale = relationship.rationale;
-  for (const id of [...new Set(sessionIds.map((value) => value.trim()).filter(Boolean))]
-    .sort((left, right) => right.length - left.length)) {
-    const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    rationale = rationale.replace(new RegExp(escapedId, "gi"), "[source session]");
-  }
+  let rationale = sessionIdMatcher
+    ? relationship.rationale.replace(sessionIdMatcher, "[source session]")
+    : relationship.rationale;
   rationale = rationale.replace(/same source session:\s*[^;]*/gi, "same source session");
   rationale = redact(rationale, 500) ?? "";
   if (secretDetector.containsSecretInAnyCase(rationale)) rationale = "Relationship evidence is available.";
@@ -304,12 +308,12 @@ async function graphSnapshot(state: ProjectState, projectId: string): Promise<Gr
     if (manualKeys.has(relationshipKey(edge))) edges.delete(id);
   }
 
-  const rawSessionIds = [...new Set([...memories, ...candidates]
+  const sessionIdMatcher = createSessionIdMatcher([...memories, ...candidates]
     .map((item) => item.source.sessionId)
     .filter((id): id is string => Boolean(id && !secretDetector.containsSecretInAnyCase(id)))
-    .map((id) => id.trim()))];
+  );
   for (const relationship of relationships) {
-    const edge = sanitizedRelationship(relationship, nodes, rawSessionIds);
+    const edge = sanitizedRelationship(relationship, nodes, sessionIdMatcher);
     if (edge) edges.set(edge.id, edge);
   }
   return { nodes, edges };
