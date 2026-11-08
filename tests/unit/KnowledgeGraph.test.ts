@@ -88,5 +88,6 @@ describe("knowledge graph historical candidates", () => {
 
     const detail = await getKnowledgeGraphEntity(state, projectId, { kind: "candidate", id: "cand_old" });
     expect(detail.neighbors).toContainEqual(expect.objectContaining({ kind: "candidate", id: "cand_removed" }));
+    expect(state.relationshipService.syncInferred).not.toHaveBeenCalled();
   });
 });

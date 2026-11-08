@@ -188,6 +188,7 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
         rationale: "Manual replacement for the generated tag edge.",
       });
       await project.removeRelationship({ relationshipId: removed.id, rationale: "Hide this generated grouping edge." });
+      await project.refreshInferredRelationships();
     } finally {
       await graphService.close();
     }

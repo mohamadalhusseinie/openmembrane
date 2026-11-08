@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOpenMembraneService } from "@openmembrane/service";
 import { safeJsonResult } from "../apps/mcp-server/src/server";
 import type { ProjectService } from "@openmembrane/service";
@@ -1057,6 +1057,22 @@ describe("Project service operations", () => {
     expect(result.savedCount).toBe(1);
     const search = await handlers.searchMemory({ query: "ESM imports" });
     expect(search.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("refreshes inferred relationships after memory writes, not graph reads", async () => {
+    const { context, handlers } = await createHandlers();
+    const refresh = vi.spyOn(context.relationshipService, "syncInferred");
+    const result = await handlers.remember({
+      content: "Use explicit project conventions.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+    const memoryId = result.saved[0]!.id;
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await handlers.getKnowledgeGraph();
+    await handlers.getKnowledgeGraphEntity({ kind: "memory", id: memoryId });
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("remember: batch save stores multiple memories", async () => {

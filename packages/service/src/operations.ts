@@ -132,6 +132,16 @@ export interface RememberInput extends ProjectScopedInput {
   items?: RememberItemInput[] | undefined;
 }
 
+async function withInferredRelationshipRefresh<T>(
+  context: ProjectState,
+  projectId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const result = await operation();
+  await context.relationshipService.syncInferred(projectId);
+  return result;
+}
+
 export function createProjectOperations(context: ProjectState) {
   return {
     proposeMemoryFromSession: async (input: ProposeMemoryInput) => {
@@ -157,7 +167,8 @@ export function createProjectOperations(context: ProjectState) {
       const result = await ingestionService.ingest(request, {
         preserveExistingConflicts: await isGitHubTeamMode(context, request.projectId),
       });
-      return publishAcceptedInGitHubMode(context, request.projectId, result);
+      return withInferredRelationshipRefresh(context, request.projectId, () =>
+        publishAcceptedInGitHubMode(context, request.projectId, result));
     },
 
     getProjectRules: async (input: GetProjectRulesInput) => {
@@ -250,17 +261,20 @@ export function createProjectOperations(context: ProjectState) {
 
     approveMemoryCandidate: async (input: ApproveMemoryCandidateInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      return approveCandidateInGitHubMode(context, projectId, input.candidateId);
+      return withInferredRelationshipRefresh(context, projectId, () =>
+        approveCandidateInGitHubMode(context, projectId, input.candidateId));
     },
 
     rejectMemoryCandidate: async (input: RejectMemoryCandidateInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      await context.approvalService.reject(projectId, input.candidateId, input.reason);
-      return {
-        projectId,
-        candidateId: input.candidateId,
-        rejected: true
-      };
+      return withInferredRelationshipRefresh(context, projectId, async () => {
+        await context.approvalService.reject(projectId, input.candidateId, input.reason);
+        return {
+          projectId,
+          candidateId: input.candidateId,
+          rejected: true
+        };
+      });
     },
 
     exportStaticMemoryFiles: async (input: ExportStaticMemoryFilesInput) => {
@@ -294,57 +308,61 @@ export function createProjectOperations(context: ProjectState) {
 
     supersedeMemory: async (input: SupersedeMemoryInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      if (await isGitHubTeamMode(context, projectId)) {
-        const existing = await context.memoryStore.findById(projectId, input.memoryId);
-        if (existing === undefined) {
-          throw new OpenMembraneError({
-            code: "MEMORY_NOT_FOUND",
-            message: `Memory ${input.memoryId} was not found.`,
-            safeMessage: "The memory was not found.",
-            details: { memoryId: input.memoryId },
-          });
+      return withInferredRelationshipRefresh(context, projectId, async () => {
+        if (await isGitHubTeamMode(context, projectId)) {
+          const existing = await context.memoryStore.findById(projectId, input.memoryId);
+          if (existing === undefined) {
+            throw new OpenMembraneError({
+              code: "MEMORY_NOT_FOUND",
+              message: `Memory ${input.memoryId} was not found.`,
+              safeMessage: "The memory was not found.",
+              details: { memoryId: input.memoryId },
+            });
+          }
+          if (existing.status === "superseded") {
+            throw new OpenMembraneError({
+              code: "MEMORY_ALREADY_SUPERSEDED",
+              message: `Memory ${input.memoryId} is already superseded.`,
+              safeMessage: "The memory is already superseded.",
+              details: { memoryId: input.memoryId },
+            });
+          }
+          return { ...existing, ...await context.githubTeamService.supersedeMemory(existing) };
         }
-        if (existing.status === "superseded") {
-          throw new OpenMembraneError({
-            code: "MEMORY_ALREADY_SUPERSEDED",
-            message: `Memory ${input.memoryId} is already superseded.`,
-            safeMessage: "The memory is already superseded.",
-            details: { memoryId: input.memoryId },
-          });
-        }
-        return { ...existing, ...await context.githubTeamService.supersedeMemory(existing) };
-      }
-      const superseded = await context.memoryStore.supersede(projectId, input.memoryId, input.replacementId);
-      await context.auditLogStore.append({
-        id: createId("audit"),
-        projectId,
-        type: "memory_superseded",
-        entityId: input.memoryId,
-        createdAt: nowIso(),
-        details: {
-          reason: input.reason ?? "Superseded via tool.",
-          replacementId: input.replacementId
-        }
+        const superseded = await context.memoryStore.supersede(projectId, input.memoryId, input.replacementId);
+        await context.auditLogStore.append({
+          id: createId("audit"),
+          projectId,
+          type: "memory_superseded",
+          entityId: input.memoryId,
+          createdAt: nowIso(),
+          details: {
+            reason: input.reason ?? "Superseded via tool.",
+            replacementId: input.replacementId
+          }
+        });
+        return superseded;
       });
-      return superseded;
     },
 
     updateMemory: async (input: UpdateMemoryInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      if (await isGitHubTeamMode(context, projectId)) {
-        const { updated } = await context.updateService.preview(projectId, input.memoryId, {
+      return withInferredRelationshipRefresh(context, projectId, async () => {
+        if (await isGitHubTeamMode(context, projectId)) {
+          const { updated } = await context.updateService.preview(projectId, input.memoryId, {
+            content: input.content,
+            type: input.type,
+            scope: input.scope,
+            tags: input.tags,
+          });
+          return { ...updated, ...await context.githubTeamService.updateProposal(input.memoryId, updated) };
+        }
+        return context.updateService.update(projectId, input.memoryId, {
           content: input.content,
           type: input.type,
           scope: input.scope,
-          tags: input.tags,
+          tags: input.tags
         });
-        return { ...updated, ...await context.githubTeamService.updateProposal(input.memoryId, updated) };
-      }
-      return context.updateService.update(projectId, input.memoryId, {
-        content: input.content,
-        type: input.type,
-        scope: input.scope,
-        tags: input.tags
       });
     },
 
@@ -359,27 +377,30 @@ export function createProjectOperations(context: ProjectState) {
 
     approveAllCandidates: async (input: ApproveAllCandidatesInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      if (!await isGitHubTeamMode(context, projectId)) return context.approvalService.approveAll(projectId);
-      const candidates = await context.pendingCandidateStore.list(projectId);
-      const approved: unknown[] = [];
-      const skipped: Array<{ candidateId: string; reason: string }> = [];
-      for (const candidate of candidates) {
-        try {
-          approved.push(await approveCandidateInGitHubMode(context, projectId, candidate.id));
-        } catch (error) {
-          if (error instanceof OpenMembraneError && (error.code === "CANDIDATE_NOT_FOUND" || error.code === "SECRET_CANDIDATE")) {
-            skipped.push({ candidateId: candidate.id, reason: error.safeMessage });
-          } else {
-            throw error;
+      return withInferredRelationshipRefresh(context, projectId, async () => {
+        if (!await isGitHubTeamMode(context, projectId)) return context.approvalService.approveAll(projectId);
+        const candidates = await context.pendingCandidateStore.list(projectId);
+        const approved: unknown[] = [];
+        const skipped: Array<{ candidateId: string; reason: string }> = [];
+        for (const candidate of candidates) {
+          try {
+            approved.push(await approveCandidateInGitHubMode(context, projectId, candidate.id));
+          } catch (error) {
+            if (error instanceof OpenMembraneError && (error.code === "CANDIDATE_NOT_FOUND" || error.code === "SECRET_CANDIDATE")) {
+              skipped.push({ candidateId: candidate.id, reason: error.safeMessage });
+            } else {
+              throw error;
+            }
           }
         }
-      }
-      return { projectId, approved, skipped };
+        return { projectId, approved, skipped };
+      });
     },
 
     rejectAllCandidates: async (input: RejectAllCandidatesInput) => {
       const projectId = resolveProjectId(context, input.projectId);
-      return context.approvalService.rejectAll(projectId, input.reason);
+      return withInferredRelationshipRefresh(context, projectId, () =>
+        context.approvalService.rejectAll(projectId, input.reason));
     },
 
     remember: async (input: RememberInput) => {
@@ -430,7 +451,8 @@ export function createProjectOperations(context: ProjectState) {
       const result = await context.pipeline.processStructured(projectId, candidates, {
         preserveExistingConflicts: await isGitHubTeamMode(context, projectId),
       });
-      return publishAcceptedInGitHubMode(context, projectId, mapPipelineResult({ ...result, redactions }));
+      return withInferredRelationshipRefresh(context, projectId, () =>
+        publishAcceptedInGitHubMode(context, projectId, mapPipelineResult({ ...result, redactions })));
     },
 
     reviewStaleMemories: async (input: ReviewStaleMemoriesInput) => {

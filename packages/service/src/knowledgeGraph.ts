@@ -280,7 +280,6 @@ function sanitizedRelationship(
 }
 
 async function graphSnapshot(state: ProjectState, projectId: string): Promise<GraphSnapshot> {
-  await state.relationshipService.syncInferred(projectId);
   const [memories, candidates, audit, diagnostics, relationships, evidence] = await Promise.all([
     state.memoryStore.list(projectId, { includeSuperseded: true }),
     state.pendingCandidateStore.list(projectId),
