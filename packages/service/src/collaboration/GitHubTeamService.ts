@@ -10,6 +10,7 @@ import type {
   Relationship,
   SharedMemoryEntry,
 } from "@openmembrane/core";
+import { OpenMembraneError } from "@openmembrane/core";
 import { createId, nowIso } from "@openmembrane/shared";
 import {
   createManifestFile,
@@ -230,8 +231,24 @@ export class GitHubTeamService {
       ? undefined
       : parseChangedFiles(await this.github.changedFiles(config.checkoutPath, checkpoint.defaultBranchCommit, commit));
     const snapshot = await this.importDefaultBranch(config, changed?.manifestChanged ? undefined : changed?.memoryPaths);
-    await this.refreshInferredRelationships?.(projectId);
-    if (!snapshot.complete) return;
+    let relationshipsRefreshed = true;
+    try {
+      await this.refreshInferredRelationships?.(projectId);
+    } catch (error) {
+      if (!(error instanceof OpenMembraneError) || error.code !== "STORAGE_INVALID_JSON") throw error;
+      relationshipsRefreshed = false;
+      await this.diagnosticsLogStore.append({
+        id: createId("diag"),
+        projectId,
+        severity: "warning",
+        code: error.code,
+        message: error.safeMessage,
+        operation: "relationship_refresh",
+        source: "core",
+        createdAt: this.now(),
+      });
+    }
+    if (!snapshot.complete || !relationshipsRefreshed) return;
     await this.refreshProposalReviews(config, proposals, snapshot.importedIds, snapshot.removedIds);
     await this.collaborationStore.saveCheckpoint({ projectId, defaultBranchCommit: commit, syncedAt: this.now() });
   }

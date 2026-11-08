@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { OpenMembraneError } from "@openmembrane/core";
 import type { CollaborationProposal, CollaborationStore, DiagnosticEvent, DiagnosticsLogStore } from "@openmembrane/core";
 import type { CollaborationProjectConfig, MemoryEntry } from "@openmembrane/core";
 import { JsonCollaborationStore, JsonMemoryStore } from "@openmembrane/storage";
@@ -1370,6 +1371,7 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
       state: "active",
       review: { mergedAt: "2026-09-12T12:05:00.000Z", mergedCommit: "merge-sha" },
     });
+
     await expect(memoryStore.findById("project-a", "mem_1")).resolves.toMatchObject({
       content: "Use standalone components.",
       source: { kind: "import", tool: "github" },
@@ -1378,6 +1380,28 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
       expect.objectContaining({ type: "review_merged", memoryId: "mem_1" }),
       expect.objectContaining({ type: "memory_imported", memoryId: "mem_1" }),
     ]));
+  });
+
+  it("keeps retrieval available when inferred-relationship refresh finds invalid stored JSON", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    addFullRefreshCommands(runner, storageDir, [sharedMemory()]);
+    const { service, collaborationStore, diagnostics, refreshInferredRelationships } = createService(storageDir, runner);
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+    vi.mocked(refreshInferredRelationships).mockRejectedValueOnce(new OpenMembraneError({
+      code: "STORAGE_INVALID_JSON",
+      message: "Invalid JSON in relationship store.",
+      safeMessage: "OpenMembrane could not read one of its local JSON store files.",
+    }));
+
+    await expect(service.refreshBeforeRetrieval("project-a")).resolves.toBeUndefined();
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toBeUndefined();
+    expect(diagnostics.events).toContainEqual(expect.objectContaining({
+      projectId: "project-a",
+      severity: "warning",
+      code: "STORAGE_INVALID_JSON",
+      operation: "relationship_refresh",
+    }));
   });
 
   it("activates a merged approved proposal after importing its validated default-branch entry", async () => {
