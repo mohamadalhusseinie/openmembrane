@@ -1075,6 +1075,28 @@ describe("Project service operations", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves a committed memory write and records an inference refresh failure", async () => {
+    const { context, handlers } = await createHandlers();
+    vi.spyOn(context.relationshipService, "syncInferred").mockRejectedValue(new Error("relationship store unavailable"));
+
+    const result = await handlers.remember({
+      content: "Keep committed memory writes successful when graph refresh fails.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+
+    expect(result.savedCount).toBe(1);
+    await expect(context.diagnosticsLogStore.list(context.defaultProjectId, { limit: 10 })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          code: "UNKNOWN_ERROR",
+          operation: "relationship_refresh",
+        }),
+      ]),
+    );
+  });
+
   it("remember: batch save stores multiple memories", async () => {
     const { handlers } = await createHandlers();
     const result = await handlers.remember({

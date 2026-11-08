@@ -1151,8 +1151,10 @@ function addFullRefreshCommands(
   runner: ExpectedCommandRunner,
   storageDir: string,
   memories: readonly CollaborationProposal["memory"][],
+  repeatCount = 1,
 ): void {
   const config = githubProjectConfig(storageDir);
+  const repeat = <T>(value: T): T[] => Array.from({ length: repeatCount }, () => value);
   const files = memories.map((memory) => ({
     path: `.openmembrane/memories/${memory.id}.json`,
     content: `${JSON.stringify(memory, null, 2)}\n`,
@@ -1167,27 +1169,27 @@ function addFullRefreshCommands(
       contentHash: createHash("sha256").update(file.content).digest("hex"),
     })),
   }, null, 2)}\n`;
-  runner.respond(
+  runner.respondSequence(
     "git",
     ["-C", config.checkoutPath, "fetch", "origin", "refs/heads/main:refs/remotes/origin/main"],
-    success(),
+    repeat(success()),
   );
-  runner.respond("git", ["-C", config.checkoutPath, "rev-parse", "origin/main"], {
+  runner.respondSequence("git", ["-C", config.checkoutPath, "rev-parse", "origin/main"], repeat({
     exitCode: 0,
     stdout: "abcdef0\n",
     stderr: "",
-  });
-  runner.respond("git", ["-C", config.checkoutPath, "show", "origin/main:.openmembrane/manifest.json"], {
+  }));
+  runner.respondSequence("git", ["-C", config.checkoutPath, "show", "origin/main:.openmembrane/manifest.json"], repeat({
     exitCode: 0,
     stdout: manifest,
     stderr: "",
-  });
+  }));
   for (const file of files) {
-    runner.respond("git", ["-C", config.checkoutPath, "show", `origin/main:${file.path}`], {
+    runner.respondSequence("git", ["-C", config.checkoutPath, "show", `origin/main:${file.path}`], repeat({
       exitCode: 0,
       stdout: file.content,
       stderr: "",
-    });
+    }));
   }
 }
 
@@ -1262,6 +1264,23 @@ function addPullRequestInspection(runner: ExpectedCommandRunner, result: Command
 }
 
 describe("GitHubTeamService refreshBeforeRetrieval", () => {
+  it("retries a failed relationship refresh before saving the import checkpoint", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    addFullRefreshCommands(runner, storageDir, [sharedMemory()], 2);
+    const { service, collaborationStore, refreshInferredRelationships } = createService(storageDir, runner);
+    refreshInferredRelationships.mockRejectedValueOnce(new Error("relationship store unavailable"));
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+
+    await expect(service.refreshBeforeRetrieval("project-a")).rejects.toThrow("relationship store unavailable");
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toBeUndefined();
+
+    await service.refreshBeforeRetrieval("project-a");
+
+    expect(refreshInferredRelationships).toHaveBeenCalledTimes(2);
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toMatchObject({ defaultBranchCommit: "abcdef0" });
+  });
+
   it("publishes a replacement proposal that removes conflicting default-branch memories in the same change", async () => {
     const storageDir = await createStorageDir();
     const replaced = sharedMemory({ id: "mem_old", content: "Use pnpm for package management." });

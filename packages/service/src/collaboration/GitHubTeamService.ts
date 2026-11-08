@@ -230,9 +230,7 @@ export class GitHubTeamService {
       ? undefined
       : parseChangedFiles(await this.github.changedFiles(config.checkoutPath, checkpoint.defaultBranchCommit, commit));
     const snapshot = await this.importDefaultBranch(config, changed?.manifestChanged ? undefined : changed?.memoryPaths);
-    if (snapshot.relationshipsChanged) {
-      await this.refreshInferredRelationships?.(projectId);
-    }
+    await this.refreshInferredRelationships?.(projectId);
     if (!snapshot.complete) return;
     await this.refreshProposalReviews(config, proposals, snapshot.importedIds, snapshot.removedIds);
     await this.collaborationStore.saveCheckpoint({ projectId, defaultBranchCommit: commit, syncedAt: this.now() });
@@ -345,11 +343,8 @@ export class GitHubTeamService {
     }
     const importedIds = new Set<string>();
     const removedIds = new Set<string>();
-    let relationshipsChanged = false;
     for (const memory of valid) {
-      const imported = await this.importMemory(config.projectId, memory);
-      if (imported.accepted) importedIds.add(memory.id);
-      relationshipsChanged ||= imported.changed;
+      if (await this.importMemory(config.projectId, memory)) importedIds.add(memory.id);
     }
 
     const complete = duplicateIds.size === 0 && validation.quarantined.length === 0 && valid.length === remoteFiles.length;
@@ -359,22 +354,21 @@ export class GitHubTeamService {
         if (memory.source.kind === "import" && memory.source.tool === "github" && !authoritativeIds.has(memory.id)) {
           await this.memoryStore.supersede(config.projectId, memory.id);
           removedIds.add(memory.id);
-          relationshipsChanged = true;
           await this.appendEvent(config.projectId, memory.id, "memory_removed");
         }
       }
     }
-    return { complete, importedIds, removedIds, relationshipsChanged };
+    return { complete, importedIds, removedIds };
   }
 
-  private async importMemory(projectId: string, memory: SharedMemoryEntry): Promise<{ accepted: boolean; changed: boolean }> {
+  private async importMemory(projectId: string, memory: SharedMemoryEntry): Promise<boolean> {
     const current = await this.memoryStore.findById(projectId, memory.id);
     if (current !== undefined && current.source.kind !== "import" && !sameSharedMemory(current, memory)) {
       const existing = await this.collaborationStore.getProposal(projectId, memory.id);
       if (isSupersededProposalStaging(current, existing, memory)) {
         await this.memoryStore.save({ ...memory, source: { kind: "import", tool: "github" } });
         await this.appendEvent(projectId, memory.id, "memory_imported");
-        return { accepted: true, changed: true };
+        return true;
       }
       const timestamp = this.now();
       await this.collaborationStore.saveProposal({
@@ -388,12 +382,12 @@ export class GitHubTeamService {
         updatedAt: timestamp,
       });
       await this.appendEvent(projectId, memory.id, "memory_conflicted");
-      return { accepted: false, changed: false };
+      return false;
     }
-    if (current !== undefined && sameSharedMemory(current, memory)) return { accepted: true, changed: false };
+    if (current !== undefined && sameSharedMemory(current, memory)) return true;
     await this.memoryStore.save({ ...memory, source: { kind: "import", tool: "github" } });
     await this.appendEvent(projectId, memory.id, "memory_imported");
-    return { accepted: true, changed: true };
+    return true;
   }
 
   private async appendEvent(
@@ -824,11 +818,10 @@ interface SnapshotImportResult {
   complete: boolean;
   importedIds: Set<string>;
   removedIds: Set<string>;
-  relationshipsChanged: boolean;
 }
 
 function incompleteSnapshot(): SnapshotImportResult {
-  return { complete: false, importedIds: new Set(), removedIds: new Set(), relationshipsChanged: false };
+  return { complete: false, importedIds: new Set(), removedIds: new Set() };
 }
 
 function parsePullRequestView(result: CommandResult): PullRequestRefreshView | undefined {

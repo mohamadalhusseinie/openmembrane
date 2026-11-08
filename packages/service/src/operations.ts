@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { rankMemories, annotateConflicts, SecretDetector, OpenMembraneError, mapPipelineResult, type Confidence, type DiagnosticSeverity, type IngestionRequest, type IngestionResult, type MemoryCandidate, type MemoryScope, type MemorySearchOptions, type MemoryType, type SecretFinding } from "@openmembrane/core";
+import { rankMemories, annotateConflicts, SecretDetector, OpenMembraneError, mapPipelineResult, normalizeOpenMembraneError, type Confidence, type DiagnosticSeverity, type IngestionRequest, type IngestionResult, type MemoryCandidate, type MemoryScope, type MemorySearchOptions, type MemoryType, type SecretFinding } from "@openmembrane/core";
 import type { ExportTarget } from "@openmembrane/exporters";
 import { createId, nowIso } from "@openmembrane/shared";
 import type { CollaborationProposal, MemoryEntry } from "@openmembrane/core";
@@ -138,7 +138,21 @@ async function withInferredRelationshipRefresh<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   const result = await operation();
-  await context.relationshipService.syncInferred(projectId);
+  try {
+    await context.relationshipService.syncInferred(projectId);
+  } catch (error) {
+    const normalized = normalizeOpenMembraneError(error);
+    await context.diagnosticsLogStore.append({
+      id: createId("diag"),
+      projectId,
+      severity: "warning",
+      code: normalized.code,
+      message: `Inferred relationship refresh failed after a memory mutation: ${normalized.safeMessage}`,
+      operation: "relationship_refresh",
+      source: "core",
+      createdAt: nowIso(),
+    });
+  }
   return result;
 }
 
