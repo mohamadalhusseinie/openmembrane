@@ -135,6 +135,7 @@ export async function createProjectState(
     diagnosticsLogStore,
     github: new GitHubCli(options.githubRunner, projectRoot),
     storageDir,
+    refreshInferredRelationships: (projectId) => relationshipService.syncInferred(projectId),
   });
 
   return {

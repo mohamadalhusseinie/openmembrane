@@ -1,8 +1,9 @@
 import { env } from "node:process";
-import { rankMemories } from "@openmembrane/core";
+import { OpenMembraneError, rankMemories } from "@openmembrane/core";
 import type { AuditEvent, CreateManualRelationshipInput, DiagnosticEvent, KnowledgeGraph, KnowledgeGraphEntity, KnowledgeGraphEntityRef, KnowledgeGraphQuery, Relationship, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
 import { createStores } from "@openmembrane/storage";
 import type { StoreSet, StorageBackend } from "@openmembrane/storage";
+import { createId, nowIso } from "@openmembrane/shared";
 import { createProjectState, resolveProjectRef } from "./factory";
 import type { CreateServiceOptions, ProjectRef, ProjectState } from "./factory";
 import { createProjectOperations } from "./operations";
@@ -67,6 +68,21 @@ export class OpenMembraneService {
       }
       promise = stores.then(async (storeSet) => {
         const state = await createProjectState(resolved, this.options, storeSet);
+        try {
+          await state.relationshipService.syncInferred(resolved.projectId);
+        } catch (error) {
+          if (!(error instanceof OpenMembraneError) || error.code !== "STORAGE_INVALID_JSON") throw error;
+          await state.diagnosticsLogStore.append({
+            id: createId("diag"),
+            projectId: resolved.projectId,
+            severity: "warning",
+            code: error.code,
+            message: error.safeMessage,
+            operation: "relationship_initialization",
+            source: "core",
+            createdAt: nowIso(),
+          });
+        }
         const operations = createProjectOperations(state);
         const service: ProjectService = {
           ...operations,

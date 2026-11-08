@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CollaborationProposal, CollaborationStore, DiagnosticEvent, DiagnosticsLogStore } from "@openmembrane/core";
 import type { CollaborationProjectConfig, MemoryEntry } from "@openmembrane/core";
 import { JsonCollaborationStore, JsonMemoryStore } from "@openmembrane/storage";
@@ -285,16 +285,19 @@ function createService(
 ) {
   const collaborationStore = new JsonCollaborationStore(storageDir);
   const memoryStore = new JsonMemoryStore(storageDir);
+  const refreshInferredRelationships = vi.fn(async () => []);
   return {
     diagnostics,
     collaborationStore,
     memoryStore,
+    refreshInferredRelationships,
     service: new GitHubTeamService({
       collaborationStore,
       memoryStore,
       diagnosticsLogStore: diagnostics,
       github: new GitHubCli(runner),
       storageDir,
+      refreshInferredRelationships,
       now,
     }),
   };
@@ -1336,12 +1339,14 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
     const remoteMemory = sharedMemory();
     addPullRequestInspection(runner, mergedPullRequest());
     addFullRefreshCommands(runner, storageDir, [remoteMemory]);
-    const { service, collaborationStore, memoryStore } = createService(storageDir, runner);
+    const { service, collaborationStore, memoryStore, refreshInferredRelationships } = createService(storageDir, runner);
     await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
     await collaborationStore.saveProposal(existingOpenProposal());
 
     await service.refreshBeforeRetrieval("project-a");
 
+    expect(refreshInferredRelationships).toHaveBeenCalledTimes(1);
+    expect(refreshInferredRelationships).toHaveBeenCalledWith("project-a");
     await expect(collaborationStore.getProposal("project-a", "mem_1")).resolves.toMatchObject({
       state: "active",
       review: { mergedAt: "2026-09-12T12:05:00.000Z", mergedCommit: "merge-sha" },

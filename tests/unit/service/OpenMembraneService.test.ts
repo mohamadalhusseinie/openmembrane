@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RelationshipService } from "@openmembrane/core";
 import { createOpenMembraneService, resolveProjectRef } from "@openmembrane/service";
 import { entry } from "../helpers";
 
@@ -24,6 +25,20 @@ afterEach(async () => {
 });
 
 describe("OpenMembraneService", () => {
+  it("rebuilds inferred relationships once when initializing a project", async () => {
+    const root = await tempDir();
+    const refresh = vi.spyOn(RelationshipService.prototype, "syncInferred");
+    const service = createOpenMembraneService();
+    services.push(service);
+    const ref = { projectRoot: root, projectId: "initialized-project" };
+
+    await service.forProject(ref);
+    await service.forProject(ref);
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledWith(ref.projectId);
+  });
+
   it.each(["json", "sqlite"] as const)("keeps review search active-only before limiting on %s", async (storageBackend) => {
     const root = await tempDir();
     const service = createOpenMembraneService();
