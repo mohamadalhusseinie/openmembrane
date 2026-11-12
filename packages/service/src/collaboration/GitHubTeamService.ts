@@ -10,7 +10,7 @@ import type {
   Relationship,
   SharedMemoryEntry,
 } from "@openmembrane/core";
-import { OpenMembraneError } from "@openmembrane/core";
+import { normalizeOpenMembraneError, OpenMembraneError } from "@openmembrane/core";
 import { createId, nowIso } from "@openmembrane/shared";
 import {
   createManifestFile,
@@ -237,16 +237,21 @@ export class GitHubTeamService {
     } catch (error) {
       if (!(error instanceof OpenMembraneError) || error.code !== "STORAGE_INVALID_JSON") throw error;
       relationshipsRefreshed = false;
-      await this.diagnosticsLogStore.append({
-        id: createId("diag"),
-        projectId,
-        severity: "warning",
-        code: error.code,
-        message: error.safeMessage,
-        operation: "relationship_refresh",
-        source: "core",
-        createdAt: this.now(),
-      });
+      try {
+        await this.diagnosticsLogStore.append({
+          id: createId("diag"),
+          projectId,
+          severity: "warning",
+          code: error.code,
+          message: error.safeMessage,
+          operation: "relationship_refresh",
+          source: "core",
+          createdAt: this.now(),
+        });
+      } catch (diagnosticError) {
+        const diagnosticFailure = normalizeOpenMembraneError(diagnosticError);
+        console.error(`Failed to persist relationship-refresh diagnostic [${diagnosticFailure.code}].`);
+      }
     }
     if (!snapshot.complete || !relationshipsRefreshed) return;
     await this.refreshProposalReviews(config, proposals, snapshot.importedIds, snapshot.removedIds);

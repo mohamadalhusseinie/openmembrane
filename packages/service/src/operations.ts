@@ -142,16 +142,21 @@ async function withInferredRelationshipRefresh<T>(
     await context.relationshipService.syncInferred(projectId);
   } catch (error) {
     const normalized = normalizeOpenMembraneError(error);
-    await context.diagnosticsLogStore.append({
-      id: createId("diag"),
-      projectId,
-      severity: "warning",
-      code: normalized.code,
-      message: `Inferred relationship refresh failed after a memory mutation: ${normalized.safeMessage}`,
-      operation: "relationship_refresh",
-      source: "core",
-      createdAt: nowIso(),
-    });
+    try {
+      await context.diagnosticsLogStore.append({
+        id: createId("diag"),
+        projectId,
+        severity: "warning",
+        code: normalized.code,
+        message: `Inferred relationship refresh failed after a memory mutation: ${normalized.safeMessage}`,
+        operation: "relationship_refresh",
+        source: "core",
+        createdAt: nowIso(),
+      });
+    } catch (diagnosticError) {
+      const diagnosticFailure = normalizeOpenMembraneError(diagnosticError);
+      console.error(`Failed to persist relationship-refresh diagnostic [${diagnosticFailure.code}].`);
+    }
   }
   return result;
 }

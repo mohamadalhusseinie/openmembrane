@@ -1404,6 +1404,25 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
     }));
   });
 
+  it("keeps retrieval available when relationship-refresh diagnostics cannot be persisted", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    addFullRefreshCommands(runner, storageDir, [sharedMemory()]);
+    const { service, collaborationStore, diagnostics, refreshInferredRelationships } = createService(storageDir, runner);
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+    vi.mocked(refreshInferredRelationships).mockRejectedValueOnce(new OpenMembraneError({
+      code: "STORAGE_INVALID_JSON",
+      message: "Invalid JSON in relationship store.",
+      safeMessage: "OpenMembrane could not read one of its local JSON store files.",
+    }));
+    vi.spyOn(diagnostics, "append").mockRejectedValueOnce(new Error("diagnostics store unavailable"));
+
+    await expect(service.refreshBeforeRetrieval("project-a")).resolves.toBeUndefined();
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toBeUndefined();
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("Failed to persist relationship-refresh diagnostic"));
+  });
+
   it("activates a merged approved proposal after importing its validated default-branch entry", async () => {
     const storageDir = await createStorageDir();
     const runner = new ExpectedCommandRunner();

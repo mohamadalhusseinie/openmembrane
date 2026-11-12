@@ -1,5 +1,5 @@
 import { env } from "node:process";
-import { OpenMembraneError, rankMemories } from "@openmembrane/core";
+import { normalizeOpenMembraneError, OpenMembraneError, rankMemories } from "@openmembrane/core";
 import type { AuditEvent, CreateManualRelationshipInput, DiagnosticEvent, KnowledgeGraph, KnowledgeGraphEntity, KnowledgeGraphEntityRef, KnowledgeGraphQuery, Relationship, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
 import { createStores } from "@openmembrane/storage";
 import type { StoreSet, StorageBackend } from "@openmembrane/storage";
@@ -72,16 +72,21 @@ export class OpenMembraneService {
           await state.relationshipService.syncInferred(resolved.projectId);
         } catch (error) {
           if (!(error instanceof OpenMembraneError) || error.code !== "STORAGE_INVALID_JSON") throw error;
-          await state.diagnosticsLogStore.append({
-            id: createId("diag"),
-            projectId: resolved.projectId,
-            severity: "warning",
-            code: error.code,
-            message: error.safeMessage,
-            operation: "relationship_initialization",
-            source: "core",
-            createdAt: nowIso(),
-          });
+          try {
+            await state.diagnosticsLogStore.append({
+              id: createId("diag"),
+              projectId: resolved.projectId,
+              severity: "warning",
+              code: error.code,
+              message: error.safeMessage,
+              operation: "relationship_initialization",
+              source: "core",
+              createdAt: nowIso(),
+            });
+          } catch (diagnosticError) {
+            const diagnosticFailure = normalizeOpenMembraneError(diagnosticError);
+            console.error(`Failed to persist relationship-initialization diagnostic [${diagnosticFailure.code}].`);
+          }
         }
         const operations = createProjectOperations(state);
         const service: ProjectService = {

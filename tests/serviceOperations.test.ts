@@ -1097,6 +1097,22 @@ describe("Project service operations", () => {
     );
   });
 
+  it("preserves a committed memory write when its refresh diagnostic cannot be persisted", async () => {
+    const { context, handlers } = await createHandlers();
+    vi.spyOn(context.relationshipService, "syncInferred").mockRejectedValue(new Error("relationship store unavailable"));
+    vi.spyOn(context.diagnosticsLogStore, "append").mockRejectedValue(new Error("diagnostics store unavailable"));
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await handlers.remember({
+      content: "Keep committed writes successful if warning persistence also fails.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+
+    expect(result.savedCount).toBe(1);
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("Failed to persist relationship-refresh diagnostic"));
+  });
+
   it("remember: batch save stores multiple memories", async () => {
     const { handlers } = await createHandlers();
     const result = await handlers.remember({
