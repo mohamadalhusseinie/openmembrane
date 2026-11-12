@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOpenMembraneService } from "@openmembrane/service";
 import { safeJsonResult } from "../apps/mcp-server/src/server";
 import type { ProjectService } from "@openmembrane/service";
@@ -1057,6 +1057,60 @@ describe("Project service operations", () => {
     expect(result.savedCount).toBe(1);
     const search = await handlers.searchMemory({ query: "ESM imports" });
     expect(search.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("refreshes inferred relationships after memory writes, not graph reads", async () => {
+    const { context, handlers } = await createHandlers();
+    const refresh = vi.spyOn(context.relationshipService, "syncInferred");
+    const result = await handlers.remember({
+      content: "Use explicit project conventions.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+    const memoryId = result.saved[0]!.id;
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await handlers.getKnowledgeGraph();
+    await handlers.getKnowledgeGraphEntity({ kind: "memory", id: memoryId });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a committed memory write and records an inference refresh failure", async () => {
+    const { context, handlers } = await createHandlers();
+    vi.spyOn(context.relationshipService, "syncInferred").mockRejectedValue(new Error("relationship store unavailable"));
+
+    const result = await handlers.remember({
+      content: "Keep committed memory writes successful when graph refresh fails.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+
+    expect(result.savedCount).toBe(1);
+    await expect(context.diagnosticsLogStore.list(context.defaultProjectId, { limit: 10 })).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          code: "UNKNOWN_ERROR",
+          operation: "relationship_refresh",
+        }),
+      ]),
+    );
+  });
+
+  it("preserves a committed memory write when its refresh diagnostic cannot be persisted", async () => {
+    const { context, handlers } = await createHandlers();
+    vi.spyOn(context.relationshipService, "syncInferred").mockRejectedValue(new Error("relationship store unavailable"));
+    vi.spyOn(context.diagnosticsLogStore, "append").mockRejectedValue(new Error("diagnostics store unavailable"));
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await handlers.remember({
+      content: "Keep committed writes successful if warning persistence also fails.",
+      type: "coding_rule",
+      confidence: "high",
+    });
+
+    expect(result.savedCount).toBe(1);
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("Failed to persist relationship-refresh diagnostic"));
   });
 
   it("remember: batch save stores multiple memories", async () => {

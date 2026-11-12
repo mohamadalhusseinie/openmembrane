@@ -8,6 +8,7 @@ import { createMemoryRoutes } from "./routes/memories.js";
 import { createCandidateRoutes } from "./routes/candidates.js";
 import { createAuditRoutes } from "./routes/audit.js";
 import { createDiagnosticsRoutes } from "./routes/diagnostics.js";
+import { createGraphRoutes } from "./routes/graph.js";
 import { createExportRoutes } from "./routes/export.js";
 import { serveStatic } from "./static.js";
 import type { ReviewUiContext } from "./context.js";
@@ -47,6 +48,7 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
   const candidateRoutes = createCandidateRoutes(ctx.project);
   const auditRoutes = createAuditRoutes(ctx.project);
   const diagnosticsRoutes = createDiagnosticsRoutes(ctx.project);
+  const graphRoutes = createGraphRoutes(ctx.project);
   const exportRoutes = createExportRoutes(ctx.project);
 
   router.get("/api/memories", memoryRoutes.listMemories);
@@ -62,6 +64,8 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
   router.post("/api/candidates/:id/reject", candidateRoutes.rejectCandidate);
   router.get("/api/audit", auditRoutes.listAudit);
   router.get("/api/diagnostics", diagnosticsRoutes.listDiagnostics);
+  router.get("/api/graph", graphRoutes.graph);
+  router.get("/api/graph/entities/:kind/:id", graphRoutes.entity);
   router.post("/api/export/preview", exportRoutes.preview);
   router.post("/api/export", exportRoutes.write);
 
@@ -104,7 +108,7 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
         const diagnosticId = clientError?.diagnosticId ?? createId("diag");
         const code = clientError?.code ?? (invalid ? "VALIDATION_ERROR" : "REVIEW_UI_ERROR");
         const status = invalid ? 400 : clientError?.status ??
-          (code === "MEMORY_NOT_FOUND" || code === "CANDIDATE_NOT_FOUND" ? 404
+          (code === "MEMORY_NOT_FOUND" || code === "CANDIDATE_NOT_FOUND" || code === "GRAPH_ENTITY_NOT_FOUND" ? 404
             : clientError?.origin === "daemon" ? 422 : clientError ? 503 : 500);
         if (!clientError?.diagnosticId) process.stderr.write(`Review UI request failed [${code}] (diagnostic: ${diagnosticId})\n`);
         res.writeHead(status, { "Content-Type": "application/json" });

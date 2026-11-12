@@ -80,6 +80,14 @@ the same confidentiality filters without writing anything.
 `GET /v1/audit` accepts `order: "append"` for newest-appended-first
 ordering before applying the limit. Omitted order (or `"timestamp"`) keeps
 newest-timestamp-first ordering for existing callers.
+`GET /v1/graph` returns project-scoped, privacy-filtered graph nodes and edges.
+It accepts optional `search`, `entityKinds`, `relationshipTypes`, and `limit`
+filters; the limit is capped at 500 nodes. Session nodes use opaque identifiers,
+and source excerpts are included only when saved and are redacted before return.
+`GET /v1/graph/entity` accepts an entity `kind` and `id`, and returns its
+bounded detail, connected edges, and neighboring nodes or a safe not-found error.
+Both operations are exposed through `OpenMembraneClient` and do not give the
+Review UI direct storage access.
 
 The loopback review server binds one caller project and never forwards
 browser-supplied project/storage routing overrides. Its API preserves
@@ -97,6 +105,8 @@ existing response shapes:
 | `POST /api/candidates/approve-all` / `reject-all` | Bulk review; approval includes skipped IDs/reasons |
 | `GET /api/audit` | Newest-appended audit entries, optional `limit` |
 | `GET /api/diagnostics` | Diagnostics; `severity`, `code`, `limit` filters |
+| `GET /api/graph` | Bounded graph; `search`, repeated `kind`/`relationshipType`, `limit` filters |
+| `GET /api/graph/entities/:kind/:id` | Entity detail, connected edges and neighbors, or 404 |
 | `POST /api/export/preview` | Render only, regardless of a supplied preview flag |
 | `POST /api/export` | Write generated files |
 

@@ -7,8 +7,10 @@ import type {
   DiagnosticsLogStore,
   MemoryEntry,
   MemoryStore,
+  Relationship,
   SharedMemoryEntry,
 } from "@openmembrane/core";
+import { normalizeOpenMembraneError, OpenMembraneError } from "@openmembrane/core";
 import { createId, nowIso } from "@openmembrane/shared";
 import {
   createManifestFile,
@@ -60,6 +62,7 @@ export interface GitHubTeamServiceOptions {
   diagnosticsLogStore: DiagnosticsLogStore;
   github: GitHubCli;
   storageDir: string;
+  refreshInferredRelationships?: (projectId: string) => Promise<Relationship[]>;
   now?: () => string;
 }
 
@@ -69,6 +72,7 @@ export class GitHubTeamService {
   private readonly diagnosticsLogStore: DiagnosticsLogStore;
   private readonly github: GitHubCli;
   private readonly storageDir: string;
+  private readonly refreshInferredRelationships: ((projectId: string) => Promise<Relationship[]>) | undefined;
   private readonly now: () => string;
   private readonly projectOperations = new Map<string, Promise<void>>();
 
@@ -78,6 +82,7 @@ export class GitHubTeamService {
     this.diagnosticsLogStore = options.diagnosticsLogStore;
     this.github = options.github;
     this.storageDir = options.storageDir;
+    this.refreshInferredRelationships = options.refreshInferredRelationships;
     this.now = options.now ?? nowIso;
   }
 
@@ -226,7 +231,29 @@ export class GitHubTeamService {
       ? undefined
       : parseChangedFiles(await this.github.changedFiles(config.checkoutPath, checkpoint.defaultBranchCommit, commit));
     const snapshot = await this.importDefaultBranch(config, changed?.manifestChanged ? undefined : changed?.memoryPaths);
-    if (!snapshot.complete) return;
+    let relationshipsRefreshed = true;
+    try {
+      await this.refreshInferredRelationships?.(projectId);
+    } catch (error) {
+      if (!(error instanceof OpenMembraneError) || error.code !== "STORAGE_INVALID_JSON") throw error;
+      relationshipsRefreshed = false;
+      try {
+        await this.diagnosticsLogStore.append({
+          id: createId("diag"),
+          projectId,
+          severity: "warning",
+          code: error.code,
+          message: error.safeMessage,
+          operation: "relationship_refresh",
+          source: "core",
+          createdAt: this.now(),
+        });
+      } catch (diagnosticError) {
+        const diagnosticFailure = normalizeOpenMembraneError(diagnosticError);
+        console.error(`Failed to persist relationship-refresh diagnostic [${diagnosticFailure.code}].`);
+      }
+    }
+    if (!snapshot.complete || !relationshipsRefreshed) return;
     await this.refreshProposalReviews(config, proposals, snapshot.importedIds, snapshot.removedIds);
     await this.collaborationStore.saveCheckpoint({ projectId, defaultBranchCommit: commit, syncedAt: this.now() });
   }

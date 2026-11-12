@@ -1,11 +1,13 @@
 import { env } from "node:process";
-import { rankMemories } from "@openmembrane/core";
-import type { AuditEvent, CreateManualRelationshipInput, DiagnosticEvent, Relationship, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
+import { normalizeOpenMembraneError, OpenMembraneError, rankMemories } from "@openmembrane/core";
+import type { AuditEvent, CreateManualRelationshipInput, DiagnosticEvent, KnowledgeGraph, KnowledgeGraphEntity, KnowledgeGraphEntityRef, KnowledgeGraphQuery, Relationship, MemoryEntry, MemoryScope, MemorySearchOptions, MemoryType } from "@openmembrane/core";
 import { createStores } from "@openmembrane/storage";
 import type { StoreSet, StorageBackend } from "@openmembrane/storage";
+import { createId, nowIso } from "@openmembrane/shared";
 import { createProjectState, resolveProjectRef } from "./factory";
 import type { CreateServiceOptions, ProjectRef, ProjectState } from "./factory";
 import { createProjectOperations } from "./operations";
+import { getKnowledgeGraph, getKnowledgeGraphEntity } from "./knowledgeGraph";
 import { canonicalStoragePath } from "./storagePath";
 
 export type ProjectService = ReturnType<typeof createProjectOperations> & {
@@ -19,6 +21,8 @@ export type ProjectService = ReturnType<typeof createProjectOperations> & {
   listReviewAuditLog: (limit: number) => Promise<AuditEvent[]>;
   listRelationships: () => Promise<Relationship[]>;
   listRelationshipEvidence: () => Promise<Relationship[]>;
+  getKnowledgeGraph: (query?: KnowledgeGraphQuery) => Promise<KnowledgeGraph>;
+  getKnowledgeGraphEntity: (ref: KnowledgeGraphEntityRef) => Promise<KnowledgeGraphEntity>;
   refreshDerivedRelationships: () => Promise<Relationship[]>;
   refreshInferredRelationships: () => Promise<Relationship[]>;
   createRelationship: (input: CreateManualRelationshipInput) => Promise<Relationship>;
@@ -64,6 +68,26 @@ export class OpenMembraneService {
       }
       promise = stores.then(async (storeSet) => {
         const state = await createProjectState(resolved, this.options, storeSet);
+        try {
+          await state.relationshipService.syncInferred(resolved.projectId);
+        } catch (error) {
+          if (!(error instanceof OpenMembraneError) || error.code !== "STORAGE_INVALID_JSON") throw error;
+          try {
+            await state.diagnosticsLogStore.append({
+              id: createId("diag"),
+              projectId: resolved.projectId,
+              severity: "warning",
+              code: error.code,
+              message: error.safeMessage,
+              operation: "relationship_initialization",
+              source: "core",
+              createdAt: nowIso(),
+            });
+          } catch (diagnosticError) {
+            const diagnosticFailure = normalizeOpenMembraneError(diagnosticError);
+            console.error(`Failed to persist relationship-initialization diagnostic [${diagnosticFailure.code}].`);
+          }
+        }
         const operations = createProjectOperations(state);
         const service: ProjectService = {
           ...operations,
@@ -114,6 +138,14 @@ export class OpenMembraneService {
           listReviewAuditLog: (limit) => operations.listAuditLog({ limit, order: "append" }),
           listRelationships: () => state.relationshipService.list(resolved.projectId),
           listRelationshipEvidence: () => state.relationshipService.listEvidence(resolved.projectId),
+          async getKnowledgeGraph(query = {}) {
+            await state.githubTeamService.refreshBeforeRetrieval(resolved.projectId);
+            return getKnowledgeGraph(state, resolved.projectId, query);
+          },
+          async getKnowledgeGraphEntity(ref) {
+            await state.githubTeamService.refreshBeforeRetrieval(resolved.projectId);
+            return getKnowledgeGraphEntity(state, resolved.projectId, ref);
+          },
           refreshDerivedRelationships: () => state.relationshipService.syncDerived(resolved.projectId),
           refreshInferredRelationships: () => state.relationshipService.syncInferred(resolved.projectId),
           createRelationship: (input) => state.relationshipService.createManual(resolved.projectId, input),

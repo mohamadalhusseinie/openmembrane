@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OpenMembraneError } from "@openmembrane/core";
 import type { CollaborationProposal, CollaborationStore, DiagnosticEvent, DiagnosticsLogStore } from "@openmembrane/core";
 import type { CollaborationProjectConfig, MemoryEntry } from "@openmembrane/core";
 import { JsonCollaborationStore, JsonMemoryStore } from "@openmembrane/storage";
@@ -285,16 +286,19 @@ function createService(
 ) {
   const collaborationStore = new JsonCollaborationStore(storageDir);
   const memoryStore = new JsonMemoryStore(storageDir);
+  const refreshInferredRelationships = vi.fn(async () => []);
   return {
     diagnostics,
     collaborationStore,
     memoryStore,
+    refreshInferredRelationships,
     service: new GitHubTeamService({
       collaborationStore,
       memoryStore,
       diagnosticsLogStore: diagnostics,
       github: new GitHubCli(runner),
       storageDir,
+      refreshInferredRelationships,
       now,
     }),
   };
@@ -1148,8 +1152,10 @@ function addFullRefreshCommands(
   runner: ExpectedCommandRunner,
   storageDir: string,
   memories: readonly CollaborationProposal["memory"][],
+  repeatCount = 1,
 ): void {
   const config = githubProjectConfig(storageDir);
+  const repeat = <T>(value: T): T[] => Array.from({ length: repeatCount }, () => value);
   const files = memories.map((memory) => ({
     path: `.openmembrane/memories/${memory.id}.json`,
     content: `${JSON.stringify(memory, null, 2)}\n`,
@@ -1164,27 +1170,27 @@ function addFullRefreshCommands(
       contentHash: createHash("sha256").update(file.content).digest("hex"),
     })),
   }, null, 2)}\n`;
-  runner.respond(
+  runner.respondSequence(
     "git",
     ["-C", config.checkoutPath, "fetch", "origin", "refs/heads/main:refs/remotes/origin/main"],
-    success(),
+    repeat(success()),
   );
-  runner.respond("git", ["-C", config.checkoutPath, "rev-parse", "origin/main"], {
+  runner.respondSequence("git", ["-C", config.checkoutPath, "rev-parse", "origin/main"], repeat({
     exitCode: 0,
     stdout: "abcdef0\n",
     stderr: "",
-  });
-  runner.respond("git", ["-C", config.checkoutPath, "show", "origin/main:.openmembrane/manifest.json"], {
+  }));
+  runner.respondSequence("git", ["-C", config.checkoutPath, "show", "origin/main:.openmembrane/manifest.json"], repeat({
     exitCode: 0,
     stdout: manifest,
     stderr: "",
-  });
+  }));
   for (const file of files) {
-    runner.respond("git", ["-C", config.checkoutPath, "show", `origin/main:${file.path}`], {
+    runner.respondSequence("git", ["-C", config.checkoutPath, "show", `origin/main:${file.path}`], repeat({
       exitCode: 0,
       stdout: file.content,
       stderr: "",
-    });
+    }));
   }
 }
 
@@ -1259,6 +1265,23 @@ function addPullRequestInspection(runner: ExpectedCommandRunner, result: Command
 }
 
 describe("GitHubTeamService refreshBeforeRetrieval", () => {
+  it("retries a failed relationship refresh before saving the import checkpoint", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    addFullRefreshCommands(runner, storageDir, [sharedMemory()], 2);
+    const { service, collaborationStore, refreshInferredRelationships } = createService(storageDir, runner);
+    refreshInferredRelationships.mockRejectedValueOnce(new Error("relationship store unavailable"));
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+
+    await expect(service.refreshBeforeRetrieval("project-a")).rejects.toThrow("relationship store unavailable");
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toBeUndefined();
+
+    await service.refreshBeforeRetrieval("project-a");
+
+    expect(refreshInferredRelationships).toHaveBeenCalledTimes(2);
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toMatchObject({ defaultBranchCommit: "abcdef0" });
+  });
+
   it("publishes a replacement proposal that removes conflicting default-branch memories in the same change", async () => {
     const storageDir = await createStorageDir();
     const replaced = sharedMemory({ id: "mem_old", content: "Use pnpm for package management." });
@@ -1336,16 +1359,19 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
     const remoteMemory = sharedMemory();
     addPullRequestInspection(runner, mergedPullRequest());
     addFullRefreshCommands(runner, storageDir, [remoteMemory]);
-    const { service, collaborationStore, memoryStore } = createService(storageDir, runner);
+    const { service, collaborationStore, memoryStore, refreshInferredRelationships } = createService(storageDir, runner);
     await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
     await collaborationStore.saveProposal(existingOpenProposal());
 
     await service.refreshBeforeRetrieval("project-a");
 
+    expect(refreshInferredRelationships).toHaveBeenCalledTimes(1);
+    expect(refreshInferredRelationships).toHaveBeenCalledWith("project-a");
     await expect(collaborationStore.getProposal("project-a", "mem_1")).resolves.toMatchObject({
       state: "active",
       review: { mergedAt: "2026-09-12T12:05:00.000Z", mergedCommit: "merge-sha" },
     });
+
     await expect(memoryStore.findById("project-a", "mem_1")).resolves.toMatchObject({
       content: "Use standalone components.",
       source: { kind: "import", tool: "github" },
@@ -1354,6 +1380,47 @@ describe("GitHubTeamService refreshBeforeRetrieval", () => {
       expect.objectContaining({ type: "review_merged", memoryId: "mem_1" }),
       expect.objectContaining({ type: "memory_imported", memoryId: "mem_1" }),
     ]));
+  });
+
+  it("keeps retrieval available when inferred-relationship refresh finds invalid stored JSON", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    addFullRefreshCommands(runner, storageDir, [sharedMemory()]);
+    const { service, collaborationStore, diagnostics, refreshInferredRelationships } = createService(storageDir, runner);
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+    vi.mocked(refreshInferredRelationships).mockRejectedValueOnce(new OpenMembraneError({
+      code: "STORAGE_INVALID_JSON",
+      message: "Invalid JSON in relationship store.",
+      safeMessage: "OpenMembrane could not read one of its local JSON store files.",
+    }));
+
+    await expect(service.refreshBeforeRetrieval("project-a")).resolves.toBeUndefined();
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toBeUndefined();
+    expect(diagnostics.events).toContainEqual(expect.objectContaining({
+      projectId: "project-a",
+      severity: "warning",
+      code: "STORAGE_INVALID_JSON",
+      operation: "relationship_refresh",
+    }));
+  });
+
+  it("keeps retrieval available when relationship-refresh diagnostics cannot be persisted", async () => {
+    const storageDir = await createStorageDir();
+    const runner = new ExpectedCommandRunner();
+    addFullRefreshCommands(runner, storageDir, [sharedMemory()]);
+    const { service, collaborationStore, diagnostics, refreshInferredRelationships } = createService(storageDir, runner);
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    await collaborationStore.saveProjectConfig(githubProjectConfig(storageDir));
+    vi.mocked(refreshInferredRelationships).mockRejectedValueOnce(new OpenMembraneError({
+      code: "STORAGE_INVALID_JSON",
+      message: "Invalid JSON in relationship store.",
+      safeMessage: "OpenMembrane could not read one of its local JSON store files.",
+    }));
+    vi.spyOn(diagnostics, "append").mockRejectedValueOnce(new Error("diagnostics store unavailable"));
+
+    await expect(service.refreshBeforeRetrieval("project-a")).resolves.toBeUndefined();
+    await expect(collaborationStore.getCheckpoint("project-a")).resolves.toBeUndefined();
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("Failed to persist relationship-refresh diagnostic"));
   });
 
   it("activates a merged approved proposal after importing its validated default-branch entry", async () => {

@@ -1,13 +1,17 @@
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReviewUiContext } from "../../../apps/review-ui/src/context";
 import { createReviewServer } from "../../../apps/review-ui/src/server";
-import { diagnosticsResponseSchema, exportResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
+import { diagnosticsResponseSchema, exportResponseSchema, knowledgeGraphResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
 import { setupSurfaceDaemon } from "./helpers";
 import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import { MemoryApprovalService } from "@openmembrane/core";
+import { createOpenMembraneService } from "@openmembrane/service";
+import { createStores } from "@openmembrane/storage";
+import { candidate, entry } from "../../unit/helpers";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -121,6 +125,170 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
       { id: "older-append" }, { id: "same-time-append" },
     ]);
   });
+
+  it("serves bounded, filtered graph data and privacy-safe entity details through the daemon client", async () => {
+    const { request, storageDir, projectId, projectRoot } = await setup();
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      await stores.memoryStore.save(entry({
+        projectId, id: "graph-memory", tags: ["graph-safe"],
+        source: { kind: "session", sessionId: "run.alice.private-project", tool: "copilot", excerpt: "Saved excerpt api_key=abcdefghijk123456" },
+      }));
+      await stores.pendingCandidateStore.save(candidate({
+        projectId, id: "secret-shaped-candidate",
+        content: "Do not expose api_key=abcdefghijk123456 in graph data.",
+      }));
+      await stores.auditLogStore.append({
+        id: "graph-audit", projectId, type: "memory_saved", entityId: "graph-memory",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+      await stores.diagnosticsLogStore.append({
+        id: "graph-diagnostic", projectId, severity: "warning", code: "GRAPH_TEST",
+        message: "Diagnostic api_key=abcdefghijk123456", entityId: "graph-memory",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+      await stores.diagnosticsLogStore.append({
+        id: "orphan-diagnostic", projectId, severity: "warning", code: "ORPHAN_DIAGNOSTIC",
+        message: "This event references an entity that is not in the graph.", entityId: "missing-memory",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+      await stores.auditLogStore.append({
+        id: "duplicate-rejection", projectId, type: "candidate_rejected", entityId: "historical-candidate",
+        createdAt: "2026-06-01T00:00:00.000Z", details: { duplicateOf: "old memory" },
+      });
+      await stores.auditLogStore.append({
+        id: "supersession-event", projectId, type: "memory_superseded", entityId: "old memory",
+        createdAt: "2026-06-01T00:00:00.000Z", details: { replacementId: "graph-memory" },
+      });
+    } finally {
+      await stores.close?.();
+    }
+
+    const graphService = createOpenMembraneService();
+    const tagId = `tag_${createHash("sha256").update("tag:graph-safe").digest("hex").slice(0, 24)}`;
+    const sessionId = `session_${createHash("sha256").update("run.alice.private-project").digest("hex").slice(0, 24)}`;
+    try {
+      const project = await graphService.forProject({ projectRoot, projectId, storageDir });
+      await project.createRelationship({
+        source: { kind: "memory", id: "graph-memory" },
+        target: { kind: "tag", id: tagId },
+        type: "supports",
+        rationale: "same source session: run.alice.private-project; supporting context.",
+      });
+      await project.createRelationship({
+        source: { kind: "memory", id: "graph-memory" },
+        target: { kind: "session", id: sessionId },
+        type: "supports",
+        rationale: "Reviewed session relationship.",
+      });
+      const removed = await project.createRelationship({
+        source: { kind: "memory", id: "graph-memory" },
+        target: { kind: "tag", id: tagId },
+        type: "tagged_with",
+        rationale: "Manual replacement for the generated tag edge.",
+      });
+      await project.removeRelationship({ relationshipId: removed.id, rationale: "Hide this generated grouping edge." });
+      await project.refreshInferredRelationships();
+    } finally {
+      await graphService.close();
+    }
+
+    const graphResponse = await request("/api/graph?kind=memory&kind=tag&limit=20");
+    expect(graphResponse.status).toBe(200);
+    const graph = knowledgeGraphResponseSchema.parse(await graphResponse.json());
+    expect(graph.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "graph-memory", kind: "memory", sourceExcerpt: expect.stringContaining("[REDACTED:") }),
+      expect.objectContaining({ kind: "tag", label: "tag: graph-safe" }),
+      expect.objectContaining({ kind: "tag", label: "scope: frontend" }),
+      expect.objectContaining({ kind: "tag", label: "type: coding_rule" }),
+    ]));
+    expect(graph.nodes.some((node: { kind: string }) => node.kind === "audit_event" || node.kind === "diagnostic")).toBe(false);
+    expect(graph.edges.some((edge: { type: string }) => edge.type === "tagged_with")).toBe(true);
+
+    const allKinds = knowledgeGraphResponseSchema.parse(await (await request("/api/graph")).json());
+    expect(allKinds.nodes.length).toBeLessThanOrEqual(500);
+    expect(JSON.stringify(allKinds)).not.toContain("private-session-identifier");
+    expect(JSON.stringify(allKinds)).not.toContain("alice.private-project");
+    expect(JSON.stringify(allKinds)).not.toContain("abcdefghijk123456");
+    expect(allKinds.nodes.some((node: { id: string }) => node.id === "secret-shaped-candidate")).toBe(false);
+    expect(allKinds.nodes.some((node: { id: string }) => node.id === "secret-candidate")).toBe(false);
+    expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "session")).toBe(true);
+    expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "audit_event")).toBe(true);
+    expect(allKinds.nodes.some((node: { kind: string }) => node.kind === "diagnostic")).toBe(true);
+    expect(allKinds.nodes.some((node: { id: string }) => node.id === "orphan-diagnostic")).toBe(false);
+    expect(allKinds.nodes.some((node: { kind: string; id: string }) => node.kind === "candidate" && node.id === "historical-candidate")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; origin: string }) => edge.type === "duplicate_of" && edge.origin === "derived")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; origin: string }) => edge.type === "supports" && edge.origin === "manual")).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; source: { id: string }; target: { id: string } }) =>
+      edge.type === "supports" && edge.source.id === "graph-memory" && edge.target.id === sessionId
+    )).toBe(true);
+    expect(allKinds.edges.find((edge: { type: string; source: { id: string }; target: { id: string } }) =>
+      edge.type === "supports" && edge.source.id === "graph-memory" && edge.target.id === tagId
+    )?.rationale).not.toContain("alice.private-project");
+    expect(allKinds.edges.some((edge: { source: { id: string }; target: { id: string }; type: string }) =>
+      edge.source.id === "supersession-event" && edge.target.id === "graph-memory" && edge.type === "derived_from"
+    )).toBe(true);
+    expect(allKinds.edges.some((edge: { type: string; source: { id: string }; target: { id: string } }) =>
+      edge.type === "tagged_with" && edge.source.id === "graph-memory" && edge.target.id === tagId
+    )).toBe(false);
+    expect(allKinds.nodes.some((node: { label: string }) => node.label.includes("EXTRACTION_MOCK_FALLBACK"))).toBe(true);
+
+    const detail = await request("/api/graph/entities/memory/graph-memory");
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({
+      entity: { id: "graph-memory", kind: "memory" },
+      edges: expect.arrayContaining([expect.objectContaining({ type: "derived_from" })]),
+    });
+    expect((await request("/api/graph/entities/memory/missing")).status).toBe(404);
+    for (const path of ["/api/graph?kind=invalid", "/api/graph?relationshipType=invalid", "/api/graph?limit=501"]) {
+      expect((await request(path)).status, path).toBe(400);
+    }
+  });
+
+  it("prioritizes memories over large event histories and keeps bounded entity edges self-contained", async () => {
+    const { client, storageDir, projectId } = await setup();
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      for (let index = 0; index < 510; index++) {
+        await stores.auditLogStore.append({
+          id: `graph-history-${index}`, projectId, type: "memory_saved", entityId: "old memory",
+          createdAt: `2026-06-01T00:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        });
+      }
+    } finally {
+      await stores.close?.();
+    }
+
+    const eventHeavy = await client.getKnowledgeGraph();
+    expect(eventHeavy.nodes).toHaveLength(500);
+    expect(eventHeavy.nodes.some((node) => node.kind === "memory")).toBe(true);
+    expect(eventHeavy.nodes.some((node) => node.kind === "candidate")).toBe(true);
+
+    const memoryStores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      for (let index = 0; index < 500; index++) {
+        await memoryStores.memoryStore.save(entry({
+          projectId,
+          id: `bounded-memory-${index}`,
+          content: `Unique graph fixture memory ${index} stores a separate convention.`,
+        }));
+      }
+    } finally {
+      await memoryStores.close?.();
+    }
+
+    const detail = await client.getKnowledgeGraphEntity({ kind: "session", id: "session_unknown" });
+    expect(detail.neighbors).toHaveLength(499);
+    expect(detail.truncated).toBe(true);
+    const visible = new Set([
+      JSON.stringify([detail.entity.kind, detail.entity.id]),
+      ...detail.neighbors.map((node) => JSON.stringify([node.kind, node.id])),
+    ]);
+    expect(detail.edges.every((edge) =>
+      visible.has(JSON.stringify([edge.source.kind, edge.source.id])) &&
+      visible.has(JSON.stringify([edge.target.kind, edge.target.id]))
+    )).toBe(true);
+  }, 60_000);
 
   it.each([
     ["STORAGE_ERROR", 500], ["GITHUB_UNAVAILABLE", 503],

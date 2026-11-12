@@ -2,7 +2,9 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { OpenMembraneError, RelationshipService } from "@openmembrane/core";
 import { createOpenMembraneService, resolveProjectRef } from "@openmembrane/service";
+import { JsonDiagnosticsLogStore } from "@openmembrane/storage";
 import { entry } from "../helpers";
 
 const directories: string[] = [];
@@ -24,6 +26,40 @@ afterEach(async () => {
 });
 
 describe("OpenMembraneService", () => {
+  it("rebuilds inferred relationships once when initializing a project", async () => {
+    const root = await tempDir();
+    const refresh = vi.spyOn(RelationshipService.prototype, "syncInferred");
+    const service = createOpenMembraneService();
+    services.push(service);
+    const ref = { projectRoot: root, projectId: "initialized-project" };
+
+    await service.forProject(ref);
+    await service.forProject(ref);
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledWith(ref.projectId);
+  });
+
+  it("keeps project initialization available when its relationship warning cannot be persisted", async () => {
+    const root = await tempDir();
+    vi.spyOn(RelationshipService.prototype, "syncInferred").mockRejectedValue(new OpenMembraneError({
+      code: "STORAGE_INVALID_JSON",
+      message: "Invalid relationship data.",
+    }));
+    const appendDiagnostic = JsonDiagnosticsLogStore.prototype.append;
+    vi.spyOn(JsonDiagnosticsLogStore.prototype, "append").mockImplementation(async function (this: JsonDiagnosticsLogStore, event) {
+      if (event.operation === "startup") return appendDiagnostic.call(this, event);
+      throw new Error("diagnostics store unavailable");
+    });
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const service = createOpenMembraneService();
+    services.push(service);
+
+    await expect(service.forProject({ projectRoot: root, projectId: "startup-project" })).resolves.toBeDefined();
+
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("Failed to persist relationship-initialization diagnostic"));
+  });
+
   it.each(["json", "sqlite"] as const)("keeps review search active-only before limiting on %s", async (storageBackend) => {
     const root = await tempDir();
     const service = createOpenMembraneService();

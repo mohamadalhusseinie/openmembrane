@@ -55,6 +55,13 @@ const handlers: Handlers = {
   exportStaticMemoryFiles: (project, input) => project.exportStaticMemoryFiles(input),
   getDiagnostics: (project, input) => project.getDiagnostics(input),
   listAuditLog: (project, input) => project.listAuditLog(input),
+  getKnowledgeGraph: (project, input) => project.getKnowledgeGraph({
+    ...(input.search !== undefined ? { search: input.search } : {}),
+    ...(input.entityKinds !== undefined ? { entityKinds: input.entityKinds } : {}),
+    ...(input.relationshipTypes !== undefined ? { relationshipTypes: input.relationshipTypes } : {}),
+    ...(input.limit !== undefined ? { limit: input.limit } : {}),
+  }),
+  getKnowledgeGraphEntity: (project, input) => project.getKnowledgeGraphEntity({ kind: input.kind, id: input.id }),
   configureGitHubTeamMode: (project, input) => project.configureGitHubTeamMode(input),
   getCollaborationStatus: (project, input) => project.getCollaborationStatus(input),
 };
@@ -62,10 +69,13 @@ const handlers: Handlers = {
 const collaborationOperations = new Set<ProjectEndpoint>([
   "remember", "ingest", "getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext",
   "approveMemoryCandidate", "approveAllCandidates", "updateMemory", "supersedeMemory",
-  "reviewStaleMemories", "exportStaticMemoryFiles", "getCollaborationStatus",
+  "reviewStaleMemories", "exportStaticMemoryFiles", "getCollaborationStatus", "getKnowledgeGraph", "getKnowledgeGraphEntity",
 ]);
 
-const retrievalOperations = new Set<ProjectEndpoint>(["getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext"]);
+const retrievalOperations = new Set<ProjectEndpoint>([
+  "getProjectRules", "getRelevantContext", "searchMemory", "listMemories", "getMemory", "getCliContext",
+  "getKnowledgeGraph", "getKnowledgeGraphEntity",
+]);
 
 export async function safeError(
   logger: DaemonLogger, status: number, code: string, safeMessage: string,
@@ -93,7 +103,7 @@ export function createDaemonRouter(service: OpenMembraneService, logger: DaemonL
 
   function operationError(error: unknown, operation: ProjectEndpoint, project?: ProjectService): Promise<RouteResponse> {
     const normalized = normalizeOpenMembraneError(error);
-    const status = normalized.code === "CANDIDATE_NOT_FOUND" || normalized.code === "MEMORY_NOT_FOUND"
+    const status = normalized.code === "CANDIDATE_NOT_FOUND" || normalized.code === "MEMORY_NOT_FOUND" || normalized.code === "GRAPH_ENTITY_NOT_FOUND"
       ? 404 : normalized.code === "UNKNOWN_ERROR" || normalized.code === "STORAGE_ERROR" ? 500 : 422;
     return safeError(logger, status, normalized.code, normalized.safeMessage, project ? { project, operation } : undefined);
   }
