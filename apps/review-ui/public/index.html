@@ -144,6 +144,44 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .hint { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem; }
 .export-file { margin-top: 1rem; }
 .export-file pre { padding: 0.75rem; background: var(--bg-secondary); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.graph-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr); gap: 1rem; }
+.graph-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; margin-bottom: 0.75rem; }
+.graph-toolbar label { display: grid; gap: 0.2rem; font-size: 0.75rem; }
+.graph-toolbar input, .graph-toolbar select { min-width: 150px; padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+.graph-toolbar select[multiple] { min-width: 180px; min-height: 4rem; }
+.graph-viewport { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--bg-secondary); }
+.graph-canvas { display: block; width: 100%; height: 560px; touch-action: none; cursor: grab; }
+.graph-canvas.is-panning { cursor: grabbing; }
+.graph-edge { stroke-width: 1.5; opacity: 0.65; }
+.graph-edge-origin-inferred { stroke: #6366f1; }
+.graph-edge-origin-manual { stroke: #16a34a; stroke-width: 2.5; }
+.graph-edge-origin-derived { stroke: #f59e0b; stroke-dasharray: 5 4; }
+.graph-node { cursor: pointer; }
+.graph-node circle { stroke: var(--bg); stroke-width: 2; }
+.graph-node:focus-visible circle, .graph-node.is-selected circle { stroke: var(--text); stroke-width: 3; }
+.graph-node-label { fill: var(--text); font-size: 12px; pointer-events: none; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.graph-kind-memory circle { fill: #2563eb; }
+.graph-kind-candidate circle { fill: #9333ea; }
+.graph-kind-audit_event circle { fill: #64748b; }
+.graph-kind-diagnostic circle { fill: #dc2626; }
+.graph-kind-session circle { fill: #0891b2; }
+.graph-kind-tag circle { fill: #ca8a04; }
+.graph-panel { border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; min-width: 0; }
+.graph-panel h2 { font-size: 1rem; margin-bottom: 0.5rem; }
+.graph-panel h3 { font-size: 0.85rem; margin: 0.75rem 0 0.3rem; }
+.graph-properties { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 0.5rem; font-size: 0.8rem; overflow-wrap: anywhere; }
+.graph-properties dt { color: var(--text-muted); }
+.graph-relations { list-style: none; font-size: 0.78rem; }
+.graph-relations li { padding: 0.5rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.75rem 0; font-size: 0.75rem; }
+.graph-legend span { display: inline-flex; gap: 0.35rem; align-items: center; }
+.graph-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--swatch); }
+.graph-line { display: inline-block; width: 1.2rem; border-top: 2px solid var(--swatch); }
+.graph-line.dashed { border-top-style: dashed; }
+.graph-list-view { margin-top: 1rem; }
+.graph-list-view button { color: var(--accent); background: none; border: 0; cursor: pointer; text-align: left; font: inherit; text-decoration: underline; }
+.graph-status { min-height: 1.5rem; padding: 0.4rem 0; color: var(--text-muted); font-size: 0.8rem; }
+@media (max-width: 760px) { .graph-layout { grid-template-columns: 1fr; } .graph-canvas { height: 420px; } }
 </style>
 </head>
 <body>
@@ -153,6 +191,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   <button class="tab-btn" onclick="switchTab('pending')" id="pending-tab-btn">Pending</button>
   <button class="tab-btn" onclick="switchTab('audit')">Audit</button>
   <button class="tab-btn" onclick="switchTab('diagnostics')">Diagnostics</button>
+  <button class="tab-btn" onclick="switchTab('graph')">Knowledge Graph</button>
   <button class="tab-btn" onclick="switchTab('stale')">Stale memories</button>
   <button class="tab-btn" onclick="switchTab('export')">Export</button>
 </div>
@@ -214,6 +253,50 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   <div id="diagnostics-content"></div>
 </div>
 
+<div id="tab-graph" class="tab-content">
+  <form id="graph-filters" class="graph-toolbar">
+    <label>Search<input id="graph-search" type="search" maxlength="200" placeholder="Search graph"></label>
+    <label>Node types<select id="graph-kinds" multiple aria-label="Filter node types">
+      <option value="memory">Memories</option><option value="candidate">Candidates</option>
+      <option value="audit_event">Audit events</option><option value="diagnostic">Diagnostics</option>
+      <option value="session">Sessions</option><option value="tag">Tags</option>
+    </select></label>
+    <label>Relationship types<select id="graph-relationships" multiple aria-label="Filter relationship types">
+      <option value="related_to">Related to</option><option value="supports">Supports</option>
+      <option value="depends_on">Depends on</option><option value="conflicts_with">Conflicts with</option>
+      <option value="duplicate_of">Duplicate of</option><option value="supersedes">Supersedes</option>
+      <option value="derived_from">Derived from</option><option value="tagged_with">Tagged with</option>
+    </select></label>
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+    <button class="btn" type="button" id="graph-focus" disabled>Focus neighborhood</button>
+    <button class="btn" type="button" id="graph-zoom-in" aria-label="Zoom in">+</button>
+    <button class="btn" type="button" id="graph-zoom-out" aria-label="Zoom out">−</button>
+    <button class="btn" type="button" id="graph-reset-view">Reset view</button>
+    <button class="btn" type="button" id="graph-list-toggle" aria-pressed="false">Show list</button>
+  </form>
+  <div id="graph-status" class="graph-status" role="status" aria-live="polite">Loading graph…</div>
+  <div class="graph-legend" aria-label="Graph legend">
+    <span><i class="graph-swatch" style="--swatch:#2563eb"></i>Memory</span>
+    <span><i class="graph-swatch" style="--swatch:#9333ea"></i>Candidate</span>
+    <span><i class="graph-swatch" style="--swatch:#64748b"></i>Audit event</span>
+    <span><i class="graph-swatch" style="--swatch:#dc2626"></i>Diagnostic</span>
+    <span><i class="graph-swatch" style="--swatch:#0891b2"></i>Session</span>
+    <span><i class="graph-swatch" style="--swatch:#ca8a04"></i>Tag</span>
+    <span><i class="graph-line" style="--swatch:#6366f1"></i>Inferred</span>
+    <span><i class="graph-line" style="--swatch:#16a34a"></i>Manual</span>
+    <span><i class="graph-line dashed" style="--swatch:#f59e0b"></i>Derived</span>
+  </div>
+  <div class="graph-layout">
+    <div>
+      <div id="graph-viewport" class="graph-viewport"><svg id="graph-canvas" class="graph-canvas" viewBox="0 0 1000 700" role="group" aria-label="Knowledge graph"></svg></div>
+      <div id="graph-list" class="graph-list-view" hidden></div>
+    </div>
+    <aside id="graph-inspector" class="graph-panel" aria-live="polite">
+      <h2>Node inspector</h2><p class="hint">Select a graph node to inspect its details and relationships.</p>
+    </aside>
+  </div>
+</div>
+
 <div id="tab-stale" class="tab-content">
   <p class="hint">Review older memories and edit or supersede rules that no longer apply.</p>
   <form class="filter-row" onsubmit="event.preventDefault(); loadStaleMemories()">
@@ -249,7 +332,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 <div id="toast-container" role="status" aria-live="polite"></div>
 
 <script>
-const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false, stale: false, export: false };
+const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false, graph: false, stale: false, export: false };
 const memoryDrafts = new Map();
 const pendingMemoryMutations = new Map();
 
@@ -258,7 +341,10 @@ function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
-  if (!tabsLoaded[name]) {
+  if (name === 'graph') {
+    tabsLoaded.graph = true;
+    window.loadKnowledgeGraph?.();
+  } else if (!tabsLoaded[name]) {
     tabsLoaded[name] = true;
     if (name === 'memories') loadMemories();
     else if (name === 'pending') loadCandidates();
@@ -348,7 +434,9 @@ function renderMemoryList(target, html) {
   });
 }
 
+let memoryViewRequest = 0;
 async function loadMemories() {
+  const request = ++memoryViewRequest;
   const q = document.getElementById('mem-search').value;
   const type = document.getElementById('mem-type').value;
   const scope = document.getElementById('mem-scope').value;
@@ -358,6 +446,7 @@ async function loadMemories() {
   if (scope) params.set('scope', scope);
   try {
     const items = await apiRequest('/api/memories?' + params);
+    if (request !== memoryViewRequest) return;
     if (!items.length) {
       renderMemoryList(document.getElementById('memories-content'), '<div class="empty">No memories found</div>');
       return;
@@ -372,7 +461,22 @@ async function loadMemories() {
     html += '</tbody></table>';
     renderMemoryList(document.getElementById('memories-content'), html);
   } catch (e) {
+    if (request !== memoryViewRequest) return;
     renderMemoryList(document.getElementById('memories-content'), `<div class="empty">${escapeHtml(e.message)}</div>`);
+  }
+}
+
+async function loadGraphMemoryById(memoryId) {
+  const request = ++memoryViewRequest;
+  const target = document.getElementById('memories-content');
+  renderMemoryList(target, '<div class="empty">Loading selected memory...</div>');
+  try {
+    const memory = await apiRequest('/api/memories/' + encodeURIComponent(memoryId));
+    if (request !== memoryViewRequest) return;
+    renderMemoryList(target, `<details class="card" open><summary>${escapeHtml(memory.content)}</summary>${memoryReviewHtml(memory, 'memories-content')}</details>`);
+  } catch (e) {
+    if (request !== memoryViewRequest) return;
+    renderMemoryList(target, `<div class="empty">${escapeHtml(e.message)}</div>`);
   }
 }
 
@@ -585,9 +689,28 @@ function showToast(message, type) {
   setTimeout(() => toast.remove(), 3000);
 }
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('review-graph-memory', event => {
+    const memory = event.detail;
+    document.getElementById('mem-type').value = '';
+    document.getElementById('mem-scope').value = '';
+    document.getElementById('mem-search').value = memory.content || '';
+    tabsLoaded.memories = true;
+    switchTab('memories');
+    loadGraphMemoryById(memory.id);
+  });
+  window.addEventListener('review-graph-candidates-mutated', () => {
+    tabsLoaded.pending = true;
+    tabsLoaded.memories = true;
+    loadCandidates();
+    loadMemories();
+  });
+}
+
 // Initial load
 tabsLoaded.memories = true;
 loadMemories();
 </script>
+<script type="module" src="/graph.js"></script>
 </body>
 </html>
