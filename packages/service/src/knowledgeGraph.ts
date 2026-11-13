@@ -386,7 +386,8 @@ function boundedNodes(snapshot: GraphSnapshot, query: KnowledgeGraphQuery = {}):
   const context = matches.filter((node) => node.kind !== "memory" && node.kind !== "candidate")
     .sort((left, right) => contextPriority(left.kind) - contextPriority(right.kind) ||
       left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id));
-  for (const group of [context, historicalCandidates]) {
+  const primaryRemainder = [...pendingCandidates, ...memories];
+  for (const group of [primaryRemainder, context, historicalCandidates]) {
     for (const node of group) {
       if (selected.length >= limit) break;
       const key = refKey({ kind: node.kind, id: node.id });

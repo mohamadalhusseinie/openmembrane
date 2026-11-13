@@ -170,4 +170,27 @@ describe("knowledge graph historical candidates", () => {
     expect(graph.edges.length).toBeGreaterThan(0);
     expect(graph.nodes.some((node) => node.id.startsWith("cand_approved_"))).toBe(false);
   });
+
+  it("fills the candidate budget with live candidates before returning fewer nodes", async () => {
+    const pending = Array.from({ length: 600 }, (_, index) =>
+      candidate({ id: `cand_pending_${index.toString().padStart(3, "0")}` })
+    );
+    const state = {
+      memoryStore: { list: vi.fn(async () => []) },
+      pendingCandidateStore: { list: vi.fn(async () => pending) },
+      auditLogStore: { list: vi.fn(async () => []) },
+      diagnosticsLogStore: { list: vi.fn(async () => []) },
+      relationshipService: {
+        syncInferred: vi.fn(async () => []),
+        list: vi.fn(async () => []),
+        listEvidence: vi.fn(async () => []),
+      },
+    } as unknown as ProjectState;
+
+    const graph = await getKnowledgeGraph(state, projectId, { entityKinds: ["candidate"], limit: 500 });
+
+    expect(graph.nodes).toHaveLength(500);
+    expect(graph.nodes.every((node) => node.kind === "candidate")).toBe(true);
+    expect(graph.truncated).toBe(true);
+  });
 });
