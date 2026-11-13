@@ -224,7 +224,23 @@ function addHistoricalCandidates(
   nodes: Map<string, KnowledgeGraphNode>,
   audit: readonly AuditEvent[],
   excludedIds: ReadonlySet<string>,
+  recentAudit: readonly AuditEvent[],
 ): void {
+  for (const event of recentAudit) {
+    if (event.type === "memory_saved" && typeof event.details?.candidateId === "string" &&
+      safeId(event.details.candidateId) &&
+      !excludedIds.has(event.details.candidateId) &&
+      nodes.has(refKey({ kind: "memory", id: event.entityId ?? "" })) &&
+      !nodes.has(refKey({ kind: "candidate", id: event.details.candidateId }))) {
+      addNode(nodes, {
+        id: event.details.candidateId,
+        kind: "candidate",
+        label: "Approved candidate",
+        summary: "Approved candidate; details are no longer available.",
+        createdAt: event.createdAt,
+      });
+    }
+  }
   for (const event of audit) {
     const duplicateOf = event.details?.duplicateOf;
     if (event.type !== "candidate_rejected" || !event.entityId || typeof duplicateOf !== "string" ||
@@ -299,8 +315,8 @@ async function graphSnapshot(state: ProjectState, projectId: string): Promise<Gr
     .filter((candidate) => candidate.sensitivity === "secret" ||
       secretDetector.containsSecretInAnyCase(candidate.content))
     .map((candidate) => candidate.id));
-  addHistoricalCandidates(nodes, audit, excludedCandidates);
   const recentAudit = audit.slice(-5_000);
+  addHistoricalCandidates(nodes, audit, excludedCandidates, recentAudit);
   addLifecycleNodes(nodes, edges, recentAudit, diagnostics);
   const manualKeys = new Set(evidence.filter((item) => item.origin === "manual").map(relationshipKey));
   for (const [id, edge] of edges) {
