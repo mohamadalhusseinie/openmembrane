@@ -371,25 +371,29 @@ function boundedNodes(snapshot: GraphSnapshot, query: KnowledgeGraphQuery = {}):
   const matches = matchingNodes(snapshot, query);
   const memories = matches.filter((node) => node.kind === "memory");
   const candidates = matches.filter((node) => node.kind === "candidate");
-  const primaryCount = memories.length + candidates.length;
+  const pendingCandidates = candidates.filter((node) => node.recommendedAction !== undefined);
+  const historicalCandidates = candidates.filter((node) => node.recommendedAction === undefined);
+  const primaryCount = memories.length + pendingCandidates.length;
   const selected: KnowledgeGraphNode[] = [];
   if (primaryCount > limit) {
-    const candidateBudget = Math.min(candidates.length, Math.ceil(limit * 0.2));
+    const candidateBudget = Math.min(pendingCandidates.length, Math.ceil(limit * 0.2));
     const memoryBudget = Math.min(memories.length, limit - candidateBudget);
-    selected.push(...memories.slice(0, memoryBudget), ...candidates.slice(0, candidateBudget));
+    selected.push(...memories.slice(0, memoryBudget), ...pendingCandidates.slice(0, candidateBudget));
   } else {
-    selected.push(...memories, ...candidates);
+    selected.push(...memories, ...pendingCandidates);
   }
   const selectedKeys = new Set(selected.map((node) => refKey({ kind: node.kind, id: node.id })));
   const context = matches.filter((node) => node.kind !== "memory" && node.kind !== "candidate")
     .sort((left, right) => contextPriority(left.kind) - contextPriority(right.kind) ||
       left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id));
-  for (const node of [...matches.filter((item) => item.kind === "memory" || item.kind === "candidate"), ...context]) {
-    if (selected.length >= limit) break;
-    const key = refKey({ kind: node.kind, id: node.id });
-    if (selectedKeys.has(key)) continue;
-    selected.push(node);
-    selectedKeys.add(key);
+  for (const group of [context, historicalCandidates]) {
+    for (const node of group) {
+      if (selected.length >= limit) break;
+      const key = refKey({ kind: node.kind, id: node.id });
+      if (selectedKeys.has(key)) continue;
+      selected.push(node);
+      selectedKeys.add(key);
+    }
   }
   return selected;
 }

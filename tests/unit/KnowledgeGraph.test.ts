@@ -137,4 +137,37 @@ describe("knowledge graph historical candidates", () => {
       }),
     ]));
   });
+
+  it("prioritizes pending candidates and lifecycle context over historical placeholders", async () => {
+    const memories = Array.from({ length: 250 }, (_, index) =>
+      entry({ id: `mem_${index.toString().padStart(3, "0")}` })
+    );
+    const audit = memories.map((memory, index): AuditEvent => ({
+      id: `audit_${index.toString().padStart(3, "0")}`,
+      projectId,
+      type: "memory_saved",
+      entityId: memory.id,
+      createdAt,
+      details: { candidateId: `cand_approved_${index.toString().padStart(3, "0")}` },
+    }));
+    const state = {
+      memoryStore: { list: vi.fn(async () => memories) },
+      pendingCandidateStore: { list: vi.fn(async () => [candidate({ id: "cand_pending" })]) },
+      auditLogStore: { list: vi.fn(async () => audit) },
+      diagnosticsLogStore: { list: vi.fn(async () => []) },
+      relationshipService: {
+        syncInferred: vi.fn(async () => []),
+        list: vi.fn(async () => []),
+        listEvidence: vi.fn(async () => []),
+      },
+    } as unknown as ProjectState;
+
+    const graph = await getKnowledgeGraph(state, projectId);
+
+    expect(graph.nodes).toHaveLength(500);
+    expect(graph.nodes).toContainEqual(expect.objectContaining({ id: "cand_pending", kind: "candidate" }));
+    expect(graph.nodes.some((node) => node.kind === "audit_event")).toBe(true);
+    expect(graph.edges.length).toBeGreaterThan(0);
+    expect(graph.nodes.some((node) => node.id.startsWith("cand_approved_"))).toBe(false);
+  });
 });
