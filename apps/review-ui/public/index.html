@@ -434,7 +434,9 @@ function renderMemoryList(target, html) {
   });
 }
 
+let memoryViewRequest = 0;
 async function loadMemories() {
+  const request = ++memoryViewRequest;
   const q = document.getElementById('mem-search').value;
   const type = document.getElementById('mem-type').value;
   const scope = document.getElementById('mem-scope').value;
@@ -444,6 +446,7 @@ async function loadMemories() {
   if (scope) params.set('scope', scope);
   try {
     const items = await apiRequest('/api/memories?' + params);
+    if (request !== memoryViewRequest) return;
     if (!items.length) {
       renderMemoryList(document.getElementById('memories-content'), '<div class="empty">No memories found</div>');
       return;
@@ -458,21 +461,21 @@ async function loadMemories() {
     html += '</tbody></table>';
     renderMemoryList(document.getElementById('memories-content'), html);
   } catch (e) {
+    if (request !== memoryViewRequest) return;
     renderMemoryList(document.getElementById('memories-content'), `<div class="empty">${escapeHtml(e.message)}</div>`);
   }
 }
 
-let graphMemoryRequest = 0;
 async function loadGraphMemoryById(memoryId) {
-  const request = ++graphMemoryRequest;
+  const request = ++memoryViewRequest;
   const target = document.getElementById('memories-content');
   renderMemoryList(target, '<div class="empty">Loading selected memory...</div>');
   try {
     const memory = await apiRequest('/api/memories/' + encodeURIComponent(memoryId));
-    if (request !== graphMemoryRequest) return;
+    if (request !== memoryViewRequest) return;
     renderMemoryList(target, `<details class="card" open><summary>${escapeHtml(memory.content)}</summary>${memoryReviewHtml(memory, 'memories-content')}</details>`);
   } catch (e) {
-    if (request !== graphMemoryRequest) return;
+    if (request !== memoryViewRequest) return;
     renderMemoryList(target, `<div class="empty">${escapeHtml(e.message)}</div>`);
   }
 }

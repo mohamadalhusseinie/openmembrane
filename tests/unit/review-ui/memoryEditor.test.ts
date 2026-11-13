@@ -4,6 +4,16 @@ import { createContext, runInContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { entry } from "../helpers";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 async function setupUi() {
   const html = await readFile(resolve("apps", "review-ui", "public", "index.html"), "utf8");
   const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
@@ -150,6 +160,85 @@ describe("review UI memory editor", () => {
 
     expect(context.apiRequest).toHaveBeenCalledWith("/api/memories/mem_selected");
     expect(getElementById("memories-content").innerHTML).toContain('data-memory-id="mem_selected"');
+  });
+
+  it("does not let a stale filtered-list response overwrite the selected graph memory", async () => {
+    const { context, getElementById } = await setupUi();
+    const listResponse = deferred<ReturnType<typeof entry>[]>();
+    const graphResponse = deferred<ReturnType<typeof entry>>();
+    context.apiRequest = vi.fn((path: string) =>
+      path.startsWith("/api/memories?") ? listResponse.promise : graphResponse.promise,
+    );
+    const listRequest = runInContext("loadMemories()", context) as Promise<void>;
+    const graphRequest = runInContext("loadGraphMemoryById('mem_selected')", context) as Promise<void>;
+
+    graphResponse.resolve(entry({ id: "mem_selected" }));
+    await graphRequest;
+    listResponse.resolve([entry({ id: "mem_filtered" })]);
+    await listRequest;
+
+    const html = getElementById("memories-content").innerHTML;
+    expect(html).toContain('data-memory-id="mem_selected"');
+    expect(html).not.toContain('data-memory-id="mem_filtered"');
+  });
+
+  it("does not let a stale graph response overwrite newer filtered results", async () => {
+    const { context, getElementById } = await setupUi();
+    const graphResponse = deferred<ReturnType<typeof entry>>();
+    const listResponse = deferred<ReturnType<typeof entry>[]>();
+    context.apiRequest = vi.fn((path: string) =>
+      path.startsWith("/api/memories?") ? listResponse.promise : graphResponse.promise,
+    );
+    const graphRequest = runInContext("loadGraphMemoryById('mem_selected')", context) as Promise<void>;
+    const listRequest = runInContext("loadMemories()", context) as Promise<void>;
+
+    listResponse.resolve([entry({ id: "mem_filtered" })]);
+    await listRequest;
+    graphResponse.resolve(entry({ id: "mem_selected" }));
+    await graphRequest;
+
+    const html = getElementById("memories-content").innerHTML;
+    expect(html).toContain('aria-label="Review or edit memory:');
+    expect(html).toContain("mem_filtered");
+    expect(html).not.toContain('data-memory-id="mem_selected"');
+  });
+
+  it("ignores stale memory-loader errors after a newer view has rendered", async () => {
+    const { context, getElementById } = await setupUi();
+    const listFailure = deferred<ReturnType<typeof entry>[]>();
+    const graphResponse = deferred<ReturnType<typeof entry>>();
+    context.apiRequest = vi.fn((path: string) =>
+      path.startsWith("/api/memories?") ? listFailure.promise : graphResponse.promise,
+    );
+    const listRequest = runInContext("loadMemories()", context) as Promise<void>;
+    const graphRequest = runInContext("loadGraphMemoryById('mem_selected')", context) as Promise<void>;
+
+    graphResponse.resolve(entry({ id: "mem_selected" }));
+    await graphRequest;
+    listFailure.reject(new Error("stale list error"));
+    await listRequest;
+
+    expect(getElementById("memories-content").innerHTML).toContain('data-memory-id="mem_selected"');
+    expect(getElementById("memories-content").innerHTML).not.toContain("stale list error");
+  });
+
+  it("ignores stale graph-loader errors after filtered results have rendered", async () => {
+    const { context, getElementById } = await setupUi();
+    const graphFailure = deferred<ReturnType<typeof entry>>();
+    const listResponse = deferred<ReturnType<typeof entry>[]>();
+    context.apiRequest = vi.fn((path: string) =>
+      path.startsWith("/api/memories?") ? listResponse.promise : graphFailure.promise,
+    );
+    const graphRequest = runInContext("loadGraphMemoryById('mem_selected')", context) as Promise<void>;
+    const listRequest = runInContext("loadMemories()", context) as Promise<void>;
+
+    listResponse.resolve([entry({ id: "mem_filtered" })]);
+    await listRequest;
+    graphFailure.reject(new Error("stale graph error"));
+    await graphRequest;
+
+    expect(getElementById("memories-content").innerHTML).toContain("mem_filtered");
+    expect(getElementById("memories-content").innerHTML).not.toContain("stale graph error");
   });
 
   it.each([
