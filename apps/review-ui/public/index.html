@@ -341,13 +341,15 @@ function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
-  if (!tabsLoaded[name]) {
+  if (name === 'graph') {
+    tabsLoaded.graph = true;
+    window.loadKnowledgeGraph?.();
+  } else if (!tabsLoaded[name]) {
     tabsLoaded[name] = true;
     if (name === 'memories') loadMemories();
     else if (name === 'pending') loadCandidates();
     else if (name === 'audit') loadAudit();
     else if (name === 'diagnostics') loadDiagnostics();
-    else if (name === 'graph') window.loadKnowledgeGraph?.();
     else if (name === 'stale') loadStaleMemories();
   }
 }
@@ -672,8 +674,11 @@ function showToast(message, type) {
 if (typeof window !== 'undefined') {
   window.addEventListener('review-graph-memory', event => {
     const memory = event.detail;
-    switchTab('memories');
+    document.getElementById('mem-type').value = '';
+    document.getElementById('mem-scope').value = '';
     document.getElementById('mem-search').value = memory.content || '';
+    tabsLoaded.memories = true;
+    switchTab('memories');
     loadMemories();
   });
 }

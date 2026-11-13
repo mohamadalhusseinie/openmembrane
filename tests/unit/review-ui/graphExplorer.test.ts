@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphQuery, graphRefKey, layoutGraphNodes } from "../../../apps/review-ui/public/graph.js";
+import { buildGraphQuery, graphEdgeCoordinates, graphRefKey, layoutGraphNodes } from "../../../apps/review-ui/public/graph.js";
 
 describe("knowledge graph explorer helpers", () => {
   it("keeps node references distinct across kinds and lays out each node deterministically", () => {
@@ -24,5 +24,19 @@ describe("knowledge graph explorer helpers", () => {
     expect(query.getAll("kind")).toEqual(["memory", "tag"]);
     expect(query.getAll("relationshipType")).toEqual(["related_to", "tagged_with"]);
     expect(query.get("limit")).toBe("500");
+  });
+
+  it("keeps relationship arrow tips outside selected and unselected target nodes", () => {
+    const edge = {
+      source: { kind: "memory", id: "source" },
+      target: { kind: "memory", id: "target" },
+    };
+    const positions = new Map([
+      [graphRefKey(edge.source), { x: 0, y: 0 }],
+      [graphRefKey(edge.target), { x: 100, y: 0 }],
+    ]);
+
+    expect(graphEdgeCoordinates(edge, positions, edge.target)?.x2).toBe(88);
+    expect(graphEdgeCoordinates(edge, positions)?.x2).toBe(91);
   });
 });

@@ -28,6 +28,23 @@ export function layoutGraphNodes(nodes) {
   return positions;
 }
 
+export function graphEdgeCoordinates(edge, positions, selected) {
+  const source = positions.get(graphRefKey(edge.source));
+  const target = positions.get(graphRefKey(edge.target));
+  if (!source || !target) return undefined;
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const distance = Math.hypot(dx, dy);
+  const targetRadius = selected && graphRefKey(selected) === graphRefKey(edge.target) ? 10 : 7;
+  if (distance <= targetRadius + 2) return undefined;
+  return {
+    x1: source.x,
+    y1: source.y,
+    x2: target.x - dx / distance * (targetRadius + 2),
+    y2: target.y - dy / distance * (targetRadius + 2),
+  };
+}
+
 const state = {
   nodes: [],
   edges: [],
@@ -106,11 +123,10 @@ function renderGraph() {
   scene.append(defs);
 
   edges.forEach(edge => {
-    const source = positions.get(graphRefKey(edge.source));
-    const target = positions.get(graphRefKey(edge.target));
-    if (!source || !target) return;
+    const coordinates = graphEdgeCoordinates(edge, positions, state.selected);
+    if (!coordinates) return;
     const line = svgElement("line", {
-      x1: source.x, y1: source.y, x2: target.x, y2: target.y,
+      ...coordinates,
       class: `graph-edge graph-edge-origin-${edge.origin}`,
       "marker-end": `url(#graph-arrow-${edge.origin})`,
     });
@@ -291,8 +307,12 @@ async function selectNode(node) {
     state.entityDetails = detail;
     getElement("graph-focus").disabled = false;
     renderInspector(detail.entity, detail.edges);
-    if (state.focused) renderGraph();
+    if (state.focused) {
+      renderGraph();
+      renderList();
+    }
   } catch (error) {
+    if (!state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
     inspector.textContent = `Could not load node details: ${errorText(error)}`;
     getElement("graph-focus").disabled = true;
   }
