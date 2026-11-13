@@ -138,6 +138,20 @@ describe("review UI memory editor", () => {
     expect(attributes.get("aria-expanded")).toBe("false");
   });
 
+  it("loads the graph-selected memory by ID instead of searching its content", async () => {
+    const { context, getElementById } = await setupUi();
+    const selected = entry({
+      id: "mem_selected",
+      content: "A unique query token with many potential matches",
+    });
+    context.apiRequest = vi.fn().mockResolvedValue(selected);
+
+    await runInContext("loadGraphMemoryById('mem_selected')", context);
+
+    expect(context.apiRequest).toHaveBeenCalledWith("/api/memories/mem_selected");
+    expect(getElementById("memories-content").innerHTML).toContain('data-memory-id="mem_selected"');
+  });
+
   it.each([
     { kind: "retry_deferred", nextAttemptAt: "2026-10-17T16:00:00Z" },
     { kind: "rejected", message: "The memory cannot be published safely." },

@@ -51,9 +51,24 @@ export function graphPanDelta(deltaX, deltaY, width, height) {
   return { x: deltaX / scale, y: deltaY / scale };
 }
 
+export function graphStatus(nodeCount, edgeCount, truncated) {
+  return nodeCount
+    ? { message: `${nodeCount} nodes, ${edgeCount} relationships${truncated ? " — results limited" : ""}.`, kind: "" }
+    : { message: "No graph entities match these filters.", kind: "empty" };
+}
+
+export function updateGraphListSelection(buttons, selected) {
+  Array.from(buttons).forEach(button => {
+    const isSelected = selected !== undefined &&
+      button.dataset.kind === selected.kind && button.dataset.id === selected.id;
+    button.setAttribute("aria-pressed", String(isSelected));
+  });
+}
+
 const state = {
   nodes: [],
   edges: [],
+  graphTruncated: false,
   selected: undefined,
   entityDetails: undefined,
   focused: false,
@@ -73,6 +88,15 @@ function setStatus(message, kind = "") {
   const status = getElement("graph-status");
   status.textContent = message;
   status.dataset.state = kind;
+}
+
+function updateGraphStatus() {
+  const { nodes, edges } = visibleGraph();
+  const truncated = state.focused && state.entityDetails
+    ? state.entityDetails.truncated
+    : state.graphTruncated;
+  const status = graphStatus(nodes.length, edges.length, truncated);
+  setStatus(status.message, status.kind);
 }
 
 function selectedValues(select) {
@@ -312,6 +336,11 @@ async function selectNode(node, view, control) {
   const shouldRestoreFocus = control && document.activeElement === control;
   state.selected = node;
   state.entityDetails = undefined;
+  updateGraphListSelection(
+    getElement("graph-list").querySelectorAll("button[data-graph-node]"),
+    node,
+  );
+  updateGraphStatus();
   getElement("graph-focus").disabled = true;
   renderGraph();
   let focusedControl = shouldRestoreFocus ? nodeControl(node, view) : undefined;
@@ -329,6 +358,7 @@ async function selectNode(node, view, control) {
       renderGraph();
       renderList();
     }
+    updateGraphStatus();
     if (shouldKeepFocus) {
       focusedControl = nodeControl(node, view);
       focusedControl?.focus();
@@ -350,6 +380,7 @@ export async function loadGraph() {
   state.panY = 0;
   state.nodes = [];
   state.edges = [];
+  state.graphTruncated = false;
   getElement("graph-focus").textContent = "Focus neighborhood";
   getElement("graph-focus").disabled = true;
   setStatus("Loading graph…", "loading");
@@ -366,16 +397,16 @@ export async function loadGraph() {
     if (requestId !== state.requestId) return;
     state.nodes = graph.nodes;
     state.edges = graph.edges;
+    state.graphTruncated = graph.truncated;
     renderGraph();
     renderList();
-    setStatus(graph.nodes.length
-      ? `${graph.nodes.length} nodes, ${graph.edges.length} relationships${graph.truncated ? " — results limited" : ""}.`
-      : "No graph entities match these filters.", graph.nodes.length ? "" : "empty");
+    updateGraphStatus();
     if (state.selected) renderInspector(state.selected, []);
   } catch (error) {
     if (requestId !== state.requestId) return;
     state.nodes = [];
     state.edges = [];
+    state.graphTruncated = false;
     renderGraph();
     renderList();
     setStatus(error.code === "VALIDATION_ERROR"
@@ -440,6 +471,7 @@ function toggleFocus() {
   getElement("graph-focus").textContent = state.focused ? "Show full graph" : "Focus neighborhood";
   renderGraph();
   renderList();
+  updateGraphStatus();
 }
 
 function setupPanAndZoom() {

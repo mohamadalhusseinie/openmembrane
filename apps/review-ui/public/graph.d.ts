@@ -22,3 +22,12 @@ export function graphPanDelta(
   width: number,
   height: number,
 ): { x: number; y: number };
+export function graphStatus(
+  nodeCount: number,
+  edgeCount: number,
+  truncated: boolean,
+): { message: string; kind: "" | "empty" };
+export function updateGraphListSelection(
+  buttons: ArrayLike<{ dataset: { kind?: string; id?: string }; setAttribute(name: string, value: string): void }>,
+  selected?: GraphNodeReference,
+): void;

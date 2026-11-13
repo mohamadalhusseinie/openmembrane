@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildGraphQuery,
   graphEdgeCoordinates,
   graphPanDelta,
   graphRefKey,
+  graphStatus,
   layoutGraphNodes,
+  updateGraphListSelection,
 } from "../../../apps/review-ui/public/graph.js";
 
 describe("knowledge graph explorer helpers", () => {
@@ -48,5 +50,31 @@ describe("knowledge graph explorer helpers", () => {
 
   it("uses one SVG scale when converting pointer motion to pan deltas", () => {
     expect(graphPanDelta(60, 60, 600, 560)).toEqual({ x: 100, y: 100 });
+  });
+
+  it("updates pressed state on existing list buttons when selection changes", () => {
+    const buttons = [
+      { dataset: { kind: "memory", id: "one" }, setAttribute: vi.fn() },
+      { dataset: { kind: "candidate", id: "one" }, setAttribute: vi.fn() },
+    ];
+    const originalButtons = [...buttons];
+
+    updateGraphListSelection(buttons, { kind: "candidate", id: "one" });
+
+    expect(buttons[0]!.setAttribute).toHaveBeenCalledWith("aria-pressed", "false");
+    expect(buttons[1]!.setAttribute).toHaveBeenCalledWith("aria-pressed", "true");
+    expect(buttons[0]).toBe(originalButtons[0]);
+    expect(buttons[1]).toBe(originalButtons[1]);
+  });
+
+  it("reports counts and truncation for the currently visible graph", () => {
+    expect(graphStatus(2, 3, true)).toEqual({
+      message: "2 nodes, 3 relationships — results limited.",
+      kind: "",
+    });
+    expect(graphStatus(0, 0, false)).toEqual({
+      message: "No graph entities match these filters.",
+      kind: "empty",
+    });
   });
 });

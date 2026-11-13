@@ -462,6 +462,21 @@ async function loadMemories() {
   }
 }
 
+let graphMemoryRequest = 0;
+async function loadGraphMemoryById(memoryId) {
+  const request = ++graphMemoryRequest;
+  const target = document.getElementById('memories-content');
+  renderMemoryList(target, '<div class="empty">Loading selected memory...</div>');
+  try {
+    const memory = await apiRequest('/api/memories/' + encodeURIComponent(memoryId));
+    if (request !== graphMemoryRequest) return;
+    renderMemoryList(target, `<details class="card" open><summary>${escapeHtml(memory.content)}</summary>${memoryReviewHtml(memory, 'memories-content')}</details>`);
+  } catch (e) {
+    if (request !== graphMemoryRequest) return;
+    renderMemoryList(target, `<div class="empty">${escapeHtml(e.message)}</div>`);
+  }
+}
+
 function toggleMemoryEditor(button) {
   const row = document.getElementById(button.getAttribute('aria-controls'));
   row.hidden = !row.hidden;
@@ -679,7 +694,7 @@ if (typeof window !== 'undefined') {
     document.getElementById('mem-search').value = memory.content || '';
     tabsLoaded.memories = true;
     switchTab('memories');
-    loadMemories();
+    loadGraphMemoryById(memory.id);
   });
   window.addEventListener('review-graph-candidates-mutated', () => {
     tabsLoaded.pending = true;
