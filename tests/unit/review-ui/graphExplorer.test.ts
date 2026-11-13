@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphQuery, graphEdgeCoordinates, graphRefKey, layoutGraphNodes } from "../../../apps/review-ui/public/graph.js";
+import {
+  buildGraphQuery,
+  graphEdgeCoordinates,
+  graphPanDelta,
+  graphRefKey,
+  layoutGraphNodes,
+} from "../../../apps/review-ui/public/graph.js";
 
 describe("knowledge graph explorer helpers", () => {
   it("keeps node references distinct across kinds and lays out each node deterministically", () => {
@@ -38,5 +44,9 @@ describe("knowledge graph explorer helpers", () => {
 
     expect(graphEdgeCoordinates(edge, positions, edge.target)?.x2).toBe(88);
     expect(graphEdgeCoordinates(edge, positions)?.x2).toBe(91);
+  });
+
+  it("uses one SVG scale when converting pointer motion to pan deltas", () => {
+    expect(graphPanDelta(60, 60, 600, 560)).toEqual({ x: 100, y: 100 });
   });
 });

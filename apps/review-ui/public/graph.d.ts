@@ -16,3 +16,9 @@ export function graphEdgeCoordinates(
   positions: Map<string, GraphPosition>,
   selected?: GraphNodeReference,
 ): { x1: number; y1: number; x2: number; y2: number } | undefined;
+export function graphPanDelta(
+  deltaX: number,
+  deltaY: number,
+  width: number,
+  height: number,
+): { x: number; y: number };

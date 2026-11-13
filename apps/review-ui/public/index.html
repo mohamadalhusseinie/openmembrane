@@ -681,6 +681,12 @@ if (typeof window !== 'undefined') {
     switchTab('memories');
     loadMemories();
   });
+  window.addEventListener('review-graph-candidates-mutated', () => {
+    tabsLoaded.pending = true;
+    tabsLoaded.memories = true;
+    loadCandidates();
+    loadMemories();
+  });
 }
 
 // Initial load

@@ -45,6 +45,12 @@ export function graphEdgeCoordinates(edge, positions, selected) {
   };
 }
 
+export function graphPanDelta(deltaX, deltaY, width, height) {
+  const scale = Math.min(width / 1000, height / 700);
+  if (scale <= 0) return { x: 0, y: 0 };
+  return { x: deltaX / scale, y: deltaY / scale };
+}
+
 const state = {
   nodes: [],
   edges: [],
@@ -158,11 +164,11 @@ function renderGraph() {
       label.textContent = node.label.length > 32 ? `${node.label.slice(0, 29)}…` : node.label;
       group.append(label);
     }
-    group.addEventListener("click", () => selectNode(node));
+    group.addEventListener("click", event => selectNode(node, "graph", event.currentTarget));
     group.addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        selectNode(node);
+        selectNode(node, "graph", event.currentTarget);
       }
     });
     scene.append(group);
@@ -284,6 +290,7 @@ async function reviewCandidate(id, action) {
         }
       : { method: "POST" };
     await apiRequest(`/api/candidates/${encodeURIComponent(id)}/${action}`, options);
+    window.dispatchEvent(new CustomEvent("review-graph-candidates-mutated"));
     setStatus(action === "approve" ? "Candidate approved." : "Candidate rejected.", "success");
     state.selected = undefined;
     state.entityDetails = undefined;
@@ -294,22 +301,37 @@ async function reviewCandidate(id, action) {
   }
 }
 
-async function selectNode(node) {
+function nodeControl(node, view) {
+  const selector = view === "graph" ? "#graph-canvas .graph-node" : "#graph-list button[data-graph-node]";
+  return Array.from(document.querySelectorAll(selector)).find(control =>
+    control.dataset.kind === node.kind && control.dataset.id === node.id,
+  );
+}
+
+async function selectNode(node, view, control) {
+  const shouldRestoreFocus = control && document.activeElement === control;
   state.selected = node;
   state.entityDetails = undefined;
   getElement("graph-focus").disabled = true;
   renderGraph();
+  let focusedControl = shouldRestoreFocus ? nodeControl(node, view) : undefined;
+  focusedControl?.focus();
   const inspector = getElement("graph-inspector");
   inspector.textContent = "Loading node details…";
   try {
     const detail = await apiRequest(`/api/graph/entities/${encodeURIComponent(node.kind)}/${encodeURIComponent(node.id)}`);
     if (!state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
+    const shouldKeepFocus = shouldRestoreFocus && document.activeElement === focusedControl;
     state.entityDetails = detail;
     getElement("graph-focus").disabled = false;
     renderInspector(detail.entity, detail.edges);
     if (state.focused) {
       renderGraph();
       renderList();
+    }
+    if (shouldKeepFocus) {
+      focusedControl = nodeControl(node, view);
+      focusedControl?.focus();
     }
   } catch (error) {
     if (!state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
@@ -326,11 +348,14 @@ export async function loadGraph() {
   state.zoom = 1;
   state.panX = 0;
   state.panY = 0;
+  state.nodes = [];
+  state.edges = [];
   getElement("graph-focus").textContent = "Focus neighborhood";
   getElement("graph-focus").disabled = true;
   setStatus("Loading graph…", "loading");
   resetInspector();
-  getElement("graph-canvas").replaceChildren();
+  renderGraph();
+  renderList();
   try {
     const query = buildGraphQuery(
       getElement("graph-search").value,
@@ -392,7 +417,11 @@ function renderList() {
     const select = document.createElement("button");
     select.type = "button";
     select.textContent = node.label;
-    select.addEventListener("click", () => selectNode(node));
+    select.dataset.graphNode = "true";
+    select.dataset.kind = node.kind;
+    select.dataset.id = node.id;
+    select.setAttribute("aria-pressed", String(Boolean(state.selected && graphRefKey(state.selected) === graphRefKey(node))));
+    select.addEventListener("click", event => selectNode(node, "list", event.currentTarget));
     entityCell.append(select);
     const meta = document.createElement("td");
     meta.textContent = [node.type, node.scope, node.status].filter(Boolean).join(" · ");
@@ -424,10 +453,10 @@ function setupPanAndZoom() {
   });
   svg.addEventListener("pointermove", event => {
     if (!drag) return;
-    const scaleX = 1000 / svg.clientWidth;
-    const scaleY = 700 / svg.clientHeight;
-    state.panX = drag.panX + (event.clientX - drag.x) * scaleX;
-    state.panY = drag.panY + (event.clientY - drag.y) * scaleY;
+    const bounds = svg.getBoundingClientRect();
+    const delta = graphPanDelta(event.clientX - drag.x, event.clientY - drag.y, bounds.width, bounds.height);
+    state.panX = drag.panX + delta.x;
+    state.panY = drag.panY + delta.y;
     updateViewport();
   });
   const stopDragging = () => {
