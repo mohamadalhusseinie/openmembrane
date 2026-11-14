@@ -98,6 +98,15 @@ MCP tools should return safe user-facing errors with a diagnostic ID. Detailed d
 
 ## External LLM Usage
 
+The source dogfooding MCP configuration enables
+`OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY=true`. With this opt-in output guard, MCP
+withholds entire tool responses containing confidential or secret-classified
+entries (including nested proposal memories) before JSON serialization and
+returns a safe error with a diagnostic ID. It does not roll back mutations that
+already completed locally, change daemon/CLI/review access, or replace explicit
+consent before any MCP call. Public/internal entries remain eligible. Other MCP
+configurations preserve their existing behavior when the setting is absent.
+
 The primary memory path (`remember` tool) does not call external LLM providers. The AI tool itself performs extraction and provides structured content directly.
 
 The secondary CLI/daemon ingestion path uses an external LLM when a provider is explicitly configured in the daemon. Provider-backed extractors must follow these rules:

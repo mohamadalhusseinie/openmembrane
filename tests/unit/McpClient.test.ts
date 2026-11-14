@@ -68,6 +68,42 @@ describe("thin MCP daemon adapter", () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["get_project_rules", { rules: [{ sensitivity: "confidential", content: "protected fixture" }] }],
+    ["get_relevant_context", { memories: [{ sensitivity: "confidential", content: "protected fixture" }] }],
+    ["search_memory", [{ sensitivity: "confidential", content: "protected fixture" }]],
+    ["list_memory_candidates", [{ sensitivity: "secret", content: "protected fixture" }]],
+    ["approve_memory_candidate", { sensitivity: "internal", proposal: {
+      memory: { sensitivity: "confidential", content: "protected fixture" },
+    } }],
+  ])("withholds protected %s responses before MCP serialization", async (operation, response) => {
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "true");
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const result = await safeJsonResult(String(operation), async () => response);
+    expect(result.isError).toBe(true);
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain("E_MCP_SENSITIVE_RESPONSE");
+    expect(serialized).not.toContain("protected fixture");
+    expect(serialized).toContain("local operation completed");
+    expect(stderr).toHaveBeenCalled();
+  });
+
+  it("preserves public/internal responses with the MCP guard and existing behavior without it", async () => {
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "true");
+    const allowed = { memories: [
+      { sensitivity: "public", content: "public fixture" },
+      { sensitivity: "internal", content: "internal fixture" },
+    ] };
+    expect(await safeJsonResult("get_relevant_context", async () => allowed)).toMatchObject({
+      content: [{ type: "text", text: JSON.stringify(allowed, null, 2) }],
+    });
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "false");
+    const confidential = { rules: [{ sensitivity: "confidential", content: "protected fixture" }] };
+    expect(await safeJsonResult("get_project_rules", async () => confidential)).toMatchObject({
+      content: [{ type: "text", text: JSON.stringify(confidential, null, 2) }],
+    });
+  });
+
   it("preserves daemon error codes, safe messages and diagnostic IDs", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const result = await safeJsonResult("approve_memory_candidate", async () => {

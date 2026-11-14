@@ -22,6 +22,11 @@ The MCP command is `npm --silent run mcp:stdio`. Silent mode keeps npm's script
 banner out of the JSON-RPC stdio stream. It needs no global installation,
 compiled bundle, extraction API key, or separately running MCP terminal.
 Its first tool call automatically starts the authenticated per-user daemon.
+If a daemon is already running, MCP reuses it even if another checkout or a
+published release started it. Coordinate with other local sessions, then run
+`npm run mcp:stdio -- stop` and `npm run mcp:stdio -- start` from this checkout
+before verifying source changes. Repeat after changing daemon/service source.
+Reloading MCP alone does not restart the daemon.
 
 ## Explicit Memory Opt-In
 
@@ -34,7 +39,19 @@ Tell Copilot:
 Local persistence does not make retrieval offline: retrieved text becomes
 part of Copilot's model context and is sent to its model provider. The shared
 repository instructions require each user's explicit opt-in before use.
+This applies to every OpenMembrane tool, including search and candidate review.
 Do not store secrets, personal information, raw source, or full transcripts.
+
+The checked-in MCP configuration enables
+`OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY=true`. Before serializing tool results,
+the MCP server withholds an entire response containing any memory or candidate
+classified as `confidential` or `secret`, including nested proposal memories.
+It returns `E_MCP_SENSITIVE_RESPONSE` with a diagnostic ID instead of disclosing
+the content. Public and internal entries are allowed. This is an output guard,
+not a partial-result filter or a rollback: an approval may already have completed
+locally before its response is withheld. Inspect that result in the local review
+UI; do not retry the mutation blindly. Other integrations retain their existing
+behavior unless they explicitly enable the same environment setting.
 
 The desktop integration uses structured `remember` calls. It does not
 automatically ingest whole desktop conversations or install transcript hooks.

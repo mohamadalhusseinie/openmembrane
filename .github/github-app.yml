@@ -1,6 +1,8 @@
 instructions: |
   Follow AGENTS.md as the canonical repository policy.
   OpenMembrane is available through the repository's MCP configuration.
+  Explicit user consent is a prerequisite for every OpenMembrane tool call,
+  including search, candidate listing, approval, and rejection.
   Only after the user explicitly opts in to sending non-sensitive project
   memories to Copilot's model provider, use get_project_rules and
   get_relevant_context at session start and when relevant to the task.

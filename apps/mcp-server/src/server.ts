@@ -138,6 +138,13 @@ export async function safeJsonResult(
   try {
     const value = await callback();
 
+    if (process.env["OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY"] === "true" && containsSensitiveMemory(value)) {
+      throw new OpenMembraneClientError(
+        "E_MCP_SENSITIVE_RESPONSE",
+        "The local operation completed, but its response contains protected memory and was withheld. Inspect the result in the local review UI.",
+      );
+    }
+
     if (tracker?.isSaveOperation(operation) && hasSavedMemories(value)) {
       tracker.recordMemorySaved();
     }
@@ -175,6 +182,14 @@ export async function safeJsonResult(
       ]
     };
   }
+}
+
+function containsSensitiveMemory(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  if ("sensitivity" in value && (value.sensitivity === "confidential" || value.sensitivity === "secret")) {
+    return true;
+  }
+  return Object.values(value).some(containsSensitiveMemory);
 }
 
 function hasSavedMemories(value: unknown): boolean {
