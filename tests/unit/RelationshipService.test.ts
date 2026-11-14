@@ -43,6 +43,45 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
     expect(audit.map((event) => event.type)).toEqual(["relationship_created"]);
   });
 
+  it.each(["conflicts_with", "supersedes"] as const)("requires rationale for manual %s creation, override and removal", async (type) => {
+    await service.replaceSystemRelationships("project-a", "inferred", [{ ...link({}), type, confidence: 0.8 }]);
+    const inferred = (await service.listEvidence("project-a"))[0]!;
+    for (const rationale of ["", "   "]) {
+      await expect(service.createManual("project-a", { ...link(), type, rationale })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+      await expect(service.remove("project-a", inferred.id, rationale)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    }
+    await expect(service.remove("project-a", inferred.id)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(await stores.auditLogStore.list("project-a")).toEqual([]);
+    expect(await service.listEvidence("project-a")).toEqual([inferred]);
+    const manual = await service.createManual("project-a", { ...link(), type, rationale: "Confirmed correction." });
+    await service.remove("project-a", manual.id, "The correction is no longer valid.");
+    expect((await stores.auditLogStore.list("project-a")).map((event) => event.details?.rationale)).toEqual([
+      "Confirmed correction.", "The correction is no longer valid.",
+    ]);
+  });
+
+  it("keeps precedence through inference refresh and restart without changing memory or candidates", async () => {
+    await stores.pendingCandidateStore.save(candidate({ id: "cand_pending" }));
+    const beforeMemories = await stores.memoryStore.list("project-a", { includeSuperseded: true });
+    const beforeCandidates = await stores.pendingCandidateStore.list("project-a");
+    const inferred = (await service.syncInferred("project-a")).find((item) => item.source.id === "mem_1" && item.target.id === "mem_2")!;
+    const manual = await service.createManual("project-a", { ...inferred, rationale: "Reviewed the relationship.", confidence: 0.9 });
+    expect((await service.list("project-a")).filter((item) => item.source.id === "mem_1" && item.target.id === "mem_2")).toEqual([manual]);
+    await service.remove("project-a", manual.id, "Incorrect link.");
+    await service.createManual("project-a", { ...link(), type: "depends_on", rationale: "Build dependency." });
+    await service.syncInferred("project-a");
+    service = new RelationshipService(stores);
+    const visible = await service.list("project-a");
+    expect(visible.some((item) => item.id === inferred.id || item.id === manual.id)).toBe(false);
+    expect(visible.some((item) => item.type === "depends_on")).toBe(true);
+    expect(await service.listEvidence("project-a")).toContainEqual(inferred);
+    expect(await stores.memoryStore.list("project-a", { includeSuperseded: true })).toEqual(beforeMemories);
+    expect(await stores.pendingCandidateStore.list("project-a")).toEqual(beforeCandidates);
+    const audit = (await stores.auditLogStore.list("project-a")).filter((event) => event.type.startsWith("relationship_"));
+    expect(audit).toHaveLength(3);
+    expect(audit[0]?.details).toMatchObject({ rationale: "Reviewed the relationship.", overriddenRelationshipIds: [inferred.id] });
+  });
+
   it.each(["related_to", "supports", "depends_on", "conflicts_with", "duplicate_of", "supersedes", "derived_from", "tagged_with"] as const)(
     "supports %s",
     async (type) => {
@@ -87,9 +126,22 @@ describe.each<StorageBackend>(["json", "sqlite"])("RelationshipService (%s)", (b
       createdAt: "2026-05-08T00:00:00.000Z",
       details: { reason: "Duplicate memory already exists.", duplicateOf: "mem_1" },
     });
+
     await stores.auditLogStore.append({ id: "audit_other", projectId: "project-a", type: "candidate_rejected", entityId: "cand_x", createdAt: "2026-05-08T00:00:00.000Z", details: { reason: "Noise." } });
     const derived = await service.syncDerived("project-a");
     expect(derived.map((item) => [item.source.id, item.type, item.target.id])).toEqual([["cand_gone", "duplicate_of", "mem_1"]]);
+  });
+
+  it("allows approved-candidate corrections only while their linked safe memory exists", async () => {
+    await stores.auditLogStore.append({
+      id: "audit_approved", projectId: "project-a", type: "memory_saved", entityId: "mem_1",
+      createdAt: "2026-05-08T00:00:00.000Z", details: { candidateId: "cand_approved" },
+    });
+    const input = { ...link(), source: { kind: "candidate" as const, id: "cand_approved" } };
+    expect((await service.createManual("project-a", input)).origin).toBe("manual");
+    await stores.memoryStore.save(entry({ id: "mem_1", content: "TOKEN = abcdefgh12345678" }));
+    await expect(service.createManual("project-a", input)).rejects.toMatchObject({ code: "CANDIDATE_NOT_FOUND" });
+    expect((await stores.auditLogStore.list("project-a")).filter((event) => event.type === "relationship_created")).toHaveLength(1);
   });
 
   it("records metadata edges once regardless of refresh order", async () => {

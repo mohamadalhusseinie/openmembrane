@@ -223,6 +223,18 @@ export const knowledgeGraphEdgeSchema = z.object({
   rationale: z.string().max(500), status: z.enum(relationshipStatuses),
   createdAt: text, updatedAt: text, removedAt: text.optional(),
 }).strict();
+export const createRelationshipRequestSchema = projectRequestSchema.extend({
+  source: knowledgeGraphEntityRefSchema,
+  target: knowledgeGraphEntityRefSchema,
+  type: z.enum(relationshipTypes),
+  rationale: z.string().max(500),
+  confidence: z.number().min(0).max(1).optional(),
+}).strict();
+export const removeRelationshipRequestSchema = projectRequestSchema.extend({
+  relationshipId: text.max(200),
+  rationale: z.string().max(500).optional(),
+}).strict();
+export const relationshipResponseSchema = knowledgeGraphEdgeSchema.extend({ projectId: text });
 export const knowledgeGraphRequestSchema = projectRequestSchema.extend({
   search: z.string().max(200).optional(),
   entityKinds: z.array(z.enum(entityKinds)).min(1).max(entityKinds.length).optional(),

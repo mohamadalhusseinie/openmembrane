@@ -92,7 +92,9 @@ const state = {
   panY: 0,
   showList: false,
   requestId: 0,
+  detailRequestId: 0,
   scene: undefined,
+  mutating: false,
 };
 
 function getElement(id) {
@@ -252,6 +254,166 @@ function reviewButton(label, action) {
   return button;
 }
 
+export function graphCorrectionRequiresRationale(type) {
+  return type === "conflicts_with" || type === "supersedes";
+}
+
+export function renderRelationshipEditor(container, node, nodes, edge, remove, onSubmit) {
+  container.replaceChildren();
+  const form = document.createElement("form");
+  form.className = "graph-edit-form";
+  const fields = document.createElement("fieldset");
+  fields.disabled = state.mutating;
+  fields.setAttribute("data-graph-edit-control", "");
+  const legend = document.createElement("legend");
+  legend.textContent = remove ? "Remove relationship" : edge ? "Override relationship" : "Add relationship";
+  fields.append(legend);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = remove
+    ? "This hides the link and prevents inference from restoring it. Its evidence is preserved."
+    : edge
+      ? "This saves a manual decision for the same directed link and type. Original evidence is preserved."
+      : "Create an outgoing link from this node. To correct a type, remove the original link, then add its replacement.";
+  fields.append(hint);
+  const labelControl = (label, control) => {
+    const wrapper = document.createElement("label");
+    wrapper.textContent = label;
+    wrapper.append(control);
+    fields.append(wrapper);
+  };
+  const targetSelect = document.createElement("select");
+  targetSelect.required = true;
+  if (!edge) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a target node";
+    targetSelect.append(placeholder);
+    const unique = new Map(nodes.map(target => [graphRefKey(target), target]));
+    unique.forEach(target => {
+      if (graphRefKey(target) === graphRefKey(node)) return;
+      const option = document.createElement("option");
+      option.value = graphRefKey(target);
+      option.textContent = `${target.kind}: ${target.label} (${target.id})`;
+      targetSelect.append(option);
+    });
+    labelControl("Target node", targetSelect);
+  } else {
+    const direction = document.createElement("p");
+    direction.className = "hint";
+    direction.textContent = `${edge.source.kind}: ${edge.source.id} → ${edge.type.replaceAll("_", " ")} → ${edge.target.kind}: ${edge.target.id}`;
+    fields.append(direction);
+  }
+  const typeSelect = document.createElement("select");
+  Array.from(getElement("graph-relationships").options).forEach(existing => {
+    const option = document.createElement("option");
+    option.value = existing.value;
+    option.textContent = existing.textContent;
+    typeSelect.append(option);
+  });
+  typeSelect.value = edge?.type ?? "related_to";
+  if (!edge) labelControl("Relationship type", typeSelect);
+  const rationale = document.createElement("textarea");
+  rationale.maxLength = 500;
+  rationale.rows = 3;
+  const rationaleLabel = document.createElement("label");
+  const rationaleText = document.createElement("span");
+  const updateRationale = () => {
+    rationale.required = graphCorrectionRequiresRationale(typeSelect.value);
+    rationaleText.textContent = rationale.required ? "Rationale (required)" : "Rationale (optional)";
+  };
+  updateRationale();
+  typeSelect.addEventListener("change", updateRationale);
+  rationaleLabel.append(rationaleText, rationale);
+  fields.append(rationaleLabel);
+  const notice = document.createElement("p");
+  notice.className = "hint";
+  notice.textContent = "Graph edits never approve, reject, or supersede memories. Do not include secrets or raw transcripts.";
+  fields.append(notice);
+  const status = document.createElement("p");
+  status.className = "graph-edit-status";
+  status.setAttribute("role", "status");
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = remove ? "btn btn-danger" : "btn btn-primary";
+  submit.textContent = remove ? "Remove link" : "Save manual link";
+  const cancel = reviewButton("Cancel", () => container.replaceChildren());
+  cancel.className = "btn";
+  actions.append(submit, cancel);
+  fields.append(actions);
+  form.append(fields, status);
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (state.mutating || fields.disabled) return;
+    if (rationale.required && !rationale.value.trim()) {
+      status.textContent = "Enter a rationale for this correction.";
+      rationale.focus();
+      return;
+    }
+    const [targetKind, targetId] = edge ? [edge.target.kind, edge.target.id] : JSON.parse(targetSelect.value);
+    const input = remove
+      ? { relationshipId: edge.id, rationale: rationale.value.trim() }
+      : {
+          source: edge?.source ?? { kind: node.kind, id: node.id },
+          target: { kind: targetKind, id: targetId },
+          type: edge?.type ?? typeSelect.value,
+          rationale: rationale.value.trim(),
+        };
+    fields.disabled = true;
+    status.textContent = "Saving relationship…";
+    try {
+      await onSubmit(input, remove);
+      status.textContent = "Relationship saved. Apply filters to reload if the graph did not refresh.";
+    } catch (error) {
+      status.textContent = `Relationship edit failed: ${errorText(error)} Inspect the graph and audit before retrying if the request timed out.`;
+      fields.disabled = false;
+    }
+  });
+  container.append(form);
+}
+
+async function mutateRelationship(input, remove) {
+  state.mutating = true;
+  document.querySelectorAll("[data-graph-edit-control]").forEach(control => { control.disabled = true; });
+  try {
+    await apiRequest(remove ? "/api/graph/relationships/remove" : "/api/graph/relationships", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+  } finally {
+    state.mutating = false;
+    document.querySelectorAll("[data-graph-edit-control]").forEach(control => { control.disabled = false; });
+  }
+  const selected = state.selected;
+  const requestId = ++state.requestId;
+  const detailRequestId = ++state.detailRequestId;
+  try {
+    const query = buildGraphQuery(
+      getElement("graph-search").value,
+      selectedValues(getElement("graph-kinds")),
+      selectedValues(getElement("graph-relationships")),
+    );
+    const [graph, detail] = await Promise.all([
+      apiRequest(`/api/graph?${query}`),
+      selected ? apiRequest(`/api/graph/entities/${encodeURIComponent(selected.kind)}/${encodeURIComponent(selected.id)}`) : undefined,
+    ]);
+    if (requestId !== state.requestId) return;
+    state.nodes = graph.nodes;
+    state.edges = graph.edges;
+    state.graphTruncated = graph.truncated;
+    if (detailRequestId === state.detailRequestId && selected && state.selected && graphRefKey(selected) === graphRefKey(state.selected)) {
+      state.entityDetails = detail;
+      renderInspector(detail.entity, detail.edges);
+    }
+    renderGraph();
+    renderList();
+    setStatus(remove ? "Relationship removed. Evidence preserved; memory lifecycle unchanged." : "Manual relationship saved. Memory lifecycle unchanged.", "success");
+  } catch (error) {
+    setStatus(`Relationship saved, but the graph could not refresh: ${errorText(error)} Apply filters to reload before making another correction.`, "error");
+  }
+}
+
 function renderInspector(node, edges = []) {
   const inspector = getElement("graph-inspector");
   inspector.replaceChildren();
@@ -306,6 +468,15 @@ function renderInspector(node, edges = []) {
   const relationshipsHeading = document.createElement("h3");
   relationshipsHeading.textContent = `Relationships (${edges.length})`;
   inspector.append(relationshipsHeading);
+  const editor = document.createElement("div");
+  const openEditor = (edge, remove = false) => {
+    renderRelationshipEditor(editor, node, [...state.nodes, ...(state.entityDetails?.neighbors ?? [])], edge, remove, mutateRelationship);
+    editor.querySelector("select, textarea")?.focus();
+  };
+  const add = reviewButton("Add relationship", () => openEditor());
+  add.disabled = state.mutating;
+  add.setAttribute("data-graph-edit-control", "");
+  inspector.append(add, editor);
   const list = document.createElement("ul");
   list.className = "graph-relations";
   edges.forEach(edge => {
@@ -329,6 +500,17 @@ function renderInspector(node, edges = []) {
       rationale.textContent = description.rationale;
       item.append(rationale);
     }
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    const override = reviewButton(edge.origin === "manual" ? "Edit manual link" : "Override link", () => openEditor(edge));
+    const remove = reviewButton("Remove link", () => openEditor(edge, true));
+    override.className = "btn";
+    remove.className = "btn btn-danger";
+    override.disabled = remove.disabled = state.mutating;
+    override.setAttribute("data-graph-edit-control", "");
+    remove.setAttribute("data-graph-edit-control", "");
+    actions.append(override, remove);
+    item.append(actions);
     list.append(item);
   });
   inspector.append(list);
@@ -375,6 +557,7 @@ function nodeControl(node, view) {
 }
 
 async function selectNode(node, view, control) {
+  const detailRequestId = ++state.detailRequestId;
   const shouldRestoreFocus = control && document.activeElement === control;
   state.selected = node;
   state.entityDetails = undefined;
@@ -391,7 +574,7 @@ async function selectNode(node, view, control) {
   inspector.textContent = "Loading node details…";
   try {
     const detail = await apiRequest(`/api/graph/entities/${encodeURIComponent(node.kind)}/${encodeURIComponent(node.id)}`);
-    if (!state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
+    if (detailRequestId !== state.detailRequestId || !state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
     const shouldKeepFocus = shouldRestoreFocus && document.activeElement === focusedControl;
     state.entityDetails = detail;
     getElement("graph-focus").disabled = false;
@@ -406,7 +589,7 @@ async function selectNode(node, view, control) {
       focusedControl?.focus();
     }
   } catch (error) {
-    if (!state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
+    if (detailRequestId !== state.detailRequestId || !state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
     inspector.textContent = `Could not load node details: ${errorText(error)}`;
     getElement("graph-focus").disabled = true;
   }
@@ -414,6 +597,7 @@ async function selectNode(node, view, control) {
 
 export async function loadGraph() {
   const requestId = ++state.requestId;
+  ++state.detailRequestId;
   state.selected = undefined;
   state.entityDetails = undefined;
   state.focused = false;

@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createGraphRoutes } from "../../../../apps/review-ui/src/routes/graph";
 
-function mockContext(params: Record<string, string> = {}, query = new URLSearchParams()) {
+function mockContext(params: Record<string, string> = {}, query = new URLSearchParams(), body?: unknown) {
   return {
     params,
     query,
-    body: undefined,
+    body,
     req: {} as IncomingMessage,
     res: {} as ServerResponse,
   };
@@ -19,6 +19,8 @@ describe("review UI graph routes", () => {
     const routes = createGraphRoutes({
       getKnowledgeGraph,
       getKnowledgeGraphEntity: vi.fn(),
+      createRelationship: vi.fn(),
+      removeRelationship: vi.fn(),
     });
 
     const result = await routes.graph(mockContext({}, new URLSearchParams(
@@ -39,6 +41,8 @@ describe("review UI graph routes", () => {
     const routes = createGraphRoutes({
       getKnowledgeGraph,
       getKnowledgeGraphEntity: vi.fn(),
+      createRelationship: vi.fn(),
+      removeRelationship: vi.fn(),
     });
 
     await expect(routes.graph(mockContext({}, new URLSearchParams("kind=unknown")))).rejects.toThrow();
@@ -51,9 +55,30 @@ describe("review UI graph routes", () => {
     const routes = createGraphRoutes({
       getKnowledgeGraph: vi.fn(),
       getKnowledgeGraphEntity,
+      createRelationship: vi.fn(),
+      removeRelationship: vi.fn(),
     });
 
     expect((await routes.entity(mockContext({ kind: "memory", id: "m1" }))).body).toEqual(detail);
     expect(getKnowledgeGraphEntity).toHaveBeenCalledWith({ kind: "memory", id: "m1" });
+  });
+
+  it("proxies manual mutations and refuses browser-supplied project routing", async () => {
+    const createRelationship = vi.fn().mockResolvedValue({ origin: "manual" });
+    const removeRelationship = vi.fn().mockResolvedValue({ status: "removed" });
+    const routes = createGraphRoutes({ getKnowledgeGraph: vi.fn(), getKnowledgeGraphEntity: vi.fn(), createRelationship, removeRelationship });
+    const input = {
+      source: { kind: "memory", id: "mem_1" }, target: { kind: "memory", id: "mem_2" },
+      type: "conflicts_with", rationale: "These describe incompatible rules.",
+    };
+    expect((await routes.createRelationship(mockContext({}, undefined, input))).body).toEqual({ origin: "manual" });
+    expect(createRelationship).toHaveBeenCalledWith(input);
+    await routes.removeRelationship(mockContext({}, undefined, { relationshipId: "rel_1", rationale: "Incorrect inference." }));
+    expect(removeRelationship).toHaveBeenCalledWith({ relationshipId: "rel_1", rationale: "Incorrect inference." });
+    await expect(routes.createRelationship(mockContext({}, undefined, { ...input, projectId: "other" }))).rejects.toThrow();
+    await expect(routes.removeRelationship(mockContext({}, undefined, { relationshipId: "rel_1", storageDir: "other" }))).rejects.toThrow();
+    await expect(routes.createRelationship(mockContext({}, undefined, { ...input, origin: "inferred" }))).rejects.toThrow();
+    expect(createRelationship).toHaveBeenCalledTimes(1);
+    expect(removeRelationship).toHaveBeenCalledTimes(1);
   });
 });

@@ -145,6 +145,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .export-file { margin-top: 1rem; }
 .export-file pre { padding: 0.75rem; background: var(--bg-secondary); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .graph-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr); gap: 1rem; }
+.graph-layout > div { min-width: 0; }
 .graph-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; margin-bottom: 0.75rem; }
 .graph-toolbar label { display: grid; gap: 0.2rem; font-size: 0.75rem; }
 .graph-toolbar input, .graph-toolbar select { min-width: 150px; padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
@@ -178,12 +179,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .graph-relations li { padding: 0.5rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .graph-relations time, .graph-relation-provenance { display: block; color: var(--text-muted); font-size: 0.72rem; }
 .graph-relations p { margin-top: 0.2rem; }
+.graph-edit-form { margin: 0.75rem 0; font-size: 0.8rem; }
+.graph-edit-form fieldset { border: 0; min-width: 0; }
+.graph-edit-form legend { font-weight: 600; }
+.graph-edit-form label { display: grid; gap: 0.25rem; margin-top: 0.75rem; }
+.graph-edit-form select, .graph-edit-form textarea { width: 100%; min-width: 0; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; }
+.graph-edit-form textarea { resize: vertical; }
+.graph-edit-form .hint { margin: 0.5rem 0; overflow-wrap: anywhere; }
+.graph-edit-status { color: var(--danger); margin-top: 0.5rem; }
 .graph-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0.75rem 0; font-size: 0.75rem; }
 .graph-legend span { display: inline-flex; gap: 0.35rem; align-items: center; }
 .graph-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--swatch); }
 .graph-line { display: inline-block; width: 1.2rem; border-top: 2px solid var(--swatch); }
 .graph-line.dashed { border-top-style: dashed; }
-.graph-list-view { margin-top: 1rem; }
+.graph-list-view { margin-top: 1rem; overflow-x: auto; }
 .graph-list-view button { color: var(--accent); background: none; border: 0; cursor: pointer; text-align: left; font: inherit; text-decoration: underline; }
 .graph-status { min-height: 1.5rem; padding: 0.4rem 0; color: var(--text-muted); font-size: 0.8rem; }
 @media (max-width: 760px) { .graph-layout { grid-template-columns: 1fr; } .graph-canvas { height: 420px; } }

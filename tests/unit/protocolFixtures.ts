@@ -55,6 +55,14 @@ export const protocolFixtures: { [K in EndpointName]: { request: EndpointRequest
     },
   },
   health: { request: {}, response: {} },
+  createRelationship: {
+    request: { ...project, source: { kind: "memory", id: "mem_1" }, target: { kind: "memory", id: "mem_2" }, type: "supports", rationale: "Confirmed build guidance." },
+    response: { id: "rel_manual_1", projectId: "project-a", source: { kind: "memory", id: "mem_1" }, target: { kind: "memory", id: "mem_2" }, type: "supports", origin: "manual", confidence: 1, rationale: "Confirmed build guidance.", status: "active", createdAt: "2026-05-08", updatedAt: "2026-05-08" },
+  },
+  removeRelationship: {
+    request: { ...project, relationshipId: "rel_manual_1", rationale: "No longer related." },
+    response: { id: "rel_manual_1", projectId: "project-a", source: { kind: "memory", id: "mem_1" }, target: { kind: "memory", id: "mem_2" }, type: "supports", origin: "manual", confidence: 1, rationale: "No longer related.", status: "removed", createdAt: "2026-05-08", updatedAt: "2026-05-09", removedAt: "2026-05-09" },
+  },
   configureGitHubTeamMode: { request: { ...project, repository: { host: "github.com", owner: "example", name: "memory" } }, response: { kind: "configured", config: { projectId: "project-a", mode: "github_team", repository: { host: "github.com", owner: "example", name: "memory", defaultBranch: "main" }, checkoutPath: resolve("checkout"), repositoryInitialized: true, createdAt: "2026-05-08", updatedAt: "2026-05-08" } } },
   getCollaborationStatus: { request: project, response: { mode: "github_team", repository: { host: "github.com", owner: "example", name: "memory", defaultBranch: "main" }, proposals: { proposed: 1, active: 2, rejected: 0, syncFailed: 1, conflict: 0 }, retries: [{ memoryId: "mem_1", attempts: 2, nextAttemptAt: "2026-05-09" }] } },
 };
