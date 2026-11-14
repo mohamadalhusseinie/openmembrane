@@ -8,9 +8,24 @@ export interface GraphPosition {
   y: number;
 }
 
+export interface GraphEdgePresentation {
+  source: GraphNodeReference;
+  target: GraphNodeReference;
+  type: string;
+  origin: "inferred" | "manual" | "derived";
+  confidence: number;
+  rationale: string;
+  createdAt?: string;
+}
+
 export function graphRefKey(ref: GraphNodeReference): string;
 export function buildGraphQuery(search: string, kinds: string[], relationshipTypes: string[]): string;
 export function layoutGraphNodes(nodes: GraphNodeReference[]): Map<string, GraphPosition>;
+export function graphEdgeClass(edge: Pick<GraphEdgePresentation, "type" | "origin">): string;
+export function graphRelationshipDescription(
+  edge: GraphEdgePresentation,
+  node: GraphNodeReference,
+): { label: string; provenance: string; rationale: string; createdAt: string | undefined };
 export function graphEdgeCoordinates(
   edge: { source: GraphNodeReference; target: GraphNodeReference },
   positions: Map<string, GraphPosition>,
