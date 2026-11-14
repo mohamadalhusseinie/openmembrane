@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "openmembrane": {
+      "type": "local",
+      "command": "npm",
+      "args": ["--silent", "run", "mcp:stdio"],
+      "env": {
+        "OPENMEMBRANE_EXTRACTION_ENABLED": "false"
+      },
+      "tools": ["*"]
+    }
+  }
+}
