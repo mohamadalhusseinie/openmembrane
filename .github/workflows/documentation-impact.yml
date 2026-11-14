@@ -1,0 +1,32 @@
+name: Documentation impact
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  documentation-impact:
+    name: Documentation impact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Check documentation assessment
+        run: node scripts/check-documentation-impact.mjs
