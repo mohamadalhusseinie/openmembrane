@@ -119,6 +119,12 @@ describe("daemon HTTP protocol", { timeout: process.platform === "win32" ? 15_00
     expect(graph.nodes.length).toBeLessThanOrEqual(500);
     const graphEntity = await call("getKnowledgeGraphEntity", { kind: "memory", id: memoryId });
     expect(graphEntity.entity.id).toBe(memoryId);
+    const relationship = await call("createRelationship", {
+      source: { kind: "memory", id: memoryId }, target: { kind: "memory", id: "old-memory" },
+      type: "supports", rationale: "Verified shared guidance.",
+    });
+    expect(relationship.origin).toBe("manual");
+    expect((await call("removeRelationship", { relationshipId: relationship.id, rationale: "No longer related." })).status).toBe("removed");
     expect(await call("getCollaborationStatus", {})).toMatchObject({ mode: "local_private" });
     // GitHub configure is covered separately with the CommandRunner seam.
     expect([...covered].sort()).toEqual(Object.keys(endpoints).filter((name) => name !== "configureGitHubTeamMode").sort());

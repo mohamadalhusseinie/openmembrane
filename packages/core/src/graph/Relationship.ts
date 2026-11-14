@@ -93,7 +93,7 @@ export function validateRelationship(relationship: Relationship): void {
 function assertSafeText(value: string, label: string, allowEmpty = false): void {
   if (typeof value !== "string" || (!allowEmpty && !value.trim())) throw invalid(`Relationship ${label} is required.`);
   if (value.length > maxRelationshipTextLength) throw invalid(`Relationship ${label} is too long.`);
-  if (secretDetector.containsSecret(value)) {
+  if (secretDetector.containsSecretInAnyCase(value)) {
     throw new OpenMembraneError({
       code: "SECRET_CANDIDATE",
       message: `Relationship ${label} contains secret-like content.`,

@@ -17,6 +17,7 @@ import type {
   MemoryCandidate,
   MemoryEntry,
   Relationship,
+  CreateManualRelationshipInput,
 } from "@openmembrane/core";
 import type { ProjectState } from "./factory";
 
@@ -408,6 +409,40 @@ function contextPriority(kind: KnowledgeGraphNode["kind"]): number {
     case "memory":
     case "candidate": return -1;
   }
+}
+
+export async function createGraphRelationship(
+  state: ProjectState,
+  projectId: string,
+  input: CreateManualRelationshipInput,
+): Promise<Relationship> {
+  const snapshot = await graphSnapshot(state, projectId);
+  for (const ref of [input.source, input.target]) {
+    if (!snapshot.nodes.has(refKey(ref))) {
+      throw new OpenMembraneError({
+        code: ref.kind === "candidate" ? "CANDIDATE_NOT_FOUND" : ref.kind === "memory" ? "MEMORY_NOT_FOUND" : "GRAPH_ENTITY_NOT_FOUND",
+        message: "That graph entity does not exist in this project.",
+      });
+    }
+  }
+  return state.relationshipService.createManual(projectId, input);
+}
+
+export async function removeGraphRelationship(
+  state: ProjectState,
+  projectId: string,
+  input: { relationshipId: string; rationale?: string },
+): Promise<Relationship> {
+  const evidence = await state.relationshipService.listEvidence(projectId);
+  if (evidence.some((item) => item.id === input.relationshipId)) {
+    return state.relationshipService.remove(projectId, input.relationshipId, input.rationale);
+  }
+  const snapshot = await graphSnapshot(state, projectId);
+  const edge = snapshot.edges.get(input.relationshipId);
+  if (!edge) {
+    throw new OpenMembraneError({ code: "VALIDATION_ERROR", message: "That relationship does not exist in this project." });
+  }
+  return state.relationshipService.removeProjected(projectId, { ...edge, projectId }, input.rationale);
 }
 
 export async function getKnowledgeGraph(

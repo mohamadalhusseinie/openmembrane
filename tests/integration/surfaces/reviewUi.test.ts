@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReviewUiContext } from "../../../apps/review-ui/src/context";
 import { createReviewServer } from "../../../apps/review-ui/src/server";
-import { diagnosticsResponseSchema, exportResponseSchema, knowledgeGraphResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
+import { diagnosticsResponseSchema, exportResponseSchema, knowledgeGraphResponseSchema, relationshipResponseSchema, staleMemoriesResponseSchema } from "@openmembrane/protocol";
 import { setupSurfaceDaemon } from "./helpers";
 import { OpenMembraneClient, OpenMembraneClientError } from "@openmembrane/client";
 import { MemoryApprovalService } from "@openmembrane/core";
@@ -48,6 +48,48 @@ async function setup(many = false, timeoutMs?: number) {
 }
 
 describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
+  it("creates, overrides and removes links through the daemon without changing memory lifecycle", async () => {
+    const { request, client, storageDir, projectId } = await setup();
+    const beforeMemories = await client.listMemories();
+    const beforeCandidates = await client.listMemoryCandidates();
+    const graph = knowledgeGraphResponseSchema.parse(await (await request("/api/graph")).json());
+    const projected = graph.edges.find((edge) => edge.source.kind === "memory" && edge.type === "tagged_with")!;
+    const input = { source: projected.source, target: projected.target, type: projected.type, rationale: "Verified grouping." };
+    const created = await request("/api/graph/relationships", "POST", input);
+    expect(created.status).toBe(200);
+    const manual = relationshipResponseSchema.parse(await created.json());
+    expect(manual).toMatchObject({ origin: "manual", status: "active", rationale: input.rationale });
+    const overwritten = await request("/api/graph/relationships", "POST", { ...input, rationale: "Updated explanation." });
+    expect(await overwritten.json()).toMatchObject({ id: manual.id, rationale: "Updated explanation." });
+    expect((await request("/api/graph/relationships/remove", "POST", { relationshipId: manual.id, rationale: "Incorrect grouping." })).status).toBe(200);
+    const after = await client.getKnowledgeGraph();
+    expect(after.edges.some((edge) => edge.source.id === projected.source.id && edge.target.id === projected.target.id && edge.type === projected.type)).toBe(false);
+    const anotherProjection = after.edges.find((edge) => edge.id.startsWith("graph_") && edge.type === "tagged_with")!;
+    expect((await request("/api/graph/relationships/remove", "POST", { relationshipId: anotherProjection.id, rationale: "Incorrect metadata link." })).status).toBe(200);
+    const service = createOpenMembraneService();
+    try {
+      const project = await service.forProject({ projectRoot: storageDir, storageDir, projectId });
+      await project.refreshInferredRelationships();
+      expect((await project.getKnowledgeGraph()).edges.some((edge) => edge.id === anotherProjection.id)).toBe(false);
+      expect(await project.listRelationshipEvidence()).toContainEqual(expect.objectContaining({
+        id: anotherProjection.id, origin: "derived", rationale: anotherProjection.rationale,
+      }));
+    } finally {
+      await service.close();
+    }
+    const audit = (await client.listAuditLog()).filter((event) => event.type.startsWith("relationship_"));
+    expect(audit).toHaveLength(4);
+    expect(audit.map((event) => event.details?.rationale)).toEqual(expect.arrayContaining([
+      "Verified grouping.", "Updated explanation.", "Incorrect grouping.", "Incorrect metadata link.",
+    ]));
+    expect(await client.listMemories()).toEqual(beforeMemories);
+    expect(await client.listMemoryCandidates()).toEqual(beforeCandidates);
+    expect((await request("/api/graph/relationships", "POST", { ...input, projectId: "other" })).status).toBe(400);
+    expect((await request("/api/graph/relationships", "POST", { ...input, target: { kind: "tag", id: "unknown" } })).status).toBe(404);
+    expect((await request("/api/graph/relationships", "POST", { ...input, type: "conflicts_with", rationale: " " })).status).toBe(422);
+    expect((await request("/api/graph/relationships", "POST", { ...input, rationale: "TOKEN = abcdefgh12345678" })).status).toBe(422);
+  });
+
   it("awaits long mutations and reports uncertain completion on a configured timeout", async () => {
     const approveAll = vi.spyOn(MemoryApprovalService.prototype, "approveAll").mockImplementation(async projectId => {
       await new Promise(resolve => setTimeout(resolve, 31_000));

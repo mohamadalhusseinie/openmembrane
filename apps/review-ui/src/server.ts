@@ -66,6 +66,8 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
   router.get("/api/diagnostics", diagnosticsRoutes.listDiagnostics);
   router.get("/api/graph", graphRoutes.graph);
   router.get("/api/graph/entities/:kind/:id", graphRoutes.entity);
+  router.post("/api/graph/relationships", graphRoutes.createRelationship);
+  router.post("/api/graph/relationships/remove", graphRoutes.removeRelationship);
   router.post("/api/export/preview", exportRoutes.preview);
   router.post("/api/export", exportRoutes.write);
 

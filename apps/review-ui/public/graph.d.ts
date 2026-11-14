@@ -19,6 +19,15 @@ export interface GraphEdgePresentation {
 }
 
 export function graphRefKey(ref: GraphNodeReference): string;
+export function graphCorrectionRequiresRationale(type: string): boolean;
+export function renderRelationshipEditor(
+  container: HTMLElement,
+  node: GraphNodeReference,
+  nodes: Array<GraphNodeReference & { label: string }>,
+  edge: (GraphEdgePresentation & { id: string }) | undefined,
+  remove: boolean,
+  onSubmit: (input: unknown, remove: boolean) => Promise<void>,
+): void;
 export function buildGraphQuery(search: string, kinds: string[], relationshipTypes: string[]): string;
 export function layoutGraphNodes(nodes: GraphNodeReference[]): Map<string, GraphPosition>;
 export function graphEdgeClass(edge: Pick<GraphEdgePresentation, "type" | "origin">): string;

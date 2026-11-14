@@ -96,6 +96,7 @@ export class RelationshipService {
   }
 
   private async createManualUnlocked(projectId: string, input: CreateManualRelationshipInput): Promise<Relationship> {
+    this.assertCorrectionRationale(input.type, input.rationale);
     validateEntityRef(input.source, "source");
     validateEntityRef(input.target, "target");
     const snapshot = await this.snapshot(projectId);
@@ -128,11 +129,11 @@ export class RelationshipService {
   }
 
   /** Manual relationships are marked removed; other origins are overridden by a manual removal and kept as evidence. */
-  remove(projectId: string, relationshipId: string, rationale = "Removed by user."): Promise<Relationship> {
+  remove(projectId: string, relationshipId: string, rationale?: string): Promise<Relationship> {
     return this.serialize(() => this.removeUnlocked(projectId, relationshipId, rationale));
   }
 
-  private async removeUnlocked(projectId: string, relationshipId: string, rationale: string): Promise<Relationship> {
+  private async removeUnlocked(projectId: string, relationshipId: string, rationale: string | undefined): Promise<Relationship> {
     const target = await this.relationshipStore.findById(projectId, relationshipId);
     if (!target) {
       throw new OpenMembraneError({
@@ -141,6 +142,25 @@ export class RelationshipService {
         safeMessage: "That relationship does not exist.",
       });
     }
+    return this.removeTargetUnlocked(projectId, target, rationale);
+  }
+
+  /** Captures a projected edge as derived evidence before applying a manual removal. */
+  removeProjected(projectId: string, target: Relationship, rationale?: string): Promise<Relationship> {
+    return this.serialize(async () => {
+      if (target.projectId !== projectId || target.origin !== "derived") {
+        throw new OpenMembraneError({ code: "VALIDATION_ERROR", message: "Invalid projected relationship." });
+      }
+      validateRelationship(target);
+      this.assertCorrectionRationale(target.type, rationale ?? "");
+      validateRelationship({ ...target, rationale: rationale ?? "Removed by user." });
+      await this.relationshipStore.save(target);
+      return this.removeTargetUnlocked(projectId, target, rationale);
+    });
+  }
+
+  private async removeTargetUnlocked(projectId: string, target: Relationship, rationale: string | undefined): Promise<Relationship> {
+    this.assertCorrectionRationale(target.type, rationale ?? "");
     const now = nowIso();
     const key = relationshipKey(target);
     const evidence = await this.listEvidence(projectId);
@@ -151,7 +171,7 @@ export class RelationshipService {
       id: systemRelationshipId("manual", target),
       origin: "manual",
       confidence: 1,
-      rationale,
+      rationale: rationale ?? "Removed by user.",
       status: "removed",
       createdAt: existingManual?.createdAt ?? now,
       updatedAt: now,
@@ -294,9 +314,19 @@ export class RelationshipService {
     snapshot: RelationshipSnapshot,
   ): Promise<Partial<Record<EntityKind, Set<string>>>> {
     const memoryIds = new Set(refs.filter((ref) => ref.kind === "memory").map((ref) => ref.id));
+    const requestedCandidateIds = new Set(refs.filter((ref) => ref.kind === "candidate").map((ref) => ref.id));
+    const approvals = snapshot.audit.flatMap((event) => event.type === "memory_saved" &&
+      typeof event.details?.candidateId === "string" && requestedCandidateIds.has(event.details.candidateId) && event.entityId
+      ? [{ memoryId: event.entityId, candidateId: event.details.candidateId }] : []);
+    for (const approval of approvals) memoryIds.add(approval.memoryId);
     // list() omits superseded memories, which are still valid graph endpoints.
     const memories = await Promise.all([...memoryIds].map((id) => this.memoryStore.findById(projectId, id)));
     const candidateIds = new Set<string>();
+    const safeMemoryIds = new Set(memories.filter((memory) => memory !== undefined &&
+      !this.secretDetector.containsSecretInAnyCase(memory.content)).map((memory) => memory!.id));
+    for (const approval of approvals) {
+      if (safeMemoryIds.has(approval.memoryId)) candidateIds.add(approval.candidateId);
+    }
     for (const duplicate of duplicateRejections(snapshot.audit)) {
       candidateIds.add(duplicate.candidateId);
       if (duplicate.duplicateOf.startsWith("cand_")) candidateIds.add(duplicate.duplicateOf);
@@ -307,7 +337,7 @@ export class RelationshipService {
       else candidateIds.add(candidate.id);
     }
     return {
-      memory: new Set(memories.filter((memory) => memory !== undefined && !this.secretDetector.containsSecret(memory.content)).map((memory) => memory!.id)),
+      memory: safeMemoryIds,
       candidate: candidateIds,
       audit_event: new Set(snapshot.audit.map((event) => event.id)),
       diagnostic: snapshot.diagnosticIds,
@@ -339,7 +369,16 @@ export class RelationshipService {
   }
 
   private isSecretCandidate(candidate: MemoryCandidate): boolean {
-    return candidate.sensitivity === "secret" || this.secretDetector.containsSecret(candidate.content);
+    return candidate.sensitivity === "secret" || this.secretDetector.containsSecretInAnyCase(candidate.content);
+  }
+
+  private assertCorrectionRationale(type: RelationshipType, rationale: string): void {
+    if ((type === "conflicts_with" || type === "supersedes") && !rationale.trim()) {
+      throw new OpenMembraneError({
+        code: "VALIDATION_ERROR",
+        message: "Conflict and supersession corrections require a rationale.",
+      });
+    }
   }
 
   private audit(projectId: string, type: "relationship_created" | "relationship_removed", relationship: Relationship, createdAt: string, overridden: Relationship[]): Promise<void> {
@@ -353,6 +392,10 @@ export class RelationshipService {
         relationshipType: relationship.type,
         source: relationship.source,
         target: relationship.target,
+        origin: relationship.origin,
+        status: relationship.status,
+        rationale: relationship.rationale,
+        confidence: relationship.confidence,
         overriddenRelationshipIds: overridden.map((item) => item.id),
       },
     });

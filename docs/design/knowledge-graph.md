@@ -82,7 +82,9 @@ the original inferred evidence but prevents it from resurfacing.
 Memory, candidate, audit-event, and diagnostic references are validated within
 their project. Historical candidates remain referenceable through durable
 duplicate-rejection audit metadata, including candidate targets; a removed
-relationship alone cannot authorize a purged candidate. Tags and sessions are
+relationship alone cannot authorize a purged candidate. Approved-candidate
+placeholders are editable when a saved-memory audit event links them to an
+existing privacy-safe memory. Tags and sessions are
 virtual groupings rather than separately persisted records.
 
 Creating, removing, or overriding a manual relationship writes an audit event.
@@ -148,6 +150,33 @@ The initial 2D view supports:
 The API rejects malformed filters, invalid entity or relationship types, missing
 entities, and requests over the configured entity limit with safe user-facing
 errors. Default graph responses contain at most 500 entities.
+
+### Implemented Manual Editing
+
+In both the 2D and list views, select a node and use **Add relationship** in
+the inspector to create an outgoing link to another loaded node (including
+neighbors loaded by entity detail). Use filters to load other targets.
+Each listed relationship offers **Override link** (or **Edit manual link**) and
+**Remove link**. Overrides keep the original direction and type, including
+incoming links. To correct a type, remove the original and add its replacement.
+The inline form shows the operation, direction, and evidence-preservation
+behavior; failed submissions preserve the entered rationale for retry.
+
+The service, not the browser, requires nonblank rationale for all manual
+`conflicts_with` and `supersedes` creations, overrides, and removals. Other
+types allow an optional explanation. All explanations are limited to 500
+characters and checked for secret-like content before persistence. The daemon
+and client expose `createRelationship` and `removeRelationship`, with the local
+Review UI acting only as a validated proxy.
+
+Manual decisions are durable and take priority over inferred and derived edges
+with the same directed source/target/type key, including after refresh and
+restart. Inferred records retain their rationale and confidence. Removing a
+projected provenance link also captures its derived evidence locally before
+writing the manual removal. Every successful mutation records its rationale,
+endpoints, type, status, confidence, and overridden stored relationship IDs
+in the audit log. Graph edits never approve, reject, update, or supersede
+memories or candidates and do not publish GitHub Team memory proposals.
 
 ## Optional 3D Mode
 
