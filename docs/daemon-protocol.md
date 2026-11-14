@@ -102,6 +102,14 @@ whitespace-only rationale is rejected for `conflicts_with` and `supersedes`
 creation, override, and removal. Other types allow an empty rationale; omitted
 removal rationale records "Removed by user."
 
+Both mutation responses apply the same rationale redaction and private
+source-session ID masking as graph reads, including removed records. Stored
+evidence and audit explanations are not rewritten by response sanitization.
+Removal validates both endpoints against the current privacy-filtered snapshot,
+even when the supplied ID refers to a retained stored relationship. Missing,
+secret-bearing, and legacy raw-session endpoints are rejected before any
+relationship or audit mutation.
+
 The project service validates graph endpoints against privacy-filtered project
 entities, rejects self-links and secret-like text, and owns precedence and audit
 behavior. Manual decisions, including removal tombstones, suppress system edges

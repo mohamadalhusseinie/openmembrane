@@ -48,6 +48,127 @@ async function setup(many = false, timeoutMs?: number) {
 }
 
 describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
+  it("sanitizes both mutation responses while preserving stored explanations", async () => {
+    const { request, storageDir, projectId, client } = await setup();
+    const privateSessionId = "private.project/session[42]";
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      await stores.memoryStore.save(entry({
+        projectId, id: "old memory", source: { kind: "session", sessionId: privateSessionId },
+      }));
+      const input = {
+        source: { kind: "memory", id: "old memory" }, target: { kind: "memory", id: "confidential" },
+        type: "supports", rationale: `Reviewed ${privateSessionId}; keep original evidence.`,
+      };
+      const createdResponse = await request("/api/graph/relationships", "POST", input);
+      expect(createdResponse.status).toBe(200);
+      const created = relationshipResponseSchema.parse(await createdResponse.json());
+      expect(created.rationale).toBe("Reviewed [source session]; keep original evidence.");
+      expect(await stores.relationshipStore.findById(projectId, created.id)).toMatchObject({ rationale: input.rationale });
+
+      const graph = await client.getKnowledgeGraph();
+      const projected = graph.edges.find((edge) => edge.id.startsWith("graph_") && edge.source.id === "old memory")!;
+      for (const relationshipId of [created.id, projected.id]) {
+        const rationale = `Correction from ${privateSessionId}.`;
+        const removedResponse = await request("/api/graph/relationships/remove", "POST", { relationshipId, rationale });
+        expect(removedResponse.status).toBe(200);
+        const removed = relationshipResponseSchema.parse(await removedResponse.json());
+        expect(removed).toMatchObject({ status: "removed", rationale: "Correction from [source session]." });
+        expect(await stores.relationshipStore.findById(projectId, removed.id)).toMatchObject({ rationale });
+      }
+      expect((await stores.auditLogStore.list(projectId)).filter((event) => event.type.startsWith("relationship_"))
+        .map((event) => event.details?.rationale)).toEqual([
+        input.rationale, `Correction from ${privateSessionId}.`, `Correction from ${privateSessionId}.`,
+      ]);
+    } finally {
+      await stores.close?.();
+    }
+  });
+
+  it.each(["source", "target"] as const)("refuses retained-ID removals when the %s endpoint disappears or becomes secret", async (endpoint) => {
+    const { request, storageDir, projectId, client } = await setup();
+    const candidateRef = { kind: "candidate", id: "reject-candidate" };
+    const memoryRef = { kind: "memory", id: "old memory" };
+    const response = await request("/api/graph/relationships", "POST", {
+      source: endpoint === "source" ? candidateRef : memoryRef,
+      target: endpoint === "target" ? candidateRef : memoryRef,
+      type: "supports", rationale: "Reviewed candidate link.",
+    });
+    expect(response.status).toBe(200);
+    const relationship = relationshipResponseSchema.parse(await response.json());
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      const before = await stores.relationshipStore.list(projectId, { includeRemoved: true });
+      const auditBefore = await stores.auditLogStore.list(projectId);
+      await stores.pendingCandidateStore.remove(projectId, candidateRef.id);
+      for (const state of ["deleted", "secret"] as const) {
+        if (state === "secret") {
+          await stores.pendingCandidateStore.save(candidate({ projectId, id: candidateRef.id, sensitivity: "secret" }));
+        }
+        expect((await client.getKnowledgeGraph()).nodes.some((node) => node.id === candidateRef.id)).toBe(false);
+        const removed = await request("/api/graph/relationships/remove", "POST", { relationshipId: relationship.id });
+        expect(removed.status).toBe(404);
+        expect(await removed.json()).toMatchObject({ code: "CANDIDATE_NOT_FOUND", diagnosticId: expect.any(String) });
+        expect(await stores.relationshipStore.list(projectId, { includeRemoved: true })).toEqual(before);
+        expect(await stores.auditLogStore.list(projectId)).toEqual(auditBefore);
+      }
+    } finally {
+      await stores.close?.();
+    }
+  });
+
+  it("refuses retained-ID removal when a saved memory becomes secret-bearing", async () => {
+    const { request, storageDir, projectId, client } = await setup();
+    const response = await request("/api/graph/relationships", "POST", {
+      source: { kind: "memory", id: "old memory" }, target: { kind: "memory", id: "confidential" },
+      type: "supports", rationale: "Reviewed link.",
+    });
+    expect(response.status).toBe(200);
+    const relationship = relationshipResponseSchema.parse(await response.json());
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      const before = await stores.relationshipStore.list(projectId, { includeRemoved: true });
+      const auditBefore = await stores.auditLogStore.list(projectId);
+      await stores.memoryStore.save(entry({ projectId, id: "confidential", content: "TOKEN = abcdefgh12345678" }));
+      expect((await client.getKnowledgeGraph()).nodes.some((node) => node.id === "confidential")).toBe(false);
+      const removed = await request("/api/graph/relationships/remove", "POST", { relationshipId: relationship.id });
+      expect(removed.status).toBe(404);
+      expect(await removed.json()).toMatchObject({ code: "MEMORY_NOT_FOUND", diagnosticId: expect.any(String) });
+      expect(await stores.relationshipStore.list(projectId, { includeRemoved: true })).toEqual(before);
+      expect(await stores.auditLogStore.list(projectId)).toEqual(auditBefore);
+    } finally {
+      await stores.close?.();
+    }
+  });
+
+  it("rejects retained relationships with legacy raw-session references without exposing or removing them", async () => {
+    const { request, storageDir, projectId } = await setup();
+    const privateSessionId = "legacy.private.session";
+    const response = await request("/api/graph/relationships", "POST", {
+      source: { kind: "memory", id: "old memory" }, target: { kind: "memory", id: "confidential" },
+      type: "supports", rationale: "Reviewed link.",
+    });
+    expect(response.status).toBe(200);
+    const relationship = relationshipResponseSchema.parse(await response.json());
+    const stores = await createStores({ backend: "json", baseDir: storageDir });
+    try {
+      const stored = await stores.relationshipStore.findById(projectId, relationship.id);
+      if (!stored) throw new Error("Expected the created relationship to be persisted.");
+      const legacy = { ...stored, source: { kind: "session" as const, id: privateSessionId } };
+      await stores.relationshipStore.save(legacy);
+      const auditBefore = await stores.auditLogStore.list(projectId);
+      const removed = await request("/api/graph/relationships/remove", "POST", { relationshipId: legacy.id });
+      expect(removed.status).toBe(404);
+      const error = await removed.json();
+      expect(error).toMatchObject({ code: "GRAPH_ENTITY_NOT_FOUND", diagnosticId: expect.any(String) });
+      expect(JSON.stringify(error)).not.toContain(privateSessionId);
+      expect(await stores.relationshipStore.findById(projectId, legacy.id)).toEqual(legacy);
+      expect(await stores.auditLogStore.list(projectId)).toEqual(auditBefore);
+    } finally {
+      await stores.close?.();
+    }
+  });
+
   it("creates, overrides and removes links through the daemon without changing memory lifecycle", async () => {
     const { request, client, storageDir, projectId } = await setup();
     const beforeMemories = await client.listMemories();

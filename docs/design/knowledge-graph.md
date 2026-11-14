@@ -169,6 +169,12 @@ characters and checked for secret-like content before persistence. The daemon
 and client expose `createRelationship` and `removeRelationship`, with the local
 Review UI acting only as a validated proxy.
 
+Creation and removal responses mask private source-session IDs in rationale
+using the same sanitizer as graph reads, without rewriting stored evidence.
+Even retained relationship IDs cannot authorize removal when an endpoint is
+missing or excluded by the current privacy-filtered graph, including legacy
+raw-session references.
+
 Manual decisions are durable and take priority over inferred and derived edges
 with the same directed source/target/type key, including after refresh and
 restart. Inferred records retain their rationale and confidence. Removing a
