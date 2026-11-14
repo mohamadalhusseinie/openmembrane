@@ -57,6 +57,21 @@ export function graphStatus(nodeCount, edgeCount, truncated) {
     : { message: "No graph entities match these filters.", kind: "empty" };
 }
 
+export function graphEdgeClass(edge) {
+  return `graph-edge graph-edge-origin-${edge.origin} graph-edge-type-${edge.type}`;
+}
+
+export function graphRelationshipDescription(edge, node) {
+  const isSource = edge.source.kind === node.kind && edge.source.id === node.id;
+  const neighbor = isSource ? edge.target : edge.source;
+  return {
+    label: `${isSource ? "Outgoing" : "Incoming"} ${edge.type.replaceAll("_", " ")}: ${neighbor.kind}: ${neighbor.id}`,
+    provenance: `${edge.origin}, ${Math.round(edge.confidence * 100)}% confidence`,
+    rationale: edge.rationale,
+    createdAt: edge.createdAt,
+  };
+}
+
 export function updateGraphListSelection(buttons, selected) {
   Array.from(buttons).forEach(button => {
     const isSelected = selected !== undefined &&
@@ -155,15 +170,26 @@ function renderGraph() {
   edges.forEach(edge => {
     const coordinates = graphEdgeCoordinates(edge, positions, state.selected);
     if (!coordinates) return;
+    const description = `${edge.type.replaceAll("_", " ")}; ${edge.origin}; confidence ${Math.round(edge.confidence * 100)}%; ${edge.rationale}`;
     const line = svgElement("line", {
       ...coordinates,
-      class: `graph-edge graph-edge-origin-${edge.origin}`,
+      class: graphEdgeClass(edge),
       "marker-end": `url(#graph-arrow-${edge.origin})`,
+      "aria-label": description,
     });
     const title = svgElement("title");
-    title.textContent = `${edge.type.replaceAll("_", " ")}; ${edge.origin}; confidence ${Math.round(edge.confidence * 100)}%; ${edge.rationale}`;
+    title.textContent = description;
     line.append(title);
     scene.append(line);
+    if (edges.length <= 40) {
+      const label = svgElement("text", {
+        x: (coordinates.x1 + coordinates.x2) / 2,
+        y: (coordinates.y1 + coordinates.y2) / 2 - 4,
+        class: "graph-edge-label",
+      });
+      label.textContent = edge.type.replaceAll("_", " ");
+      scene.append(label);
+    }
   });
 
   nodes.forEach(node => {
@@ -284,9 +310,25 @@ function renderInspector(node, edges = []) {
   list.className = "graph-relations";
   edges.forEach(edge => {
     const item = document.createElement("li");
-    const from = edge.source.kind === node.kind && edge.source.id === node.id ? "to" : "from";
-    const neighbor = from === "to" ? edge.target : edge.source;
-    item.textContent = `${edge.type.replaceAll("_", " ")} ${from} ${neighbor.kind}: ${neighbor.id}. ${edge.origin}, ${Math.round(edge.confidence * 100)}% confidence. ${edge.rationale}`;
+    const description = graphRelationshipDescription(edge, node);
+    const relationship = document.createElement("strong");
+    relationship.className = `graph-relation-type graph-edge-origin-${edge.origin}`;
+    relationship.textContent = description.label;
+    const provenance = document.createElement("span");
+    provenance.className = "graph-relation-provenance";
+    provenance.textContent = description.provenance;
+    item.append(relationship, provenance);
+    if (description.createdAt) {
+      const timestamp = document.createElement("time");
+      timestamp.dateTime = description.createdAt;
+      timestamp.textContent = new Date(description.createdAt).toLocaleString();
+      item.append(timestamp);
+    }
+    if (description.rationale) {
+      const rationale = document.createElement("p");
+      rationale.textContent = description.rationale;
+      item.append(rationale);
+    }
     list.append(item);
   });
   inspector.append(list);

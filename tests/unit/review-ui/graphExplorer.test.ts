@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildGraphQuery,
+  graphEdgeClass,
   graphEdgeCoordinates,
   graphPanDelta,
+  graphRelationshipDescription,
   graphRefKey,
   graphStatus,
   layoutGraphNodes,
@@ -46,6 +48,27 @@ describe("knowledge graph explorer helpers", () => {
 
     expect(graphEdgeCoordinates(edge, positions, edge.target)?.x2).toBe(88);
     expect(graphEdgeCoordinates(edge, positions)?.x2).toBe(91);
+  });
+
+  it("renders relationship type and origin as explicit graph provenance", () => {
+    const edge = {
+      source: { kind: "candidate", id: "cand_1" },
+      target: { kind: "audit_event", id: "audit_1" },
+      type: "derived_from",
+      origin: "derived",
+      confidence: 1,
+      rationale: "Candidate approval was recorded.",
+      createdAt: "2026-05-08T00:00:00.000Z",
+    } as const;
+
+    expect(graphEdgeClass(edge)).toContain("graph-edge-origin-derived");
+    expect(graphEdgeClass(edge)).toContain("graph-edge-type-derived_from");
+    expect(graphRelationshipDescription(edge, edge.source)).toEqual({
+      label: "Outgoing derived from: audit_event: audit_1",
+      provenance: "derived, 100% confidence",
+      rationale: "Candidate approval was recorded.",
+      createdAt: "2026-05-08T00:00:00.000Z",
+    });
   });
 
   it("uses one SVG scale when converting pointer motion to pan deltas", () => {

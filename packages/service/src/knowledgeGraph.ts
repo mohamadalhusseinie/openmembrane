@@ -224,7 +224,23 @@ function addHistoricalCandidates(
   nodes: Map<string, KnowledgeGraphNode>,
   audit: readonly AuditEvent[],
   excludedIds: ReadonlySet<string>,
+  recentAudit: readonly AuditEvent[],
 ): void {
+  for (const event of recentAudit) {
+    if (event.type === "memory_saved" && typeof event.details?.candidateId === "string" &&
+      safeId(event.details.candidateId) &&
+      !excludedIds.has(event.details.candidateId) &&
+      nodes.has(refKey({ kind: "memory", id: event.entityId ?? "" })) &&
+      !nodes.has(refKey({ kind: "candidate", id: event.details.candidateId }))) {
+      addNode(nodes, {
+        id: event.details.candidateId,
+        kind: "candidate",
+        label: "Approved candidate",
+        summary: "Approved candidate; details are no longer available.",
+        createdAt: event.createdAt,
+      });
+    }
+  }
   for (const event of audit) {
     const duplicateOf = event.details?.duplicateOf;
     if (event.type !== "candidate_rejected" || !event.entityId || typeof duplicateOf !== "string" ||
@@ -299,8 +315,8 @@ async function graphSnapshot(state: ProjectState, projectId: string): Promise<Gr
     .filter((candidate) => candidate.sensitivity === "secret" ||
       secretDetector.containsSecretInAnyCase(candidate.content))
     .map((candidate) => candidate.id));
-  addHistoricalCandidates(nodes, audit, excludedCandidates);
   const recentAudit = audit.slice(-5_000);
+  addHistoricalCandidates(nodes, audit, excludedCandidates, recentAudit);
   addLifecycleNodes(nodes, edges, recentAudit, diagnostics);
   const manualKeys = new Set(evidence.filter((item) => item.origin === "manual").map(relationshipKey));
   for (const [id, edge] of edges) {
@@ -355,25 +371,30 @@ function boundedNodes(snapshot: GraphSnapshot, query: KnowledgeGraphQuery = {}):
   const matches = matchingNodes(snapshot, query);
   const memories = matches.filter((node) => node.kind === "memory");
   const candidates = matches.filter((node) => node.kind === "candidate");
-  const primaryCount = memories.length + candidates.length;
+  const pendingCandidates = candidates.filter((node) => node.recommendedAction !== undefined);
+  const historicalCandidates = candidates.filter((node) => node.recommendedAction === undefined);
+  const primaryCount = memories.length + pendingCandidates.length;
   const selected: KnowledgeGraphNode[] = [];
   if (primaryCount > limit) {
-    const candidateBudget = Math.min(candidates.length, Math.ceil(limit * 0.2));
+    const candidateBudget = Math.min(pendingCandidates.length, Math.ceil(limit * 0.2));
     const memoryBudget = Math.min(memories.length, limit - candidateBudget);
-    selected.push(...memories.slice(0, memoryBudget), ...candidates.slice(0, candidateBudget));
+    selected.push(...memories.slice(0, memoryBudget), ...pendingCandidates.slice(0, candidateBudget));
   } else {
-    selected.push(...memories, ...candidates);
+    selected.push(...memories, ...pendingCandidates);
   }
   const selectedKeys = new Set(selected.map((node) => refKey({ kind: node.kind, id: node.id })));
   const context = matches.filter((node) => node.kind !== "memory" && node.kind !== "candidate")
     .sort((left, right) => contextPriority(left.kind) - contextPriority(right.kind) ||
       left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id));
-  for (const node of [...matches.filter((item) => item.kind === "memory" || item.kind === "candidate"), ...context]) {
-    if (selected.length >= limit) break;
-    const key = refKey({ kind: node.kind, id: node.id });
-    if (selectedKeys.has(key)) continue;
-    selected.push(node);
-    selectedKeys.add(key);
+  const primaryRemainder = [...pendingCandidates, ...memories];
+  for (const group of [primaryRemainder, context, historicalCandidates]) {
+    for (const node of group) {
+      if (selected.length >= limit) break;
+      const key = refKey({ kind: node.kind, id: node.id });
+      if (selectedKeys.has(key)) continue;
+      selected.push(node);
+      selectedKeys.add(key);
+    }
   }
   return selected;
 }

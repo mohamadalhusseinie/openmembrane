@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AuditEvent, Relationship } from "@openmembrane/core";
-import { candidate } from "./helpers";
+import { candidate, entry } from "./helpers";
 import type { ProjectState } from "../../packages/service/src/factory";
 import { getKnowledgeGraph, getKnowledgeGraphEntity } from "../../packages/service/src/knowledgeGraph";
 
@@ -89,5 +89,108 @@ describe("knowledge graph historical candidates", () => {
     const detail = await getKnowledgeGraphEntity(state, projectId, { kind: "candidate", id: "cand_old" });
     expect(detail.neighbors).toContainEqual(expect.objectContaining({ kind: "candidate", id: "cand_removed" }));
     expect(state.relationshipService.syncInferred).not.toHaveBeenCalled();
+  });
+
+  it("shows an approved candidate's path through its saved-memory audit event", async () => {
+    const savedEvent: AuditEvent = {
+      id: "approval-event",
+      projectId,
+      type: "memory_saved",
+      entityId: "mem_1",
+      createdAt,
+      details: { candidateId: "cand_approved", approvedManually: true },
+    };
+    const state = {
+      memoryStore: { list: vi.fn(async () => [entry()]) },
+      pendingCandidateStore: { list: vi.fn(async () => []) },
+      auditLogStore: { list: vi.fn(async () => [savedEvent]) },
+      diagnosticsLogStore: { list: vi.fn(async () => []) },
+      relationshipService: {
+        syncInferred: vi.fn(async () => []),
+        list: vi.fn(async () => []),
+        listEvidence: vi.fn(async () => []),
+      },
+    } as unknown as ProjectState;
+
+    const graph = await getKnowledgeGraph(state, projectId);
+
+    expect(graph.nodes).toContainEqual(expect.objectContaining({
+      id: "cand_approved",
+      kind: "candidate",
+      label: "Approved candidate",
+      summary: "Approved candidate; details are no longer available.",
+    }));
+    expect(graph.nodes).toContainEqual(expect.objectContaining({
+      id: "session_unknown",
+      kind: "session",
+      label: "Unknown source",
+    }));
+    expect(graph.nodes.find((node) => node.kind === "session")?.sourceExcerpt).toBeUndefined();
+    expect(graph.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: { kind: "audit_event", id: "approval-event" },
+        target: { kind: "memory", id: "mem_1" },
+      }),
+      expect.objectContaining({
+        source: { kind: "audit_event", id: "approval-event" },
+        target: { kind: "candidate", id: "cand_approved" },
+      }),
+    ]));
+  });
+
+  it("prioritizes pending candidates and lifecycle context over historical placeholders", async () => {
+    const memories = Array.from({ length: 250 }, (_, index) =>
+      entry({ id: `mem_${index.toString().padStart(3, "0")}` })
+    );
+    const audit = memories.map((memory, index): AuditEvent => ({
+      id: `audit_${index.toString().padStart(3, "0")}`,
+      projectId,
+      type: "memory_saved",
+      entityId: memory.id,
+      createdAt,
+      details: { candidateId: `cand_approved_${index.toString().padStart(3, "0")}` },
+    }));
+    const state = {
+      memoryStore: { list: vi.fn(async () => memories) },
+      pendingCandidateStore: { list: vi.fn(async () => [candidate({ id: "cand_pending" })]) },
+      auditLogStore: { list: vi.fn(async () => audit) },
+      diagnosticsLogStore: { list: vi.fn(async () => []) },
+      relationshipService: {
+        syncInferred: vi.fn(async () => []),
+        list: vi.fn(async () => []),
+        listEvidence: vi.fn(async () => []),
+      },
+    } as unknown as ProjectState;
+
+    const graph = await getKnowledgeGraph(state, projectId);
+
+    expect(graph.nodes).toHaveLength(500);
+    expect(graph.nodes).toContainEqual(expect.objectContaining({ id: "cand_pending", kind: "candidate" }));
+    expect(graph.nodes.some((node) => node.kind === "audit_event")).toBe(true);
+    expect(graph.edges.length).toBeGreaterThan(0);
+    expect(graph.nodes.some((node) => node.id.startsWith("cand_approved_"))).toBe(false);
+  });
+
+  it("fills the candidate budget with live candidates before returning fewer nodes", async () => {
+    const pending = Array.from({ length: 600 }, (_, index) =>
+      candidate({ id: `cand_pending_${index.toString().padStart(3, "0")}` })
+    );
+    const state = {
+      memoryStore: { list: vi.fn(async () => []) },
+      pendingCandidateStore: { list: vi.fn(async () => pending) },
+      auditLogStore: { list: vi.fn(async () => []) },
+      diagnosticsLogStore: { list: vi.fn(async () => []) },
+      relationshipService: {
+        syncInferred: vi.fn(async () => []),
+        list: vi.fn(async () => []),
+        listEvidence: vi.fn(async () => []),
+      },
+    } as unknown as ProjectState;
+
+    const graph = await getKnowledgeGraph(state, projectId, { entityKinds: ["candidate"], limit: 500 });
+
+    expect(graph.nodes).toHaveLength(500);
+    expect(graph.nodes.every((node) => node.kind === "candidate")).toBe(true);
+    expect(graph.truncated).toBe(true);
   });
 });
