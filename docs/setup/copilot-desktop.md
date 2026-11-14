@@ -52,10 +52,12 @@ first, followed by **OpenMembrane review**, or run:
 
 ```powershell
 npm run mcp:stdio -- start
-npm run review-ui -- --no-open
+npm run review-ui:local
 ```
 
 Open the loopback URL printed by the review command (port 4800 by default).
+The dedicated script embeds `--no-open` instead of forwarding flags through
+the Windows PowerShell npm wrapper, so it does not open a separate browser.
 Review saved memories, pending candidates, audit events, and diagnostics there.
 The review UI is optional; it is not needed for MCP capture or retrieval.
 

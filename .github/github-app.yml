@@ -19,7 +19,7 @@ scripts:
   - name: Start OpenMembrane daemon
     command: npm run mcp:stdio -- start
   - name: OpenMembrane review
-    command: npm run review-ui -- --no-open
+    command: npm run review-ui:local
 
 server_ready_pattern: 'Server:\s+(https?://\S+)'
 auto_open_in_browser: true

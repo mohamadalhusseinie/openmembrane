@@ -17,7 +17,8 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "changeset publish",
-    "review-ui": "tsx apps/review-ui/src/index.ts"
+    "review-ui": "tsx apps/review-ui/src/index.ts",
+    "review-ui:local": "tsx apps/review-ui/src/index.ts --no-open"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
