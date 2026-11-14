@@ -163,6 +163,8 @@ export class OpenMembraneClient {
   listAuditLog(input: ClientRequest<"listAuditLog"> = {}): Promise<EndpointResponse<"listAuditLog">> { return this.call("listAuditLog", input); }
   getKnowledgeGraph(input: ClientRequest<"getKnowledgeGraph"> = {}): Promise<EndpointResponse<"getKnowledgeGraph">> { return this.call("getKnowledgeGraph", input); }
   getKnowledgeGraphEntity(input: ClientRequest<"getKnowledgeGraphEntity">): Promise<EndpointResponse<"getKnowledgeGraphEntity">> { return this.call("getKnowledgeGraphEntity", input); }
+  createRelationship(input: ClientRequest<"createRelationship">): Promise<EndpointResponse<"createRelationship">> { return this.call("createRelationship", input); }
+  removeRelationship(input: ClientRequest<"removeRelationship">): Promise<EndpointResponse<"removeRelationship">> { return this.call("removeRelationship", input); }
   health(): Promise<EndpointResponse<"health">> { return this.call("health", {}); }
   configureGitHubTeamMode(input: ClientRequest<"configureGitHubTeamMode">): Promise<EndpointResponse<"configureGitHubTeamMode">> { return this.call("configureGitHubTeamMode", input); }
   getCollaborationStatus(input: ClientRequest<"getCollaborationStatus"> = {}): Promise<EndpointResponse<"getCollaborationStatus">> { return this.call("getCollaborationStatus", input); }

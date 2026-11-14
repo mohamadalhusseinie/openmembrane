@@ -7,7 +7,7 @@ import { createId, nowIso } from "@openmembrane/shared";
 import { createProjectState, resolveProjectRef } from "./factory";
 import type { CreateServiceOptions, ProjectRef, ProjectState } from "./factory";
 import { createProjectOperations } from "./operations";
-import { getKnowledgeGraph, getKnowledgeGraphEntity } from "./knowledgeGraph";
+import { createGraphRelationship, getKnowledgeGraph, getKnowledgeGraphEntity, removeGraphRelationship } from "./knowledgeGraph";
 import { canonicalStoragePath } from "./storagePath";
 
 export type ProjectService = ReturnType<typeof createProjectOperations> & {
@@ -148,8 +148,8 @@ export class OpenMembraneService {
           },
           refreshDerivedRelationships: () => state.relationshipService.syncDerived(resolved.projectId),
           refreshInferredRelationships: () => state.relationshipService.syncInferred(resolved.projectId),
-          createRelationship: (input) => state.relationshipService.createManual(resolved.projectId, input),
-          removeRelationship: (input) => state.relationshipService.remove(resolved.projectId, input.relationshipId, input.rationale),
+          createRelationship: (input) => createGraphRelationship(state, resolved.projectId, input),
+          removeRelationship: (input) => removeGraphRelationship(state, resolved.projectId, input),
           async retryEligiblePublications() {
             await state.githubTeamService.retryEligiblePublications(resolved.projectId);
           },

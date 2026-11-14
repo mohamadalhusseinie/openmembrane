@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildGraphQuery,
   graphEdgeClass,
@@ -7,11 +7,84 @@ import {
   graphRelationshipDescription,
   graphRefKey,
   graphStatus,
+  renderRelationshipEditor,
   layoutGraphNodes,
   updateGraphListSelection,
 } from "../../../apps/review-ui/public/graph.js";
 
+class EditorElement {
+  children: EditorElement[] = [];
+  value = "";
+  textContent = "";
+  disabled = false;
+  required = false;
+  focus = vi.fn();
+  listeners = new Map<string, (event: { preventDefault: () => void }) => Promise<void> | void>();
+  constructor(readonly tag: string) {}
+  append(...children: EditorElement[]) { this.children.push(...children); }
+  replaceChildren(...children: EditorElement[]) { this.children = children; }
+  setAttribute() {}
+  addEventListener(name: string, handler: (event: { preventDefault: () => void }) => Promise<void> | void) { this.listeners.set(name, handler); }
+  async fire(name: string) { await this.listeners.get(name)?.({ preventDefault: () => {} }); }
+  descendants(tag: string): EditorElement[] {
+    return this.children.flatMap(child => [...(child.tag === tag ? [child] : []), ...child.descendants(tag)]);
+  }
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
 describe("knowledge graph explorer helpers", () => {
+  it("creates outgoing links and validates correction rationale while keeping failed drafts editable", async () => {
+    vi.stubGlobal("document", {
+      createElement: (tag: string) => new EditorElement(tag),
+      getElementById: () => ({ options: [{ value: "related_to", textContent: "Related to" }, { value: "conflicts_with", textContent: "Conflicts with" }] }),
+    });
+    const container = new EditorElement("div");
+    const source = { kind: "memory", id: "m1" };
+    const target = { kind: "candidate", id: "c1", label: "Candidate" };
+    const submit = vi.fn().mockRejectedValue(new Error("Daemon unavailable."));
+    renderRelationshipEditor(container as Parameters<typeof renderRelationshipEditor>[0], source, [target], undefined, false, submit);
+    const form = container.descendants("form")[0]!;
+    const [targetSelect, typeSelect] = container.descendants("select");
+    targetSelect!.value = graphRefKey(target);
+    typeSelect!.value = "conflicts_with";
+    await typeSelect!.fire("change");
+    const rationale = container.descendants("textarea")[0]!;
+    expect(rationale.required).toBe(true);
+    rationale.value = "  ";
+    await form.fire("submit");
+    expect(submit).not.toHaveBeenCalled();
+    rationale.value = "The candidate contradicts this rule.";
+    await form.fire("submit");
+    expect(submit).toHaveBeenCalledWith({ source, target: { kind: "candidate", id: "c1" }, type: "conflicts_with", rationale: rationale.value }, false);
+    expect(container.descendants("fieldset")[0]!.disabled).toBe(false);
+    expect(rationale.value).toBe("The candidate contradicts this rule.");
+    expect(container.descendants("p").some(item => item.textContent.includes("Daemon unavailable."))).toBe(true);
+  });
+
+  it("preserves incoming link direction when overriding and submits removal by identity", async () => {
+    vi.stubGlobal("document", {
+      createElement: (tag: string) => new EditorElement(tag),
+      getElementById: () => ({ options: [{ value: "supersedes", textContent: "Supersedes" }] }),
+    });
+    const edge = {
+      id: "inferred-link", source: { kind: "memory", id: "new" }, target: { kind: "memory", id: "old" },
+      type: "supersedes", origin: "inferred" as const, confidence: 1, rationale: "Original inference.",
+    };
+    for (const remove of [false, true]) {
+      const container = new EditorElement("div");
+      const submit = vi.fn().mockResolvedValue(undefined);
+      renderRelationshipEditor(container as Parameters<typeof renderRelationshipEditor>[0], edge.target, [], edge, remove, submit);
+      const rationale = container.descendants("textarea")[0]!;
+      expect(rationale.required).toBe(true);
+      rationale.value = "Confirmed correction.";
+      await container.descendants("form")[0]!.fire("submit");
+      expect(submit).toHaveBeenCalledWith(remove
+        ? { relationshipId: edge.id, rationale: rationale.value }
+        : { source: edge.source, target: edge.target, type: edge.type, rationale: rationale.value }, remove);
+    }
+  });
+
   it("keeps node references distinct across kinds and lays out each node deterministically", () => {
     const nodes = [
       { kind: "memory", id: "same" },

@@ -89,6 +89,38 @@ bounded detail, connected edges, and neighboring nodes or a safe not-found error
 Both operations are exposed through `OpenMembraneClient` and do not give the
 Review UI direct storage access.
 
+`POST /v1/graph/relationships` (`createRelationship`) accepts directed `source`
+and `target` references (`kind`, `id`), a relationship `type`, a `rationale`
+of at most 500 characters, and optional numeric `confidence` between 0 and 1
+(default 1). It creates or updates a manual decision for that exact
+source/target/type key. `POST /v1/graph/relationships/remove`
+(`removeRelationship`) accepts `relationshipId` and optional `rationale`.
+It accepts both stored relationship IDs and projected IDs returned by the graph.
+Both return the durable manual relationship, including `projectId`, origin,
+status, timestamps, and removal timestamp where applicable. Missing or
+whitespace-only rationale is rejected for `conflicts_with` and `supersedes`
+creation, override, and removal. Other types allow an empty rationale; omitted
+removal rationale records "Removed by user."
+
+Both mutation responses apply the same rationale redaction and private
+source-session ID masking as graph reads, including removed records. Stored
+evidence and audit explanations are not rewritten by response sanitization.
+Removal validates both endpoints against the current privacy-filtered snapshot,
+even when the supplied ID refers to a retained stored relationship. Missing,
+secret-bearing, and legacy raw-session endpoints are rejected before any
+relationship or audit mutation.
+
+The project service validates graph endpoints against privacy-filtered project
+entities, rejects self-links and secret-like text, and owns precedence and audit
+behavior. Manual decisions, including removal tombstones, suppress system edges
+with the same directed key; different types and reverse directions remain
+independent. Inferred evidence is not deleted. Removing a projected provenance
+edge retains a local derived evidence record. Every successful manual mutation
+appends a `relationship_created` or `relationship_removed` audit event with
+endpoints, type, rationale, status, confidence, and overridden stored evidence
+IDs. These edits remain local even in GitHub Team mode and never change memory
+or candidate lifecycle or publish a memory proposal.
+
 The loopback review server binds one caller project and never forwards
 browser-supplied project/storage routing overrides. Its API preserves
 existing response shapes:
@@ -107,6 +139,8 @@ existing response shapes:
 | `GET /api/diagnostics` | Diagnostics; `severity`, `code`, `limit` filters |
 | `GET /api/graph` | Bounded graph; `search`, repeated `kind`/`relationshipType`, `limit` filters |
 | `GET /api/graph/entities/:kind/:id` | Entity detail, connected edges and neighbors, or 404 |
+| `POST /api/graph/relationships` | Create or override a manual relationship |
+| `POST /api/graph/relationships/remove` | Remove a stored or projected graph link with a durable manual decision |
 | `POST /api/export/preview` | Render only, regardless of a supplied preview flag |
 | `POST /api/export` | Write generated files |
 

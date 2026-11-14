@@ -17,6 +17,7 @@ import type {
   MemoryCandidate,
   MemoryEntry,
   Relationship,
+  CreateManualRelationshipInput,
 } from "@openmembrane/core";
 import type { ProjectState } from "./factory";
 
@@ -30,6 +31,8 @@ const secretDetector = new SecretDetector();
 interface GraphSnapshot {
   nodes: Map<string, KnowledgeGraphNode>;
   edges: Map<string, KnowledgeGraphEdge>;
+  evidence: Relationship[];
+  sessionIdMatcher: RegExp | undefined;
 }
 
 function refKey(ref: EntityRef): string {
@@ -266,6 +269,19 @@ function createSessionIdMatcher(sessionIds: readonly string[]): RegExp | undefin
   return escapedIds.length > 0 ? new RegExp(escapedIds.join("|"), "gi") : undefined;
 }
 
+function sanitizedRationale(
+  value: string,
+  sessionIdMatcher: RegExp | undefined,
+): string {
+  let rationale = sessionIdMatcher
+    ? value.replace(sessionIdMatcher, "[source session]")
+    : value;
+  rationale = rationale.replace(/same source session:\s*[^;]*/gi, "same source session");
+  rationale = redact(rationale, 500) ?? "";
+  if (secretDetector.containsSecretInAnyCase(rationale)) rationale = "Relationship evidence is available.";
+  return rationale;
+}
+
 function sanitizedRelationship(
   relationship: Relationship,
   nodes: Map<string, KnowledgeGraphNode>,
@@ -274,12 +290,6 @@ function sanitizedRelationship(
   if (relationship.status !== "active" ||
     !nodes.has(refKey(relationship.source)) || !nodes.has(refKey(relationship.target)) ||
     !safeId(relationship.source.id) || !safeId(relationship.target.id)) return undefined;
-  let rationale = sessionIdMatcher
-    ? relationship.rationale.replace(sessionIdMatcher, "[source session]")
-    : relationship.rationale;
-  rationale = rationale.replace(/same source session:\s*[^;]*/gi, "same source session");
-  rationale = redact(rationale, 500) ?? "";
-  if (secretDetector.containsSecretInAnyCase(rationale)) rationale = "Relationship evidence is available.";
   return {
     id: relationship.id,
     source: relationship.source,
@@ -287,7 +297,7 @@ function sanitizedRelationship(
     type: relationship.type,
     origin: relationship.origin,
     confidence: relationship.confidence,
-    rationale,
+    rationale: sanitizedRationale(relationship.rationale, sessionIdMatcher),
     status: relationship.status,
     createdAt: relationship.createdAt,
     updatedAt: relationship.updatedAt,
@@ -331,7 +341,7 @@ async function graphSnapshot(state: ProjectState, projectId: string): Promise<Gr
     const edge = sanitizedRelationship(relationship, nodes, sessionIdMatcher);
     if (edge) edges.set(edge.id, edge);
   }
-  return { nodes, edges };
+  return { nodes, edges, evidence, sessionIdMatcher };
 }
 
 function nodeSearchText(node: KnowledgeGraphNode): string {
@@ -408,6 +418,46 @@ function contextPriority(kind: KnowledgeGraphNode["kind"]): number {
     case "memory":
     case "candidate": return -1;
   }
+}
+
+function assertGraphEndpoints(snapshot: GraphSnapshot, refs: readonly EntityRef[]): void {
+  for (const ref of refs) {
+    if (!snapshot.nodes.has(refKey(ref))) {
+      throw new OpenMembraneError({
+        code: ref.kind === "candidate" ? "CANDIDATE_NOT_FOUND" : ref.kind === "memory" ? "MEMORY_NOT_FOUND" : "GRAPH_ENTITY_NOT_FOUND",
+        message: "That graph entity does not exist in this project.",
+      });
+    }
+  }
+}
+
+export async function createGraphRelationship(
+  state: ProjectState,
+  projectId: string,
+  input: CreateManualRelationshipInput,
+): Promise<Relationship> {
+  const snapshot = await graphSnapshot(state, projectId);
+  assertGraphEndpoints(snapshot, [input.source, input.target]);
+  const relationship = await state.relationshipService.createManual(projectId, input);
+  return { ...relationship, rationale: sanitizedRationale(relationship.rationale, snapshot.sessionIdMatcher) };
+}
+
+export async function removeGraphRelationship(
+  state: ProjectState,
+  projectId: string,
+  input: { relationshipId: string; rationale?: string },
+): Promise<Relationship> {
+  const snapshot = await graphSnapshot(state, projectId);
+  const stored = snapshot.evidence.find((item) => item.id === input.relationshipId);
+  const edge = stored ?? snapshot.edges.get(input.relationshipId);
+  if (!edge) {
+    throw new OpenMembraneError({ code: "VALIDATION_ERROR", message: "That relationship does not exist in this project." });
+  }
+  assertGraphEndpoints(snapshot, [edge.source, edge.target]);
+  const removed = stored
+    ? await state.relationshipService.remove(projectId, input.relationshipId, input.rationale)
+    : await state.relationshipService.removeProjected(projectId, { ...edge, projectId }, input.rationale);
+  return { ...removed, rationale: sanitizedRationale(removed.rationale, snapshot.sessionIdMatcher) };
 }
 
 export async function getKnowledgeGraph(

@@ -23,6 +23,8 @@ export const endpoints = {
   listAuditLog: { method: "GET", path: "/v1/audit", projectScoped: true, request: s.auditRequestSchema, response: s.auditResponseSchema },
   getKnowledgeGraph: { method: "GET", path: "/v1/graph", projectScoped: true, request: s.knowledgeGraphRequestSchema, response: s.knowledgeGraphResponseSchema },
   getKnowledgeGraphEntity: { method: "GET", path: "/v1/graph/entity", projectScoped: true, request: s.knowledgeGraphEntityRequestSchema, response: s.knowledgeGraphEntityResponseSchema },
+  createRelationship: { method: "POST", path: "/v1/graph/relationships", projectScoped: true, request: s.createRelationshipRequestSchema, response: s.relationshipResponseSchema },
+  removeRelationship: { method: "POST", path: "/v1/graph/relationships/remove", projectScoped: true, request: s.removeRelationshipRequestSchema, response: s.relationshipResponseSchema },
   health: { method: "GET", path: "/v1/health", projectScoped: false, request: s.healthRequestSchema, response: s.healthResponseSchema },
   configureGitHubTeamMode: { method: "POST", path: "/v1/collaboration/github-team", projectScoped: true, request: s.configureGitHubTeamRequestSchema, response: s.configureGitHubTeamResponseSchema },
   getCollaborationStatus: { method: "GET", path: "/v1/collaboration/status", projectScoped: true, request: s.collaborationStatusRequestSchema, response: s.collaborationStatusResponseSchema },

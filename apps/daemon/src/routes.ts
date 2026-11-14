@@ -62,6 +62,11 @@ const handlers: Handlers = {
     ...(input.limit !== undefined ? { limit: input.limit } : {}),
   }),
   getKnowledgeGraphEntity: (project, input) => project.getKnowledgeGraphEntity({ kind: input.kind, id: input.id }),
+  createRelationship: (project, input) => project.createRelationship(input),
+  removeRelationship: (project, input) => project.removeRelationship({
+    relationshipId: input.relationshipId,
+    ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
+  }),
   configureGitHubTeamMode: (project, input) => project.configureGitHubTeamMode(input),
   getCollaborationStatus: (project, input) => project.getCollaborationStatus(input),
 };
