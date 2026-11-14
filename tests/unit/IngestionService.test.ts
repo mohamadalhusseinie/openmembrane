@@ -76,7 +76,7 @@ describe("mapPipelineResult", () => {
       redactions: []
     };
     const mapped = mapPipelineResult(result);
-    expect(mapped.saved).toEqual([{ id: "mem_1", type: "coding_rule", scope: "frontend", content: "Use tabs." }]);
+    expect(mapped.saved).toEqual([{ id: "mem_1", type: "coding_rule", scope: "frontend", content: "Use tabs.", sensitivity: "internal" }]);
   });
 
   it("maps pending candidates correctly", () => {
@@ -93,6 +93,7 @@ describe("mapPipelineResult", () => {
     expect(mapped.pending).toEqual([{
       id: "cand_2", type: "coding_rule", scope: "frontend",
       content: "This project uses standalone components.",
+      sensitivity: "internal",
       recommendedAction: "ask_user", conflictWith: ["mem_5"]
     }]);
   });

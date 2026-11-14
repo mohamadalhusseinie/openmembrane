@@ -5,7 +5,6 @@
       "command": "npm",
       "args": ["--silent", "run", "mcp:stdio"],
       "env": {
-        "OPENMEMBRANE_EXTRACTION_ENABLED": "false",
         "OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY": "true"
       },
       "tools": ["*"]

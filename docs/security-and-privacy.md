@@ -102,6 +102,9 @@ The source dogfooding MCP configuration enables
 `OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY=true`. With this opt-in output guard, MCP
 withholds entire tool responses containing confidential or secret-classified
 entries (including nested proposal memories) before JSON serialization and
+also withholds `remember` summaries missing classification metadata from older
+daemons. Current saved/pending summaries preserve classification through the
+ingestion mapping and wire schema. The guard
 returns a safe error with a diagnostic ID. It does not roll back mutations that
 already completed locally, change daemon/CLI/review access, or replace explicit
 consent before any MCP call. Public/internal entries remain eligible. Other MCP

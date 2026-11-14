@@ -138,10 +138,11 @@ export async function safeJsonResult(
   try {
     const value = await callback();
 
-    if (process.env["OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY"] === "true" && containsSensitiveMemory(value)) {
+    if (process.env["OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY"] === "true" &&
+      (containsSensitiveMemory(value) || (operation === "remember" && hasUnclassifiedIngestionContent(value)))) {
       throw new OpenMembraneClientError(
         "E_MCP_SENSITIVE_RESPONSE",
-        "The local operation completed, but its response contains protected memory and was withheld. Inspect the result in the local review UI.",
+        "The local operation completed, but its response was withheld because its memory content is not verified as non-sensitive. Inspect the result in the local review UI.",
       );
     }
 
@@ -190,6 +191,16 @@ function containsSensitiveMemory(value: unknown): boolean {
     return true;
   }
   return Object.values(value).some(containsSensitiveMemory);
+}
+
+function hasUnclassifiedIngestionContent(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return true;
+  return ["saved", "pending"].some((key) => {
+    const items: unknown = Reflect.get(value, key);
+    return !Array.isArray(items) || items.some((item: unknown) =>
+      typeof item !== "object" || item === null || !("sensitivity" in item) ||
+      (item.sensitivity !== "public" && item.sensitivity !== "internal"));
+  });
 }
 
 function hasSavedMemories(value: unknown): boolean {

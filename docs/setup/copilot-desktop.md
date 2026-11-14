@@ -46,6 +46,9 @@ The checked-in MCP configuration enables
 `OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY=true`. Before serializing tool results,
 the MCP server withholds an entire response containing any memory or candidate
 classified as `confidential` or `secret`, including nested proposal memories.
+Saved/pending `remember` summaries preserve classification through the wire
+protocol. Results from older daemons that omit it are withheld too; restart
+the daemon from this checkout before using guarded structured capture.
 It returns `E_MCP_SENSITIVE_RESPONSE` with a diagnostic ID instead of disclosing
 the content. Public and internal entries are allowed. This is an output guard,
 not a partial-result filter or a rollback: an approval may already have completed
@@ -55,8 +58,9 @@ behavior unless they explicitly enable the same environment setting.
 
 The desktop integration uses structured `remember` calls. It does not
 automatically ingest whole desktop conversations or install transcript hooks.
-This MCP configuration disables transcript extraction; it does not configure
-an external extraction provider or GitHub Team synchronization.
+The seven exposed MCP tools do not include transcript ingestion. This setup
+does not configure an external extraction provider or GitHub Team synchronization,
+and does not change extraction settings for other clients of the shared daemon.
 
 ## Verify And Review
 
