@@ -57,6 +57,31 @@ The daemon (`apps/daemon`) is the only process that writes storage. CLI, review 
 3. Ensure `npm run check` passes (typecheck + tests).
 4. Open a PR with a clear description of the change.
 
+### Documentation impact
+
+Before implementing a ticket, read the relevant documentation and identify
+affected documents in the implementation plan, or explain why none are affected.
+Update those documents in the same PR and review the final diff for documentation
+impact before marking the work complete. Keep current behavior separate from
+planned features. The canonical agent workflow is in [AGENTS.md](AGENTS.md).
+
+Every PR, including an automatically generated PR, must complete the template's
+`Documentation impact` section. Select exactly one option and fill in `Details`
+with updated document paths and an explanation, or a specific reason why no
+documentation changes are necessary.
+The release workflow adds a no-impact assessment to generated version PRs,
+which only update package versions and release metadata/changelogs.
+
+The `Documentation impact` CI check rejects missing assessments and requires a
+documentation change when `Updated documentation` is selected. It recognizes
+root Markdown files, Markdown/MDX files under `docs/`, and application/package
+READMEs. Changesets and changelogs do not count. Reviewers must check that the
+assessment and documentation are accurate; CI cannot establish semantic accuracy.
+
+Repository maintainers should configure `Documentation impact` as a required
+status check in the ruleset or branch protection for `main` after the workflow
+is available. A workflow file alone does not prevent merging.
+
 ## Security
 
 - Never commit secrets, credentials, API keys, or `.env` files.

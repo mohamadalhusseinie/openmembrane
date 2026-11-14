@@ -2,6 +2,25 @@
 
 Project context for AI coding tools working on the OpenMembrane codebase.
 
+## Required Documentation Workflow
+
+- Before implementing any ticket, read the relevant existing documentation and
+  assess how the planned change affects it. Identify affected documents in the
+  implementation plan, or explain why no documentation changes are needed.
+- Update affected documentation in the same PR as the implementation. Cover
+  changed behavior, interfaces, setup, architecture, and security/privacy
+  implications where applicable. Keep implemented behavior distinct from
+  planned features; update or remove obsolete guidance.
+- Before declaring the task complete, review the final diff for documentation
+  impact and confirm that the documentation matches the delivered behavior.
+- Complete the PR template's **Documentation impact** section with exactly one
+  selection and substantive details: list updated document paths and explain
+  the changes, or justify why there is no documentation impact.
+- Changesets and changelogs alone do not satisfy documentation updates.
+  The Documentation impact CI check enforces the assessment and requires a
+  documentation-file change when updates are declared; reviewers must still
+  verify its accuracy.
+
 ## Project Overview
 
 OpenMembrane is a local-first, private, tool-agnostic memory membrane for AI coding tools. It autonomously extracts durable project knowledge from session transcripts, filters out secrets and noise, and persists approved memories — without any manual effort from the user.

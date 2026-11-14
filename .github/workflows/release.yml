@@ -91,6 +91,33 @@ jobs:
             echo "@openmembrane/adapter-codex@$CURRENT already published, skipping"
           fi
 
+      - name: Record release PR documentation impact
+        if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+          DOCUMENTATION_ASSESSMENT: |
+            ## Documentation impact
+
+            - [ ] Updated documentation
+            - [x] No documentation impact
+
+            ### Details
+
+            This generated release PR only versions packages and updates release
+            metadata/changelogs. Behavior and setup documentation belong to the
+            implementation PRs that supplied the changesets.
+        run: |
+          gh api "repos/$GH_REPO/pulls/$PR_NUMBER" > "$RUNNER_TEMP/release-pr.json"
+          jq -e '.state == "open"' "$RUNNER_TEMP/release-pr.json" > /dev/null
+          if ! jq -e '(.body // "") | contains("## Documentation impact")' "$RUNNER_TEMP/release-pr.json" > /dev/null; then
+            jq --arg assessment "$DOCUMENTATION_ASSESSMENT" \
+              '{body: ((.body // "") + "\n\n" + $assessment)}' \
+              "$RUNNER_TEMP/release-pr.json" |
+              gh api --method PATCH "repos/$GH_REPO/pulls/$PR_NUMBER" --input - > /dev/null
+          fi
+
       - name: Enable auto-merge on version PR
         if: steps.changesets.outputs.hasChangesets == 'true' && steps.changesets.outputs.pullRequestNumber != ''
         run: gh pr merge ${{ steps.changesets.outputs.pullRequestNumber }} --auto --squash
