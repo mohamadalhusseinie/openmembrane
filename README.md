@@ -121,6 +121,7 @@ Code, whose extension bundles it (`npm install -g openmembrane`).
 | OpenCode | `@openmembrane/adapter-opencode` plugin | [OpenCode setup](docs/setup/opencode.md) |
 | Claude Code | `@openmembrane/adapter-claude-code` hooks | [Claude Code setup](docs/setup/claude-code.md) |
 | VS Code / GitHub Copilot | VS Code extension | [VS Code setup](docs/setup/vscode-copilot.md) |
+| GitHub Copilot desktop app | Repository MCP (structured capture) | [Desktop dogfooding setup](docs/setup/copilot-desktop.md) |
 | Codex | `@openmembrane/adapter-codex` hooks | [Codex setup](docs/setup/codex.md) |
 | Cursor | MCP config (fallback) | [Cursor setup](docs/setup/cursor.md) |
 | Claude Desktop | MCP config (fallback) | [below](#claude-desktop) |
@@ -369,6 +370,12 @@ Run the MCP server locally (from source via tsx):
 ```sh
 npm run mcp:stdio
 ```
+
+To use this repository's source version on itself in the GitHub Copilot
+desktop app, follow [Desktop dogfooding setup](docs/setup/copilot-desktop.md).
+The checked-in MCP and app configurations provide source registration and
+setup/review scripts; repository trust and explicit memory-retrieval consent
+are required. This does not enable full-conversation capture.
 
 Run tests and type checking:
 

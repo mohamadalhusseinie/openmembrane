@@ -1,11 +1,12 @@
 import type { MemoryPipelineResult } from "../pipeline/MemoryPipeline";
-import type { MemoryType, MemoryScope, RecommendedAction } from "../types/MemoryCandidate";
+import type { MemoryType, MemoryScope, RecommendedAction, Sensitivity } from "../types/MemoryCandidate";
 
 export interface IngestionSavedEntry {
   id: string;
   type: MemoryType;
   scope: MemoryScope;
   content: string;
+  sensitivity?: Sensitivity;
   replaces?: string[];
 }
 
@@ -14,6 +15,7 @@ export interface IngestionPendingCandidate {
   type: MemoryType;
   scope: MemoryScope;
   content: string;
+  sensitivity?: Sensitivity;
   recommendedAction: RecommendedAction;
   conflictWith?: string[];
 }
@@ -58,6 +60,7 @@ export function mapPipelineResult(result: MemoryPipelineResult): IngestionResult
         type: entry.type,
         scope: entry.scope,
         content: entry.content,
+        sensitivity: entry.sensitivity,
         ...(candidate?.conflictWith === undefined ? {} : { replaces: candidate.conflictWith }),
       };
     }),
@@ -66,6 +69,7 @@ export function mapPipelineResult(result: MemoryPipelineResult): IngestionResult
       type: candidate.type,
       scope: candidate.scope,
       content: candidate.content,
+      sensitivity: candidate.sensitivity,
       recommendedAction: candidate.recommendedAction,
       ...(candidate.conflictWith ? { conflictWith: candidate.conflictWith } : {})
     })),

@@ -6,6 +6,9 @@ import { createOpenMembraneContext } from "../../apps/mcp-server/src/context";
 import type { OpenMembraneMcpContext } from "../../apps/mcp-server/src/context";
 import { createOpenMembraneMcpServer, safeJsonResult } from "../../apps/mcp-server/src/server";
 import { protocolFixtures } from "./protocolFixtures";
+import { mapPipelineResult } from "@openmembrane/core";
+import { rememberResponseSchema } from "@openmembrane/protocol";
+import { candidate, entry } from "./helpers";
 
 const cases = [
   { tool: "remember", method: "remember", input: { projectId: "other", items: [{ content: "Use isolated test fixtures.", type: "testing_rule", confidence: "high" }] } },
@@ -66,6 +69,82 @@ describe("thin MCP daemon adapter", () => {
     expect(context.client).toBeInstanceOf(OpenMembraneClient);
     expect(call).not.toHaveBeenCalled();
     expect(launch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["get_project_rules", { rules: [{ sensitivity: "confidential", content: "protected fixture" }] }],
+    ["get_relevant_context", { memories: [{ sensitivity: "confidential", content: "protected fixture" }] }],
+    ["search_memory", [{ sensitivity: "confidential", content: "protected fixture" }]],
+    ["list_memory_candidates", [{ sensitivity: "secret", content: "protected fixture" }]],
+    ["approve_memory_candidate", { sensitivity: "internal", proposal: {
+      memory: { sensitivity: "confidential", content: "protected fixture" },
+    } }],
+  ])("withholds protected %s responses before MCP serialization", async (operation, response) => {
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "true");
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const result = await safeJsonResult(String(operation), async () => response);
+    expect(result.isError).toBe(true);
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain("E_MCP_SENSITIVE_RESPONSE");
+    expect(serialized).not.toContain("protected fixture");
+    expect(serialized).toContain("local operation completed");
+    expect(stderr).toHaveBeenCalled();
+  });
+
+  it("preserves public/internal responses with the MCP guard and existing behavior without it", async () => {
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "true");
+    const allowed = { memories: [
+      { sensitivity: "public", content: "public fixture" },
+      { sensitivity: "internal", content: "internal fixture" },
+    ] };
+    expect(await safeJsonResult("get_relevant_context", async () => allowed)).toMatchObject({
+      content: [{ type: "text", text: JSON.stringify(allowed, null, 2) }],
+    });
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "false");
+    const confidential = { rules: [{ sensitivity: "confidential", content: "protected fixture" }] };
+    expect(await safeJsonResult("get_project_rules", async () => confidential)).toMatchObject({
+      content: [{ type: "text", text: JSON.stringify(confidential, null, 2) }],
+    });
+  });
+
+  it.each(["saved", "pending"] as const)("blocks confidential remember %s content after mapping and wire parsing", async (kind) => {
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "true");
+    vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const response = rememberResponseSchema.parse(mapPipelineResult({
+      projectId: "project-a", candidates: [], redactions: [], rejected: [], superseded: [],
+      saved: kind === "saved" ? [entry({ sensitivity: "confidential", content: "protected fixture" })] : [],
+      pending: kind === "pending" ? [candidate({ sensitivity: "confidential", content: "protected fixture", recommendedAction: "ask_user" })] : [],
+    }));
+    const daemon = mockClient();
+    daemon.remember.mockResolvedValue(response);
+    const server = createOpenMembraneMcpServer({ client: daemon });
+    const client = new Client({ name: "guard-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "remember", arguments: {
+        content: "Non-sensitive input fixture.", type: "coding_rule",
+      } });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("E_MCP_SENSITIVE_RESPONSE");
+      expect(JSON.stringify(result)).not.toContain("protected fixture");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("fails closed for remember content from an older daemon without classification metadata", async () => {
+    vi.stubEnv("OPENMEMBRANE_MCP_NON_SENSITIVE_ONLY", "true");
+    vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const legacy = rememberResponseSchema.parse({
+      ...protocolFixtures.remember.response,
+      saved: [{ id: "mem_1", type: "coding_rule", scope: "testing", content: "unclassified fixture" }],
+    });
+    const result = await safeJsonResult("remember", async () => legacy);
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("unclassified fixture");
   });
 
   it("preserves daemon error codes, safe messages and diagnostic IDs", async () => {
