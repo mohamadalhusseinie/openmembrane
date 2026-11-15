@@ -14,6 +14,17 @@ export function clearGraphObjects(scene, objects, instancedMeshes, resources) {
   resources.forEach(resource => resource.dispose());
 }
 
+export function clearGraphTooltip(tooltip) {
+  tooltip.hidden = true;
+  tooltip.textContent = "";
+}
+
+export function graph3dNavigationIndex(currentIndex, nodeCount, direction) {
+  if (!nodeCount) return undefined;
+  if (currentIndex < 0) return direction > 0 ? 0 : nodeCount - 1;
+  return (currentIndex + direction + nodeCount) % nodeCount;
+}
+
 export function createGraphPointerSelectionGuard() {
   const activePointers = new Set();
   let startPointerId;

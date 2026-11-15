@@ -1,7 +1,12 @@
 import * as THREE from "/vendor/three.module.js";
 import { OrbitControls } from "/vendor/OrbitControls.js";
 import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "./graph3d-layout.js";
-import { clearGraphObjects, createGraphPointerSelectionGuard } from "./graph3d-lifecycle.js";
+import {
+  clearGraphObjects,
+  clearGraphTooltip,
+  createGraphPointerSelectionGuard,
+  graph3dNavigationIndex,
+} from "./graph3d-lifecycle.js";
 import { graphRefKey } from "./graph.js";
 
 const NODE_COLORS = {
@@ -120,6 +125,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
     positions = layoutGraphNodes3D(nodes, graphEdges);
     selectedKey = undefined;
     hoveredKey = undefined;
+    clearGraphTooltip(tooltip);
     const byKind = new Map();
     nodes.forEach(node => {
       const group = byKind.get(node.kind) ?? [];
@@ -242,8 +248,8 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
       event.preventDefault();
       const currentIndex = nodes.findIndex(node => graphRefKey(node) === selectedKey);
       const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex = (currentIndex + direction + nodes.length) % nodes.length;
-      select(nodes[nextIndex]);
+      const nextIndex = graph3dNavigationIndex(currentIndex, nodes.length, direction);
+      if (nextIndex !== undefined) select(nodes[nextIndex]);
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       const current = nodes.find(node => graphRefKey(node) === selectedKey) ?? nodes[0];

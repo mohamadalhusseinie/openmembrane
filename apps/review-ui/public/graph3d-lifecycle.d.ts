@@ -10,6 +10,12 @@ export function clearGraphObjects(
   instancedMeshes: Array<{ dispose(): void }>,
   resources: Array<{ dispose(): void }>,
 ): void;
+export function clearGraphTooltip(tooltip: { hidden: boolean; textContent: string }): void;
+export function graph3dNavigationIndex(
+  currentIndex: number,
+  nodeCount: number,
+  direction: number,
+): number | undefined;
 export function createGraphPointerSelectionGuard(): {
   pointerDown(pointerId: number, x: number, y: number): void;
   pointerMove(pointerId: number, x: number, y: number): void;

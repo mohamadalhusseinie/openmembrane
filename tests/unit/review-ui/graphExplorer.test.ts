@@ -17,9 +17,11 @@ import {
 } from "../../../apps/review-ui/public/graph.js";
 import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "../../../apps/review-ui/public/graph3d-layout.js";
 import {
+  clearGraphTooltip,
   clearGraphObjects,
   createGraphPointerSelectionGuard,
   disposeGraphRenderer,
+  graph3dNavigationIndex,
   initializeGraphRenderer,
 } from "../../../apps/review-ui/public/graph3d-lifecycle.js";
 
@@ -306,6 +308,22 @@ describe("knowledge graph explorer helpers", () => {
 
     guard.pointerDown(5, 10, 10);
     expect(guard.pointerUp(5, 10, 10)).toBe(true);
+  });
+
+  it("clears stale tooltip content when the graph resets", () => {
+    const tooltip = { hidden: false, textContent: "Old node label" };
+
+    clearGraphTooltip(tooltip);
+
+    expect(tooltip).toEqual({ hidden: true, textContent: "" });
+  });
+
+  it("starts unselected keyboard navigation at the first or last node", () => {
+    expect(graph3dNavigationIndex(-1, 500, 1)).toBe(0);
+    expect(graph3dNavigationIndex(-1, 500, -1)).toBe(499);
+    expect(graph3dNavigationIndex(0, 500, -1)).toBe(499);
+    expect(graph3dNavigationIndex(499, 500, 1)).toBe(0);
+    expect(graph3dNavigationIndex(-1, 0, -1)).toBeUndefined();
   });
 
   it("respects reduced motion and distinguishes all relationship origins without color alone", () => {
