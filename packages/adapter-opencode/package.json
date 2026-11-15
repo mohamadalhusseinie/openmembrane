@@ -1,6 +1,6 @@
 {
   "name": "@openmembrane/adapter-opencode",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "Automatic OpenMembrane session capture and context for OpenCode",
   "type": "module",
   "license": "MIT",
@@ -17,15 +17,20 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "prepublishOnly": "npm run build"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "peerDependencies": {
     "@opencode-ai/plugin": "^1.19.3",
-    "openmembrane": "^1.0.2"
+    "openmembrane": "^2.0.0"
   },
   "dependencies": {
     "zod": "^4.4.3"
