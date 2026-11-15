@@ -1,6 +1,7 @@
 export interface GraphNodeReference {
   kind: string;
   id: string;
+  type?: string;
 }
 
 export interface GraphPosition {
@@ -40,6 +41,8 @@ export function graphRendererFallback(error: unknown): {
 };
 export function visibleGraphState(graphState: {
   focused: boolean;
+  exploration?: string;
+  memoryType?: string;
   entityDetails?: {
     entity: GraphNodeReference;
     neighbors: GraphNodeReference[];
@@ -48,6 +51,9 @@ export function visibleGraphState(graphState: {
   nodes: GraphNodeReference[];
   edges: GraphEdgePresentation[];
 }): { nodes: GraphNodeReference[]; edges: GraphEdgePresentation[] };
+export function graphKnowledgeOverview<T extends GraphNodeReference>(nodes: T[]): {
+  saved: T[]; proposals: T[]; evidenceCount: number; memoryTypes: Array<{ type: string; count: number }>;
+};
 export function graphCorrectionRequiresRationale(type: string): boolean;
 export function renderRelationshipEditor(
   container: HTMLElement,
@@ -58,6 +64,7 @@ export function renderRelationshipEditor(
   onSubmit: (input: unknown, remove: boolean) => Promise<void>,
 ): void;
 export function buildGraphQuery(search: string, kinds: string[], relationshipTypes: string[]): string;
+export function graphFilterSummary(filters: { search: string; kinds: string[]; relationshipTypes: string[] }): string;
 export function layoutGraphNodes(nodes: GraphNodeReference[]): Map<string, GraphPosition>;
 export function graphEdgeClass(edge: Pick<GraphEdgePresentation, "type" | "origin">): string;
 export function graphRelationshipDescription(

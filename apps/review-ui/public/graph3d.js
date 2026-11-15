@@ -8,6 +8,7 @@ import {
   graph3dNavigationIndex,
 } from "./graph3d-lifecycle.js";
 import { graphRefKey } from "./graph.js";
+import { createGraphTransition, graph3DCameraFrame, graphNodeScale } from "./graph-navigation.js";
 
 const NODE_COLORS = {
   memory: "#2563eb",
@@ -41,17 +42,17 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   renderer.domElement.setAttribute("aria-label", "3D Knowledge Graph. Use arrow keys to navigate nodes and Enter to select.");
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  const initialCameraPosition = camera.position.clone();
   const motion = graph3dMotionSettings(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
   controls.enableDamping = motion.enableDamping;
   controls.autoRotate = motion.autoRotate;
   controls.rotateSpeed = motion.rotateSpeed;
   controls.enablePan = true;
   controls.enableZoom = true;
-  controls.minDistance = 120;
+  controls.minDistance = 48;
   controls.maxDistance = 1600;
   controls.target.set(0, 0, 0);
-  controls.addEventListener("change", render);
+  controls.addEventListener("change", handleCameraChange);
+  const cameraTransition = createGraphTransition();
 
   const ambient = new THREE.AmbientLight(0xffffff, 2.2);
   scene.add(ambient);
@@ -87,6 +88,27 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
     if (!destroyed && isVisible()) renderer.render(scene, camera);
   }
 
+  function handleCameraChange() {
+    updateNodeMatrices();
+    render();
+  }
+
+  function cancelTransition() {
+    cameraTransition.cancel();
+  }
+
+  function transitionCamera(target, position, animate = true) {
+    const fromTarget = controls.target.clone();
+    const fromPosition = camera.position.clone();
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    cameraTransition.start(progress => {
+      controls.target.lerpVectors(fromTarget, target, progress);
+      camera.position.lerpVectors(fromPosition, position, progress);
+      controls.update();
+      handleCameraChange();
+    }, animate && !reduced ? 240 : 0);
+  }
+
   function clearGraph() {
     clearGraphObjects(scene, graphObjects, nodeMeshes, resources);
     graphObjects = [];
@@ -97,17 +119,22 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function updateNodeMatrices() {
+    if (destroyed) return;
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
     const scale = new THREE.Vector3();
+    const direction = camera.getWorldDirection(new THREE.Vector3());
+    const height = container.clientHeight;
     nodeMeshes.forEach(mesh => {
       mesh.userData.graphNodes.forEach((node, index) => {
         const point = positions.get(graphRefKey(node));
         if (!point) return;
         const key = graphRefKey(node);
-        const size = key === selectedKey ? 1.65 : key === hoveredKey ? 1.4 : 1;
+        const emphasis = key === selectedKey ? 1.65 : key === hoveredKey ? 1.4 : 1;
         position.set(point.x, point.y, point.z);
+        const depth = position.clone().sub(camera.position).dot(direction);
+        const size = graphNodeScale(mesh.geometry.boundingSphere.radius, depth, camera.fov, height, emphasis);
         rotation.setFromEuler(new THREE.Euler(index * 0.04, index * 0.07, 0));
         scale.setScalar(size);
         matrix.compose(position, rotation, scale);
@@ -134,6 +161,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
     });
     byKind.forEach((group, kind) => {
       const geometry = nodeGeometry(kind);
+      geometry.computeBoundingSphere();
       const material = new THREE.MeshStandardMaterial({
         color: NODE_COLORS[kind] ?? "#475569",
         roughness: 0.58,
@@ -198,16 +226,32 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function zoomBy(factor) {
-    camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);
-    controls.update();
-    render();
+    const offset = camera.position.clone().sub(controls.target);
+    const distance = Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length() * factor));
+    if (!offset.lengthSq()) offset.set(0, 0, 1);
+    offset.setLength(distance);
+    transitionCamera(controls.target.clone(), controls.target.clone().add(offset));
   }
 
-  function resetView() {
-    controls.target.set(0, 0, 0);
-    camera.position.copy(initialCameraPosition);
-    controls.update();
-    render();
+  function fitPoints(points, animate) {
+    const frame = graph3DCameraFrame(points, camera.aspect, camera.fov);
+    const target = new THREE.Vector3(frame.center.x, frame.center.y, frame.center.z);
+    controls.minDistance = frame.minDistance;
+    controls.maxDistance = frame.maxDistance;
+    camera.far = Math.max(3000, frame.maxDistance * 2);
+    camera.updateProjectionMatrix();
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    if (!direction.lengthSq()) direction.set(0, 0, 1);
+    transitionCamera(target, target.clone().addScaledVector(direction, frame.distance), animate);
+  }
+
+  function resetView(animate = true) {
+    fitPoints([...positions.values()], animate);
+  }
+
+  function focusNode(node) {
+    const point = positions.get(graphRefKey(node));
+    if (point) fitPoints([point], true);
   }
 
   function handlePointerMove(event) {
@@ -228,6 +272,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function handlePointerDown(event) {
+    cancelTransition();
     pointerSelectionGuard.pointerDown(event.pointerId, event.clientX, event.clientY);
   }
 
@@ -269,6 +314,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function handleVisibilityChange() {
+    if (document.visibilityState === "hidden") cancelTransition();
     render();
   }
 
@@ -278,7 +324,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
-    render();
+    resetView(false);
   });
   resizeObserver.observe(container);
 
@@ -286,12 +332,14 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
     ? undefined
     : new IntersectionObserver(entries => {
         intersecting = Boolean(entries[0]?.isIntersecting);
+        if (!intersecting) cancelTransition();
         render();
       });
   intersectionObserver?.observe(container);
   document.addEventListener("visibilitychange", handleVisibilityChange);
   renderer.domElement.addEventListener("pointermove", handlePointerMove);
   renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+  renderer.domElement.addEventListener("wheel", cancelTransition, { capture: true, passive: true });
   renderer.domElement.addEventListener("pointerup", handlePointerUp);
   renderer.domElement.addEventListener("pointercancel", handlePointerCancel);
   renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
@@ -307,8 +355,13 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
 
   return {
     update(nextNodes, edges, selected) {
-      if (!graphDataUnchanged(nodes, graphEdges, nextNodes, edges)) addGraph(nextNodes, edges);
+      const changed = !graphDataUnchanged(nodes, graphEdges, nextNodes, edges);
+      if (changed) {
+        cancelTransition();
+        addGraph(nextNodes, edges);
+      }
       selectedKey = selected ? graphRefKey(selected) : undefined;
+      if (changed) resetView(false);
       updateNodeMatrices();
       render();
     },
@@ -319,16 +372,20 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
       zoomBy(1.22);
     },
     resetView,
+    focusNode,
+    cancelTransition,
     destroy() {
       if (destroyed) return;
       destroyed = true;
-      controls.removeEventListener("change", render);
+      cancelTransition();
+      controls.removeEventListener("change", handleCameraChange);
       controls.dispose();
       resizeObserver.disconnect();
       intersectionObserver?.disconnect();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      renderer.domElement.removeEventListener("wheel", cancelTransition, true);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       renderer.domElement.removeEventListener("pointercancel", handlePointerCancel);
       renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);

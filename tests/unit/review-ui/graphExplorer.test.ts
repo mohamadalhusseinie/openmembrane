@@ -1,8 +1,12 @@
+import { readFile } from "node:fs/promises";
+import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildGraphQuery,
   graphEdgeClass,
   graphEdgeCoordinates,
+  graphFilterSummary,
+  graphKnowledgeOverview,
   graphPanDelta,
   graphRendererFallback,
   graphRelationshipDescription,
@@ -24,6 +28,7 @@ import {
   graph3dNavigationIndex,
   initializeGraphRenderer,
 } from "../../../apps/review-ui/public/graph3d-lifecycle.js";
+import { createGraphTransition, graph2DFrame } from "../../../apps/review-ui/public/graph-navigation.js";
 
 class EditorElement {
   children: EditorElement[] = [];
@@ -47,6 +52,172 @@ class EditorElement {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("knowledge graph explorer helpers", () => {
+  it("grounds the overview in loaded memory types, distinct proposals, and supporting evidence", () => {
+    const nodes = [
+      { kind: "memory", id: "m1", type: "coding_rule" },
+      { kind: "memory", id: "m2", type: "coding_rule" },
+      { kind: "memory", id: "m3" },
+      { kind: "candidate", id: "c1", type: "project_fact" },
+      { kind: "session", id: "s1" }, { kind: "tag", id: "t1" },
+    ];
+    const overview = graphKnowledgeOverview(nodes);
+    expect(overview.saved.map(node => node.id)).toEqual(["m1", "m2", "m3"]);
+    expect(overview.proposals.map(node => node.id)).toEqual(["c1"]);
+    expect(overview.evidenceCount).toBe(2);
+    expect(overview.memoryTypes).toEqual([{ type: "coding_rule", count: 2 }, { type: "", count: 1 }]);
+  });
+
+  it("progressively explores a category without inventing edges or excluding a focused neighbor", () => {
+    const memory = { kind: "memory", id: "m", type: "coding_rule" };
+    const proposal = { kind: "candidate", id: "c" };
+    const tag = { kind: "tag", id: "t" };
+    const edge = { source: memory, target: proposal, type: "supports", origin: "manual" as const, confidence: 1, rationale: "Confirmed." };
+    const graph = { nodes: [memory, proposal, tag], edges: [edge], focused: false, exploration: "memory", memoryType: "coding_rule" };
+    expect(visibleGraphState(graph)).toEqual({ nodes: [memory], edges: [] });
+    const { memoryType: _memoryType, ...allTypes } = graph;
+    expect(visibleGraphState({ ...allTypes, exploration: "evidence" })).toEqual({ nodes: [tag], edges: [] });
+    expect(visibleGraphState({ ...graph, focused: true, entityDetails: { entity: memory, neighbors: [proposal], edges: [edge] } }))
+      .toEqual({ nodes: [memory, proposal], edges: [edge] });
+  });
+
+  it("summarizes submitted filters in user-facing language without exposing enum names", () => {
+    expect(graphFilterSummary({ search: "", kinds: [], relationshipTypes: [] })).toBe("No filters applied.");
+    expect(graphFilterSummary({
+      search: "  cache & token  ", kinds: ["candidate", "audit_event"], relationshipTypes: ["supersedes", "derived_from"],
+    })).toBe('Search: "cache & token" · Showing: Memory proposals, Activity events · Connections: Supersedes (replaces), Derived from');
+  });
+
+  it("expands in-app with inert background, Escape restore, and focus returned without browser fullscreen", async () => {
+    const source = await readFile(new URL("../../../apps/review-ui/public/graph.js", import.meta.url), "utf8");
+    const context = createContext({ URLSearchParams, createGraphTransition, graph2DFrame });
+    runInContext(source.replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, ""), context);
+    class WorkspaceElement {
+      inert = false;
+      textContent = "";
+      tabIndex = -1;
+      attributes = new Map<string, string>();
+      children: WorkspaceElement[] = [];
+      parentElement: WorkspaceElement | null = null;
+      listeners = new Map<string, (event: { key: string; defaultPrevented: boolean; preventDefault(): void }) => void>();
+      classList = { toggle: vi.fn() };
+      focus = vi.fn();
+      setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+      removeAttribute(name: string) { this.attributes.delete(name); }
+      addEventListener(name: string, handler: (event: { key: string; defaultPrevented: boolean; preventDefault(): void }) => void) { this.listeners.set(name, handler); }
+      getBoundingClientRect() { return { left: 0, top: 0, width: 1200, height: 800 }; }
+    }
+    const elements = new Map<string, WorkspaceElement>();
+    const element = (id: string) => {
+      if (!elements.has(id)) elements.set(id, new WorkspaceElement());
+      return elements.get(id)!;
+    };
+    const workspace = element("graph-workspace");
+    const background = new WorkspaceElement();
+    const alreadyInert = new WorkspaceElement();
+    alreadyInert.inert = true;
+    const body = new WorkspaceElement();
+    workspace.parentElement = body;
+    body.children = [workspace, background, alreadyInert];
+    const priorFocus = { focus: vi.fn() };
+    context.document = { getElementById: element, body, activeElement: priorFocus, addEventListener: vi.fn() };
+    context.window = { matchMedia: () => ({ matches: true }) };
+    runInContext("setupGraphWorkspace(); setWorkspaceExpanded(true)", context);
+    expect(workspace.attributes.get("role")).toBe("dialog");
+    expect(workspace.attributes.get("aria-modal")).toBe("true");
+    expect(element("graph-expand").focus).toHaveBeenCalledOnce();
+    expect(background.inert).toBe(true);
+    workspace.listeners.get("keydown")!({ key: "Escape", defaultPrevented: false, preventDefault: vi.fn() });
+    expect(workspace.attributes.has("aria-modal")).toBe(false);
+    expect(element("graph-expand").attributes.get("aria-pressed")).toBe("false");
+    expect(background.inert).toBe(false);
+    expect(alreadyInert.inert).toBe(true);
+    expect(priorFocus.focus).toHaveBeenCalledOnce();
+  });
+
+  it("keeps checkbox drafts separate, applies repeated filters, and clears both drafts and submitted filters", async () => {
+    const source = await readFile(new URL("../../../apps/review-ui/public/graph.js", import.meta.url), "utf8");
+    const context = createContext({ URLSearchParams, createGraphTransition, graph2DFrame });
+    runInContext(source.replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, ""), context);
+    type Event = { key?: string; preventDefault: () => void };
+    class FilterElement {
+      value = "";
+      checked = false;
+      textContent = "";
+      hidden = false;
+      disabled = false;
+      attributes = new Map<string, string>();
+      dataset = { state: "" };
+      listeners = new Map<string, (event: Event) => void>();
+      focus = vi.fn();
+      setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+      addEventListener(name: string, listener: (event: Event) => void) { this.listeners.set(name, listener); }
+      querySelectorAll(_selector: string): FilterElement[] { return []; }
+    }
+    const elements = new Map<string, FilterElement>();
+    const element = (id: string) => {
+      if (!elements.has(id)) elements.set(id, new FilterElement());
+      return elements.get(id)!;
+    };
+    const makeInput = (value: string) => Object.assign(new FilterElement(), { value });
+    const kinds = ["memory", "tag"].map(makeInput);
+    const relationships = ["supports", "tagged_with"].map(makeInput);
+    element("graph-kinds").querySelectorAll = () => kinds.filter(input => input.checked);
+    element("graph-relationships").querySelectorAll = () => relationships.filter(input => input.checked);
+    element("graph-filters").querySelectorAll = () => [...kinds, ...relationships];
+    element("graph-filter-panel").hidden = true;
+    context.document = { getElementById: element, querySelectorAll: () => [] };
+    const request = vi.fn(async (_path: string, _options?: unknown) => ({ nodes: [], edges: [], truncated: false }));
+    context.apiRequest = request;
+    for (const name of ["renderGraph", "renderList", "resetInspector"]) context[name] = vi.fn();
+    runInContext("setupGraphFilters()", context);
+    const fire = (id: string, name: string, key?: string) =>
+      element(id).listeners.get(name)!({ ...(key ? { key } : {}), preventDefault: vi.fn() });
+
+    fire("graph-filter-toggle", "click");
+    expect(element("graph-filter-panel").hidden).toBe(false);
+    expect(element("graph-filter-toggle").attributes.get("aria-expanded")).toBe("true");
+    fire("graph-filter-panel", "keydown", "Escape");
+    expect(element("graph-filter-panel").hidden).toBe(true);
+    expect(element("graph-filter-toggle").attributes.get("aria-expanded")).toBe("false");
+    expect(element("graph-filter-toggle").focus).toHaveBeenCalledOnce();
+
+    element("graph-search").value = "cache & token";
+    kinds.forEach(input => { input.checked = true; });
+    relationships.forEach(input => { input.checked = true; });
+    fire("graph-filters", "input");
+    expect(request).not.toHaveBeenCalled();
+    expect(element("graph-filter-summary").textContent).toBe("No filters applied.");
+    expect(element("graph-filter-draft").hidden).toBe(false);
+    fire("graph-filters", "submit");
+    await Promise.resolve();
+    const query = new URLSearchParams(request.mock.calls[0]?.[0]?.split("?")[1]);
+    expect(query.get("search")).toBe("cache & token");
+    expect(query.getAll("kind")).toEqual(["memory", "tag"]);
+    expect(query.getAll("relationshipType")).toEqual(["supports", "tagged_with"]);
+    expect(element("graph-filter-summary").textContent).toContain("Showing: Saved memories, Tags");
+    expect(element("graph-filter-toggle").textContent).toBe("Filters (4)");
+    expect(element("graph-filter-draft").hidden).toBe(true);
+
+    element("graph-search").value = "unapplied draft";
+    fire("graph-filters", "input");
+    expect(element("graph-filter-summary").textContent).toContain('Search: "cache & token"');
+    expect(element("graph-filter-draft").hidden).toBe(false);
+    await runInContext("loadGraph()", context);
+    await runInContext("mutateRelationship({}, false)", context);
+    expect(request).toHaveBeenLastCalledWith(`/api/graph?${query}`);
+    expect(element("graph-search").value).toBe("unapplied draft");
+    expect(element("graph-filter-draft").hidden).toBe(false);
+    fire("graph-clear-filters", "click");
+    await Promise.resolve();
+    expect(request).toHaveBeenLastCalledWith("/api/graph?limit=500");
+    expect([...kinds, ...relationships].every(input => !input.checked)).toBe(true);
+    expect(element("graph-search").value).toBe("");
+    expect(element("graph-search").focus).toHaveBeenCalledOnce();
+    expect(element("graph-filter-summary").textContent).toBe("No filters applied.");
+    expect(element("graph-filter-draft").hidden).toBe(true);
+    expect(element("graph-clear-filters").hidden).toBe(true);
+  });
+
   it("creates outgoing links and validates correction rationale while keeping failed drafts editable", async () => {
     vi.stubGlobal("document", {
       createElement: (tag: string) => new EditorElement(tag),

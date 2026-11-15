@@ -65,7 +65,7 @@ function graphFor(query) {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (request.method === "GET" && url.pathname === "/api/project") {
-    sendJson(response, 200, { projectId: "Synthetic preview" });
+    sendJson(response, 200, { projectId: "Synthetic preview", syntheticPreview: true });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/memories") {

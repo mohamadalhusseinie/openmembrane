@@ -147,6 +147,66 @@ The initial 2D view supports:
 - A list/table fallback for non-spatial navigation.
 - Clear empty, loading, validation-error, and server-failure states.
 
+### Implemented Filter Controls
+
+Search and the **Filters** disclosure are separate from the **View** and camera
+controls. Open **Filters** to choose **What to show** (saved memories, memory
+proposals, activity events, diagnostics, source sessions, and tags) and **How
+items are connected** using labeled checkboxes. An unchecked group includes all
+its types; choosing multiple types includes any of those types. Relationship
+filters limit connections, not the items returned.
+
+Search and checkbox changes remain drafts until **Apply filters** or Enter in
+the search field. The applied summary and filter count describe the last
+submitted filters; a separate message marks unapplied changes. **Clear filters**
+clears both search and type selections and immediately reloads the unfiltered
+graph. Relationship edits refresh using the applied filters, not an unapplied
+draft. Switching between 2D, 3D, and the list does not apply or discard drafts.
+The filter panel supports normal Tab navigation, Space to toggle checkboxes,
+and Escape to close it and return focus to **Filters**.
+
+### Implemented Knowledge Workspace
+
+The initial view answers "What does this project know?" with a **loaded-data
+overview**, not a dense all-entity drawing. Saved memories are grouped by their
+stored memory type; three example memories provide direct reading and
+neighborhood entry points. These are metadata groupings, not generated
+semantic topics. Proposals are separate from saved knowledge, and supporting
+evidence includes tags, source sessions, activity events, and diagnostics.
+Counts describe the currently loaded, filtered graph, not project-wide totals;
+the existing 500-entity limit and truncation warning still apply.
+
+Choose a memory type, saved memories, proposals, evidence, or **Explore all
+loaded items** to enter the graph. The selected category restricts the drawing
+locally without changing the submitted API filters. Reading an example or
+following a connection opens that item's immediate neighborhood, which can
+include neighbors outside the category or submitted filters, as in the
+existing entity-detail API. **Knowledge overview** returns to the overview
+without clearing filters. Applying nonempty search/type filters opens all
+matching loaded items; **Clear filters** returns to the unfiltered overview.
+Renderer and list changes retain the selected exploration and inspector.
+
+**Expand workspace** uses an in-app dialog, not browser/OS fullscreen.
+Background controls become inert, Tab stays inside, and **Restore workspace**
+or Escape restores the previous focus. Escape in the filter panel closes that
+panel first. The exit remains reachable while scrolling. The drawing occupies
+the main stage; selection reveals a separately scrollable desktop inspector.
+On narrow screens details follow the drawing and have their own bounded scroll
+region. Full item content and review actions come first; technical metadata
+and relationship-editing tools remain available through disclosures. Connected
+items have readable labels and can be selected directly.
+
+**Fit graph** recovers the currently visible drawing. **Navigate** contains
+zoom, **Center selection**, and **Focus neighborhood** controls. Focusing a
+neighborhood fits its bounds; **Show category graph** restores the selected
+category. Two-dimensional zoom is centered on the current viewport, and 3D
+fitting accounts for aspect ratio and graph bounds. Foreground 3D geometry is
+capped at 22 CSS pixels in diameter (32 for highlighted nodes), so zooming
+cannot turn a nearby node into an occluding shape. Short, user-triggered
+camera and expansion transitions respect reduced motion and are cancelled on
+superseding interaction, hidden views, and renderer disposal. No idle animation
+loop runs.
+
 The API rejects malformed filters, invalid entity or relationship types, missing
 entities, and requests over the configured entity limit with safe user-facing
 errors. Default graph responses contain at most 500 entities.
@@ -196,8 +256,9 @@ The 3D view provides orbit, pan, zoom, reset, hover, selection, keyboard node
 navigation, and neighborhood focus. Its relationship-aware spatial layout
 responds to graph links. Inferred links are solid, manual links are dashed, and
 derived links are dotted; color is not the only provenance cue. Motion is
-limited to direct user-controlled camera movement, with reduced-motion
-preferences lowering orbit sensitivity. Rendering pauses while the graph is
+limited to user-controlled camera movement and short focus/zoom transitions,
+with reduced-motion preferences disabling transitions and lowering orbit
+sensitivity. Rendering pauses while the graph is
 hidden, and switching to 2D disposes the WebGL renderer. If graphics
 initialization or the WebGL context fails, the UI reports the error and returns
 to the still-usable 2D and list views.
@@ -211,6 +272,8 @@ Developers can run `npm run preview:graph -- 61327` to inspect a local
 500-node, 1,000-relationship synthetic fixture without starting the daemon or
 reading or writing project memories. This fixture is for UI and interaction
 validation only.
+The preview identifies its synthetic data in the graph workspace and explicitly
+labels writes as disabled; it must not be interpreted as real project memory.
 
 ## Delivery Issues
 
