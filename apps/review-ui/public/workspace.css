@@ -68,6 +68,7 @@ h2 { font-size: 18px; letter-spacing: -0.015em; line-height: 1.35; }
 .workflow-guide dd { color: var(--text-muted); font-size: 14px; }
 .hint { font-size: 14px; max-width: 75ch; line-height: 1.6; margin-bottom: 20px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 40px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 13px; font-weight: 600; white-space: normal; }
+.btn[hidden] { display: none; }
 .btn:hover:not(:disabled) { background: var(--bg-secondary); filter: none; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn-success { background: var(--success); border-color: var(--success); color: #fff; }

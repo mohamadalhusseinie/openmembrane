@@ -865,7 +865,7 @@ async function mutateMemory(form, supersede) {
     showToast(result.kind ? `Team publication: ${result.kind}` : supersede ? 'Memory superseded' : 'Memory updated', 'success');
     tabsLoaded.audit = false; tabsLoaded.export = false;
     tabsLoaded.overview = false;
-    await Promise.all([loadMemories(), loadStaleMemories()]);
+    await Promise.all([loadMemories(), loadStaleMemories(), ...(currentTab === 'overview' ? [loadOverview()] : [])]);
   } catch (e) { showToast(e.message, 'error'); }
   finally {
     pendingMemoryMutations.delete(key);
@@ -925,13 +925,12 @@ if (typeof window !== 'undefined') {
     switchTab('memories');
     loadGraphMemoryById(memory.id);
   });
-  window.addEventListener('review-graph-candidates-mutated', () => {
+  window.addEventListener('review-graph-candidates-mutated', async () => {
     tabsLoaded.overview = false;
     tabsLoaded.audit = false;
     tabsLoaded.pending = true;
     tabsLoaded.memories = true;
-    loadCandidates();
-    loadMemories();
+    await Promise.all([loadCandidates(), loadMemories(), ...(currentTab === 'overview' ? [loadOverview()] : [])]);
   });
 }
 

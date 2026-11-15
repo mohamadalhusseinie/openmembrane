@@ -4,7 +4,7 @@ import { createContext, runInContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { candidate, entry } from "../helpers";
 
-async function setupWorkspace() {
+async function setupWorkspace(captureEvents = false) {
   const html = await readFile(resolve("apps", "review-ui", "public", "index.html"), "utf8");
   const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
   if (!script) throw new Error("Expected workspace script.");
@@ -22,6 +22,12 @@ async function setupWorkspace() {
   }
   const queueButtons = [makeElement(), makeElement()];
   const nav = makeElement();
+  const listeners = new Map<string, () => Promise<void>>();
+  const window = {
+    confirm: vi.fn(() => true), prompt: vi.fn<() => string | null>(() => ""),
+    matchMedia: () => ({ matches: false, addEventListener: vi.fn() }),
+    addEventListener: (name: string, listener: () => Promise<void>) => { listeners.set(name, listener); },
+  };
   const context = createContext({
     document: {
       getElementById: element,
@@ -30,20 +36,50 @@ async function setupWorkspace() {
     },
     URLSearchParams,
     fetch: async () => ({ ok: true, json: async () => [] }),
+    ...(captureEvents ? { window } : {}),
   });
   runInContext(script, context);
   await runInContext("loadMemories()", context);
   const api = vi.fn<(path: string, options?: unknown) => Promise<unknown>>(async () => []);
   context.apiRequest = api;
   context.showToast = vi.fn();
-  context.window = {
-    confirm: vi.fn(() => true), prompt: vi.fn<() => string | null>(() => ""),
-    matchMedia: () => ({ matches: false }),
-  };
-  return { context, element, api, queueButtons, nav };
+  context.window = window;
+  return { context, element, api, queueButtons, nav, listeners };
 }
 
 describe("review workspace", () => {
+  it.each([false, true])("refreshes visible overview after a background memory mutation (supersede: %s)", async supersede => {
+    const { context, api, element } = await setupWorkspace();
+    let finish!: (value: unknown) => void;
+    context.form = { dataset: { view: "memories-content", memoryId: "mem_1" }, querySelectorAll: () => [] };
+    context.FormData = class { get() { return ""; } };
+    context.loadMemories = vi.fn(async () => {});
+    context.loadStaleMemories = vi.fn(async () => {});
+    api.mockImplementation(async (_path, options) => options
+      ? new Promise(resolve => { finish = resolve; })
+      : []);
+    runInContext("currentTab = 'memories'", context);
+    const mutation = runInContext(`mutateMemory(form, ${supersede})`, context) as Promise<void>;
+    runInContext("currentTab = 'overview'", context);
+    finish(entry());
+    await mutation;
+    expect(element("overview-stale").innerHTML).toContain("No active memories older than 6 months");
+    expect(element("overview-pending").innerHTML).toContain("No proposals waiting");
+  });
+
+  it("refreshes visible overview and its badge after a graph decision", async () => {
+    const { context, api, element, listeners } = await setupWorkspace(true);
+    context.loadMemories = vi.fn(async () => {});
+    element("pending-tab-btn").innerHTML = "Outdated badge";
+    element("overview-pending").innerHTML = "Outdated queue";
+    api.mockResolvedValue([]);
+    const listener = listeners.get("review-graph-candidates-mutated");
+    expect(listener).toBeDefined();
+    await listener!();
+    expect(element("overview-pending").innerHTML).toContain("No proposals waiting");
+    expect(element("pending-tab-btn").innerHTML).toBe("Review queue");
+  });
+
   it("shows unavailable queue data separately from a successful empty older-memory result", async () => {
     const { context, api, element } = await setupWorkspace();
     api.mockImplementation(async path => {

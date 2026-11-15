@@ -105,7 +105,8 @@ awaiting review and active memories not updated in six months. Unavailable data
 is reported separately from an empty queue; use **Try again** or **Refresh view**
 to retry. Overview and Review queue share the navigation badge; only the latest
 queue request may update its count or unavailable state, including after a review
-decision.
+decision. A memory edit, retirement, or graph review that finishes while Overview
+is visible also refreshes its attention counts.
 
 Open the **Review queue** to read each proposal, its explanation (when available),
 sensitivity, and suggested action. Approve useful knowledge or reject a proposal

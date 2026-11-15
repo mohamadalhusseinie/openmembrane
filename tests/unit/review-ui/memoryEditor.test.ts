@@ -34,6 +34,7 @@ async function setupUi() {
     fetch: async () => ({ ok: true, json: async () => [entry({ content: 'Use "strict" TypeScript settings.' })] }),
   });
   runInContext(script, context);
+  runInContext("currentTab = 'memories'", context);
   await runInContext("loadMemories()", context);
   return { context, getElementById };
 }
