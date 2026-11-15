@@ -100,10 +100,27 @@ GitHub Team mutations report publication/retry state rather than implying
 that an unmerged proposal is already active.
 
 From this repository, `npm run review-ui -- --no-open` starts the loopback
-review UI. It provides memory search, editing and superseding, candidate
-review (individual and bulk), audit, diagnostics, stale-memory review, and
-static-export preview/write. Preview never writes files. Export excludes
-confidential memories unless you explicitly opt in.
+review UI. The **Overview** identifies the current project and shows proposals
+awaiting review and active memories not updated in six months. Unavailable data
+is reported separately from an empty queue; use **Try again** or **Refresh view**
+to retry.
+
+Open the **Review queue** to read each proposal, its explanation (when available),
+sensitivity, and suggested action. Approve useful knowledge or reject a proposal
+with an optional reason. Secret proposals cannot be approved. **Bulk review
+actions** apply to the entire queue and ask for confirmation; bulk approval skips
+ineligible proposals. GitHub Team approval can still require publication and merge
+before the knowledge becomes active.
+
+**Saved memories** shows full memory text with search and type/scope filters
+(up to 200 matches). Select **Review or edit** to change a memory; expand
+**Retire this memory** to supersede it and optionally identify its replacement.
+**Older memories** defaults to six months and lets you change that interval;
+age is a review prompt, not proof that a memory is incorrect.
+**Knowledge graph**, **Activity history**, and **Diagnostics** retain exploration
+and troubleshooting tools. Activity and diagnostics show the latest 100 matching
+records. **Export files** supports preview and write; preview never writes files,
+and confidential memories are excluded unless you explicitly opt in.
 
 ## Configuring Your AI Tool
 

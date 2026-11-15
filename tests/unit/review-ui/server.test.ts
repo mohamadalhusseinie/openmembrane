@@ -33,7 +33,7 @@ describe("review-ui static file serving", () => {
   it("serves the Knowledge Graph navigation, controls, and explorer module", async () => {
     const page = await serveStatic("/");
     const html = (page.body as Buffer).toString("utf-8");
-    expect(html).toContain("Knowledge Graph");
+    expect(html).toContain("Knowledge graph");
     expect(html).toContain('id="graph-canvas"');
     expect(html).toContain('id="graph-focus"');
     expect(html).toContain('id="graph-list-toggle"');
@@ -43,6 +43,9 @@ describe("review-ui static file serving", () => {
     expect(script.status).toBe(200);
     expect(script.headers?.["Content-Type"]).toContain("javascript");
     expect((script.body as Buffer).toString("utf-8")).toContain("layoutGraphNodes");
+    const styles = await serveStatic("/workspace.css");
+    expect(styles.status).toBe(200);
+    expect(styles.headers?.["Content-Type"]).toContain("text/css");
   });
 
   it("returns 404 for nonexistent files", async () => {

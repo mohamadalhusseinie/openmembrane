@@ -236,6 +236,9 @@ describe("review UI proxy and real daemon", { timeout: 20_000 }, () => {
 
   it("exercises every data route, memory mutation, export preview, and export write", async () => {
     const { request, projectRoot } = await setup();
+    const project = await request("/api/project");
+    expect(project.status).toBe(200);
+    expect(await project.json()).toEqual({ projectId: "surface-project" });
     const page = await request("/");
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("Preview files");

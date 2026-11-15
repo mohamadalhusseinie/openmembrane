@@ -127,6 +127,7 @@ existing response shapes:
 
 | Review UI route | Behavior |
 | --- | --- |
+| `GET /api/project` | Bound review project ID only (`{ projectId }`); no daemon token or storage paths |
 | `GET /api/memories` | Active memories; `q`, `type`, `scope`, `limit` filters |
 | `GET /api/memories/stale` | Stale review; optional `staleAfterMonths` |
 | `GET /api/memories/:id` | Memory detail, or 404 |
