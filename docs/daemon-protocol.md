@@ -89,6 +89,13 @@ bounded detail, connected edges, and neighboring nodes or a safe not-found error
 Both operations are exposed through `OpenMembraneClient` and do not give the
 Review UI direct storage access.
 
+Saved and pending summaries in `remember`/ingestion responses include an
+additive `sensitivity` field. Clients accept older responses without this field
+for wire compatibility. The opt-in MCP non-sensitive-only guard fails closed
+for content-bearing `remember` summaries without classification, and withholds
+confidential/secret entries before serialization. Other clients retain access
+to their local response data.
+
 `POST /v1/graph/relationships` (`createRelationship`) accepts directed `source`
 and `target` references (`kind`, `id`), a relationship `type`, a `rationale`
 of at most 500 characters, and optional numeric `confidence` between 0 and 1

@@ -88,10 +88,12 @@ export const ingestionResponseSchema = z.object({
   projectId: text, savedCount: count, pendingCount: count, rejectedCount: count,
   supersededCount: count, redactionCount: count,
   saved: z.array(z.object({
-    id: text, type: z.enum(memoryTypes), scope: z.enum(memoryScopes), content: text, replaces: z.array(text).optional(),
+    id: text, type: z.enum(memoryTypes), scope: z.enum(memoryScopes), content: text,
+    sensitivity: z.enum(sensitivityValues).optional(), replaces: z.array(text).optional(),
   })),
   pending: z.array(z.object({
     id: text, type: z.enum(memoryTypes), scope: z.enum(memoryScopes), content: text,
+    sensitivity: z.enum(sensitivityValues).optional(),
     recommendedAction: z.enum(recommendedActions), conflictWith: z.array(text).optional(),
   })),
   rejected: z.array(z.object({
