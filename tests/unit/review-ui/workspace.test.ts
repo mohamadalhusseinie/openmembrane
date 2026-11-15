@@ -104,7 +104,7 @@ describe("review workspace", () => {
     expect(queueButtons.every(button => button.disabled)).toBe(true);
     await runInContext("approveCandidate('cand_1')", context);
     expect(api).toHaveBeenCalledTimes(1);
-    complete({ ok: true });
+    complete({ ok: true, memory: entry() });
     await decision;
     expect(api).toHaveBeenLastCalledWith("/api/candidates");
     expect(element("pending-content").innerHTML).toContain("You are all caught up");
@@ -135,6 +135,108 @@ describe("review workspace", () => {
     expect(element("approve-all").disabled).toBe(false);
     expect(element("pending-content").innerHTML).not.toContain('onclick="approveCandidate(this.dataset.id)" disabled');
   });
+
+  it.each([
+    { publication: {}, type: "success", message: "Memory approved and saved." },
+    { publication: { kind: "published" }, type: "success", message: "A team proposal was published for review." },
+    {
+      publication: { kind: "rejected", message: "The accepted memory cannot be published safely." },
+      type: "error", message: "Team publication failed: The accepted memory cannot be published safely. No retry is scheduled.",
+    },
+    {
+      publication: { kind: "retry_scheduled", nextAttemptAt: "2030-01-01T12:00:00Z" },
+      type: "error", message: "Team publication failed; a retry is scheduled",
+    },
+    {
+      publication: { kind: "retry_deferred", nextAttemptAt: "2030-01-01T12:00:00Z" },
+      type: "error", message: "Team publication is deferred",
+    },
+  ])("reports the actual single approval outcome ($publication.kind)", async ({ publication, type, message }) => {
+    const { context, api, element } = await setupWorkspace();
+    runInContext("currentTab = 'pending'", context);
+    api.mockImplementation(async (_path, options) => options ? { ok: true, memory: { ...entry(), ...publication } } : []);
+    await runInContext("approveCandidate('cand_1')", context);
+    expect(context.showToast).toHaveBeenCalledWith(expect.stringContaining(message), type);
+    if (type === "error") {
+      expect(context.showToast).not.toHaveBeenCalledWith(expect.anything(), "success");
+    }
+    if ("nextAttemptAt" in publication) {
+      expect(context.showToast).toHaveBeenCalledWith(expect.stringContaining("2030"), "error");
+    }
+    expect(element("pending-content").innerHTML).toContain("You are all caught up");
+  });
+
+  it("reports mixed bulk publication outcomes separately and retains escaped failure details", async () => {
+    const { context, api, element } = await setupWorkspace();
+    runInContext("currentTab = 'pending'", context);
+    api.mockImplementation(async (_path, options) => options ? {
+      approved: 4,
+      outcomes: [
+        entry({ id: "local" }),
+        { ...entry({ id: "team" }), kind: "published" },
+        { ...entry({ id: "retry" }), kind: "retry_scheduled", nextAttemptAt: "2030-01-01T12:00:00Z" },
+        { ...entry({ id: "deferred" }), kind: "retry_deferred", nextAttemptAt: "2030-01-02T12:00:00Z" },
+        { ...entry({ id: "failed" }), kind: "rejected", message: "Invalid <memory>" },
+      ],
+      skipped: [{ candidateId: "secret", reason: "Secret <proposal>" }],
+    } : []);
+    await runInContext("approveAllCandidates()", context);
+    expect(context.showToast).toHaveBeenCalledWith(
+      expect.stringContaining("Saved: 1; team proposals published: 1; retries scheduled: 1; retries deferred: 1; publication failures: 1; skipped: 1."),
+      "error",
+    );
+    const result = element("review-result").innerHTML;
+    expect(result).toContain("Bulk review result");
+    expect(result).toContain("failed: Team publication failed: Invalid &lt;memory&gt; No retry is scheduled.");
+    expect(result).toContain("secret: Skipped. Secret &lt;proposal&gt;");
+    expect(result).toContain("deferred: Team publication is deferred");
+    expect(result).not.toContain("Invalid <memory>");
+  });
+
+  it("reports a fully rejected bulk publication as failure, not approval", async () => {
+    const { context, api } = await setupWorkspace();
+    runInContext("currentTab = 'pending'", context);
+    api.mockImplementation(async (_path, options) => options ? {
+      approved: 0, skipped: [],
+      outcomes: [{ ...entry(), kind: "rejected", message: "Not configured." }],
+    } : []);
+    await runInContext("approveAllCandidates()", context);
+    expect(context.showToast).toHaveBeenCalledWith(expect.stringContaining("publication failures: 1"), "error");
+    expect(context.showToast).not.toHaveBeenCalledWith(expect.anything(), "success");
+  });
+
+  const refreshedViews = [
+    { loader: "loadAudit()", target: "audit-content", input: null, response: [{ entityId: "fresh-result", type: "memory_saved" }] },
+    { loader: "loadDiagnostics()", target: "diagnostics-content", input: "diag-severity", response: [{ code: "fresh-result", severity: "error" }] },
+    { loader: "loadStaleMemories()", target: "stale-content", input: "stale-months", response: [entry({ content: "fresh-result" })] },
+  ];
+
+  it.each(refreshedViews.flatMap(view => [false, true].map(oldError => ({ ...view, oldError }))))(
+    "ignores outdated $loader responses (old error: $oldError)",
+    async ({ loader, target, input, response, oldError }) => {
+      const { context, api, element } = await setupWorkspace();
+      let complete!: (value: unknown) => void;
+      let fail!: (error: Error) => void;
+      api.mockImplementationOnce(() => new Promise((resolve, reject) => { complete = resolve; fail = reject; }));
+      if (input) element(input).value = input === "stale-months" ? "6" : "warning";
+      const oldRequest = runInContext(loader, context) as Promise<void>;
+      if (input) element(input).value = input === "stale-months" ? "3" : "error";
+      if (oldError) api.mockResolvedValueOnce(response);
+      else api.mockRejectedValueOnce(new Error("fresh-error"));
+      await runInContext(loader, context);
+      const latest = element(target).innerHTML;
+      expect(latest).toContain(oldError ? "fresh-result" : "fresh-error");
+      if (oldError) fail(new Error("obsolete-error"));
+      else complete(response);
+      await oldRequest;
+      expect(element(target).innerHTML).toBe(latest);
+      expect(element(target).innerHTML).not.toContain("obsolete-error");
+      if (input) {
+        expect(api.mock.calls[0]?.[0]).toContain(input === "stale-months" ? "staleAfterMonths=6" : "severity=warning");
+        expect(api.mock.calls[1]?.[0]).toContain(input === "stale-months" ? "staleAfterMonths=3" : "severity=error");
+      }
+    },
+  );
 
   it("updates navigation and focus without discarding existing views", async () => {
     const { context, element, nav } = await setupWorkspace();

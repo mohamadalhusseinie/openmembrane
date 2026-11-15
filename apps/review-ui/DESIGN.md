@@ -19,6 +19,10 @@ knowledge, and explicit decision consequences over dashboard decoration.
   Secondary maintenance and whole-queue actions use progressive disclosure.
 - Loading, empty, unavailable, blocked, and pending-mutation states must remain
   distinct. Error notifications persist until dismissed.
+- Approval feedback distinguishes saved knowledge, published team proposals,
+  scheduled/deferred retries, and terminal publication failures. Bulk results
+  retain per-memory outcomes and skipped reasons in an expandable result.
+  Refreshable views discard outdated successes and errors.
 - Use semantic navigation, native buttons and disclosures, visible focus,
   descriptive labels, a skip link, and live status regions. Move focus to the
   heading after view changes and completed queue decisions.

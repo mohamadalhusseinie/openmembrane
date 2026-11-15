@@ -111,6 +111,12 @@ with an optional reason. Secret proposals cannot be approved. **Bulk review
 actions** apply to the entire queue and ask for confirmation; bulk approval skips
 ineligible proposals. GitHub Team approval can still require publication and merge
 before the knowledge becomes active.
+Approval results distinguish locally saved memories, published team proposals,
+scheduled/deferred publication retries, and terminal publication failures.
+Publication failures remain visible until dismissed; terminal failures include
+the rejection reason and explicitly state that no retry is scheduled. After
+bulk approval, expand **Bulk review result** for every memory outcome and
+skipped-proposal reason. Terminal publication failures do not count as approved.
 
 **Saved memories** shows full memory text with search and type/scope filters
 (up to 200 matches). Select **Review or edit** to change a memory; expand
@@ -121,6 +127,8 @@ age is a review prompt, not proof that a memory is incorrect.
 and troubleshooting tools. Activity and diagnostics show the latest 100 matching
 records. **Export files** supports preview and write; preview never writes files,
 and confidential memories are excluded unless you explicitly opt in.
+Refreshing Activity history, Diagnostics, or Older memories ignores responses
+from older requests, including obsolete errors, so the latest request wins.
 
 ## Configuring Your AI Tool
 

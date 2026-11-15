@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createCandidateRoutes } from "../../../../apps/review-ui/src/routes/candidates";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { entry } from "../../helpers";
 
 function mockContext(params: Record<string, string> = {}, query = new URLSearchParams(), body: unknown = undefined) {
   return {
@@ -56,6 +57,28 @@ describe("candidate routes", () => {
     expect(result.status).toBe(200);
     expect((result.body as { approved: number }).approved).toBe(1);
     expect(mockProject.approveAllCandidates).toHaveBeenCalledWith({});
+  });
+
+  it("preserves every bulk publication outcome and excludes terminal rejections from the count", async () => {
+    const outcomes = [
+      entry({ id: "local" }),
+      { ...entry({ id: "published" }), kind: "published", proposal: { state: "proposed" } },
+      { ...entry({ id: "retry" }), kind: "retry_scheduled", nextAttemptAt: "2030-01-01T12:00:00Z" },
+      { ...entry({ id: "deferred" }), kind: "retry_deferred", nextAttemptAt: "2030-01-02T12:00:00Z" },
+      { ...entry({ id: "failed" }), kind: "rejected", message: "Cannot publish safely." },
+    ];
+    const skipped = [{ candidateId: "secret", reason: "Secret candidates cannot be approved." }];
+    mockProject.approveAllCandidates.mockResolvedValueOnce({ approved: outcomes, skipped });
+    const result = await routes.approveAll(mockContext());
+    expect(result).toEqual({ status: 200, body: { approved: 4, outcomes, skipped } });
+  });
+
+  it("returns zero approved when all publications are terminally rejected", async () => {
+    const outcomes = [{ ...entry(), kind: "rejected", message: "Not configured." }];
+    mockProject.approveAllCandidates.mockResolvedValueOnce({ approved: outcomes, skipped: [] });
+    expect(await routes.approveAll(mockContext())).toEqual({
+      status: 200, body: { approved: 0, outcomes, skipped: [] },
+    });
   });
 
   it("rejectAll returns count of rejected", async () => {

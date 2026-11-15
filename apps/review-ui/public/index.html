@@ -288,6 +288,7 @@ FORM: Familiar developer-tool conventions, explicitly selected by the user; no d
     <button class="btn" id="approve-all" onclick="approveAllCandidates()" disabled>Approve all eligible</button>
     <button class="btn btn-danger" id="reject-all" onclick="rejectAllCandidates()" disabled>Reject entire queue</button>
   </div></details>
+  <div id="review-result" aria-live="polite"></div>
   <div id="pending-content" aria-live="polite"></div>
 </section>
 
@@ -666,10 +667,13 @@ async function loadCandidates() {
   }
 }
 
+let auditRequest = 0;
 async function loadAudit() {
+  const request = ++auditRequest;
   document.getElementById('audit-content').textContent = 'Loading activity...';
   try {
     const items = await apiRequest('/api/audit?limit=100');
+    if (request !== auditRequest) return;
     if (!items.length) {
       document.getElementById('audit-content').innerHTML = '<div class="empty">No audit events</div>';
       return;
@@ -685,17 +689,21 @@ async function loadAudit() {
     });
     document.getElementById('audit-content').innerHTML = html;
   } catch (e) {
+    if (request !== auditRequest) return;
     document.getElementById('audit-content').innerHTML = errorHtml(e, 'loadAudit()');
   }
 }
 
+let diagnosticsRequest = 0;
 async function loadDiagnostics() {
+  const request = ++diagnosticsRequest;
   document.getElementById('diagnostics-content').textContent = 'Loading diagnostics...';
   const severity = document.getElementById('diag-severity').value;
   const params = new URLSearchParams({ limit: '100' });
   if (severity) params.set('severity', severity);
   try {
     const items = await apiRequest('/api/diagnostics?' + params);
+    if (request !== diagnosticsRequest) return;
     if (!items.length) {
       document.getElementById('diagnostics-content').innerHTML = '<div class="empty">No diagnostics</div>';
       return;
@@ -709,34 +717,65 @@ async function loadDiagnostics() {
     });
     document.getElementById('diagnostics-content').innerHTML = html;
   } catch (e) {
+    if (request !== diagnosticsRequest) return;
     document.getElementById('diagnostics-content').innerHTML = errorHtml(e, 'loadDiagnostics()');
   }
 }
 
 async function approveCandidate(id) {
-  return mutateCandidates(`/api/candidates/${encodeURIComponent(id)}/approve`, undefined, () => 'Proposal approved. Team publication, if applicable, may still be pending.');
+  return mutateCandidates(`/api/candidates/${encodeURIComponent(id)}/approve`, undefined, result => approvalNotification(result.memory));
+}
+
+function approvalNotification(memory) {
+  if (memory.kind === 'rejected') {
+    return { type: 'error', message: `Team publication failed: ${memory.message} No retry is scheduled. Check Diagnostics and Activity history.` };
+  }
+  if (memory.kind === 'retry_scheduled' || memory.kind === 'retry_deferred') {
+    return { type: 'error', message: `Team publication ${memory.kind === 'retry_scheduled' ? 'failed; a retry is scheduled for' : 'is deferred until'} ${formatDate(memory.nextAttemptAt)}. This memory is not active yet.` };
+  }
+  if (memory.kind === 'published') {
+    return { type: 'success', message: 'A team proposal was published for review. The memory becomes active after merge and sync.' };
+  }
+  return { type: 'success', message: 'Memory approved and saved.' };
+}
+
+function bulkApprovalNotification(result) {
+  const count = kind => result.outcomes.filter(memory => memory.kind === kind).length;
+  const saved = count(undefined);
+  const published = count('published');
+  const scheduled = count('retry_scheduled');
+  const deferred = count('retry_deferred');
+  const rejected = count('rejected');
+  return {
+    type: rejected || scheduled || deferred ? 'error' : 'success',
+    message: `Saved: ${saved}; team proposals published: ${published}; retries scheduled: ${scheduled}; retries deferred: ${deferred}; publication failures: ${rejected}; skipped: ${result.skipped.length}. See the bulk review result for details.`,
+    details: [
+      ...result.outcomes.map(memory => `${memory.id}: ${approvalNotification(memory).message}`),
+      ...result.skipped.map(item => `${item.candidateId}: Skipped. ${item.reason}`),
+    ],
+  };
 }
 
 async function rejectCandidate(id) {
   if (candidateMutationPending) return;
   const reason = window.prompt('Reason for rejection:');
   if (reason === null) return;
-  return mutateCandidates(`/api/candidates/${encodeURIComponent(id)}/reject`, reason ? { reason } : {}, () => 'Proposal rejected. It was not saved.');
+  return mutateCandidates(`/api/candidates/${encodeURIComponent(id)}/reject`, reason ? { reason } : {}, () => ({ type: 'success', message: 'Proposal rejected. It was not saved.' }));
 }
 
 async function approveAllCandidates() {
   if (candidateMutationPending || !window.confirm('Approve every eligible proposal in the entire queue? Only continue if you have reviewed them all. Secret proposals will be skipped.')) return;
-  return mutateCandidates('/api/candidates/approve-all', undefined, result => `Approved ${result.approved}; skipped ${result.skipped.length}. Team publication, if applicable, may still be pending.`);
+  return mutateCandidates('/api/candidates/approve-all', undefined, bulkApprovalNotification);
 }
 
 async function rejectAllCandidates() {
   if (candidateMutationPending || !window.confirm('Reject every proposal in the entire queue? None of these proposals will be saved.')) return;
   const reason = window.prompt('Reason for rejecting all:');
   if (reason === null) return;
-  return mutateCandidates('/api/candidates/reject-all', reason ? { reason } : {}, () => 'All proposals rejected. They were not saved.');
+  return mutateCandidates('/api/candidates/reject-all', reason ? { reason } : {}, () => ({ type: 'success', message: 'All proposals rejected. They were not saved.' }));
 }
 
-async function mutateCandidates(path, body, message) {
+async function mutateCandidates(path, body, notificationFor) {
   if (candidateMutationPending) return;
   candidateMutationPending = true;
   // Invalidate any queue fetch that started before this mutation.
@@ -744,11 +783,16 @@ async function mutateCandidates(path, body, message) {
   ++overviewRequest;
   document.querySelectorAll('#tab-pending button').forEach(button => { button.disabled = true; });
   document.getElementById('pending-summary').textContent = 'Saving decision...';
+  document.getElementById('review-result').textContent = '';
   try {
     const result = await apiRequest(path, { method: 'POST', ...(body === undefined ? {} : {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }) });
-    showToast(message(result), 'success');
+    const notification = notificationFor(result);
+    showToast(notification.message, notification.type);
+    if (notification.details) {
+      document.getElementById('review-result').innerHTML = `<details class="bulk-review"><summary>Bulk review result</summary><p class="hint">${escapeHtml(notification.message)}</p>${notification.details.map(detail => `<div class="audit-item">${escapeHtml(detail)}</div>`).join('')}</details>`;
+    }
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -764,17 +808,23 @@ async function mutateCandidates(path, body, message) {
   }
 }
 
+let staleMemoriesRequest = 0;
 async function loadStaleMemories() {
+  const request = ++staleMemoriesRequest;
   const target = document.getElementById('stale-content');
   renderMemoryList(target, 'Loading older memories...');
   try {
     const months = document.getElementById('stale-months').value;
     const items = await apiRequest('/api/memories/stale?staleAfterMonths=' + encodeURIComponent(months));
+    if (request !== staleMemoriesRequest) return;
     const active = items.filter(m => m.status === 'active');
     renderMemoryList(target, active.length
       ? active.map(m => `<details class="card"><summary>${escapeHtml(m.content)} — updated ${formatDate(m.updatedAt)}</summary>${memoryReviewHtml(m, 'stale-content')}</details>`).join('')
       : '<div class="empty">No active memories older than this threshold. Try a shorter interval.</div>');
-  } catch (e) { renderMemoryList(target, errorHtml(e, 'loadStaleMemories()')); }
+  } catch (e) {
+    if (request !== staleMemoriesRequest) return;
+    renderMemoryList(target, errorHtml(e, 'loadStaleMemories()'));
+  }
 }
 
 async function mutateMemory(form, supersede) {
