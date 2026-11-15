@@ -73,8 +73,17 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === "GET" && url.pathname.startsWith("/api/graph/entities/")) {
-    const [, , , , kind, id] = url.pathname.split("/");
-    const node = nodes.find(item => item.kind === decodeURIComponent(kind ?? "") && item.id === decodeURIComponent(id ?? ""));
+    const [, , , , rawKind, rawId] = url.pathname.split("/");
+    let kind;
+    let id;
+    try {
+      kind = decodeURIComponent(rawKind ?? "");
+      id = decodeURIComponent(rawId ?? "");
+    } catch {
+      sendJson(response, 400, { error: "Invalid URL encoding." });
+      return;
+    }
+    const node = nodes.find(item => item.kind === kind && item.id === id);
     if (!node) {
       sendJson(response, 404, { error: "Synthetic graph entity not found." });
       return;

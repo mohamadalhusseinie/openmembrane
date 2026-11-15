@@ -16,7 +16,12 @@ import {
   visibleGraphState,
 } from "../../../apps/review-ui/public/graph.js";
 import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "../../../apps/review-ui/public/graph3d-layout.js";
-import { clearGraphObjects, disposeGraphRenderer, initializeGraphRenderer } from "../../../apps/review-ui/public/graph3d-lifecycle.js";
+import {
+  clearGraphObjects,
+  createGraphPointerSelectionGuard,
+  disposeGraphRenderer,
+  initializeGraphRenderer,
+} from "../../../apps/review-ui/public/graph3d-lifecycle.js";
 
 class EditorElement {
   children: EditorElement[] = [];
@@ -215,12 +220,14 @@ describe("knowledge graph explorer helpers", () => {
 
   it("shows only the active renderer", () => {
     expect(graphRendererVisibility("2d")).toEqual({
+      renderSvg: true,
       svgHidden: false,
       svgDisplay: "block",
       graph3dHidden: true,
       graph3dDisplay: "none",
     });
     expect(graphRendererVisibility("3d")).toEqual({
+      renderSvg: false,
       svgHidden: true,
       svgDisplay: "none",
       graph3dHidden: false,
@@ -279,6 +286,26 @@ describe("knowledge graph explorer helpers", () => {
     expect(nodeMesh.dispose).toHaveBeenCalledOnce();
     expect(geometry.dispose).toHaveBeenCalledOnce();
     expect(material.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("suppresses selection for multi-pointer, dragged, and canceled gestures", () => {
+    const guard = createGraphPointerSelectionGuard();
+
+    guard.pointerDown(1, 10, 10);
+    guard.pointerDown(2, 20, 20);
+    expect(guard.pointerUp(2, 20, 20)).toBe(false);
+    expect(guard.pointerUp(1, 10, 10)).toBe(false);
+
+    guard.pointerDown(3, 10, 10);
+    guard.pointerMove(3, 20, 20);
+    expect(guard.pointerUp(3, 20, 20)).toBe(false);
+
+    guard.pointerDown(4, 10, 10);
+    guard.pointerCancel(4);
+    expect(guard.pointerUp(4, 10, 10)).toBe(false);
+
+    guard.pointerDown(5, 10, 10);
+    expect(guard.pointerUp(5, 10, 10)).toBe(true);
   });
 
   it("respects reduced motion and distinguishes all relationship origins without color alone", () => {

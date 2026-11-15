@@ -28,6 +28,7 @@ export function graphStateAfterRendererSwitch<T extends { renderMode: string }>(
   renderMode: string,
 ): Omit<T, "renderMode"> & { renderMode: string };
 export function graphRendererVisibility(renderMode: string): {
+  renderSvg: boolean;
   svgHidden: boolean;
   svgDisplay: string;
   graph3dHidden: boolean;

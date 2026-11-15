@@ -14,6 +14,7 @@ export function graphStateAfterRendererSwitch(graphState, renderMode) {
 export function graphRendererVisibility(renderMode) {
   const use3d = renderMode === "3d";
   return {
+    renderSvg: !use3d,
     svgHidden: use3d,
     svgDisplay: use3d ? "none" : "block",
     graph3dHidden: !use3d,
@@ -209,6 +210,7 @@ function renderGraph() {
   graph3dCanvas.hidden = visibility.graph3dHidden;
   graph3dCanvas.style.display = visibility.graph3dDisplay;
   if (use3d && state.graph3d) state.graph3d.update(nodes, edges, state.selected);
+  if (!visibility.renderSvg) return;
   const positions = layoutGraphNodes(nodes);
   const scene = svgElement("g");
   const defs = svgElement("defs");

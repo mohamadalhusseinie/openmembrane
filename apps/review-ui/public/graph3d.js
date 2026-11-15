@@ -1,7 +1,7 @@
 import * as THREE from "/vendor/three.module.js";
 import { OrbitControls } from "/vendor/OrbitControls.js";
 import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "./graph3d-layout.js";
-import { clearGraphObjects } from "./graph3d-lifecycle.js";
+import { clearGraphObjects, createGraphPointerSelectionGuard } from "./graph3d-lifecycle.js";
 import { graphRefKey } from "./graph.js";
 
 const NODE_COLORS = {
@@ -72,8 +72,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   let hoveredKey;
   let destroyed = false;
   let intersecting = true;
-  let dragging = false;
-  let pointerStart;
+  const pointerSelectionGuard = createGraphPointerSelectionGuard();
 
   function isVisible() {
     return intersecting && document.visibilityState !== "hidden" && container.getClientRects().length > 0;
@@ -206,6 +205,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function handlePointerMove(event) {
+    pointerSelectionGuard.pointerMove(event.pointerId, event.clientX, event.clientY);
     const node = pickNode(event);
     const nextKey = node ? graphRefKey(node) : undefined;
     if (nextKey !== hoveredKey) {
@@ -222,16 +222,17 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function handlePointerDown(event) {
-    dragging = false;
-    pointerStart = { x: event.clientX, y: event.clientY };
+    pointerSelectionGuard.pointerDown(event.pointerId, event.clientX, event.clientY);
   }
 
   function handlePointerUp(event) {
-    if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 4) {
-      dragging = true;
+    if (pointerSelectionGuard.pointerUp(event.pointerId, event.clientX, event.clientY) && event.button === 0) {
+      select(pickNode(event));
     }
-    if (!dragging && event.button === 0) select(pickNode(event));
-    pointerStart = undefined;
+  }
+
+  function handlePointerCancel(event) {
+    pointerSelectionGuard.pointerCancel(event.pointerId);
   }
 
   function handleKeyDown(event) {
@@ -286,6 +287,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   renderer.domElement.addEventListener("pointermove", handlePointerMove);
   renderer.domElement.addEventListener("pointerdown", handlePointerDown);
   renderer.domElement.addEventListener("pointerup", handlePointerUp);
+  renderer.domElement.addEventListener("pointercancel", handlePointerCancel);
   renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
   renderer.domElement.addEventListener("keydown", handleKeyDown);
   renderer.domElement.addEventListener("webglcontextlost", handleContextLost);
@@ -322,6 +324,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      renderer.domElement.removeEventListener("pointercancel", handlePointerCancel);
       renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
       renderer.domElement.removeEventListener("keydown", handleKeyDown);
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
