@@ -147,9 +147,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .graph-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr); gap: 1rem; }
 .graph-layout > div { min-width: 0; }
 .graph-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; margin-bottom: 0.75rem; }
-.graph-toolbar label { display: grid; gap: 0.2rem; font-size: 0.75rem; }
-.graph-toolbar input, .graph-toolbar select { min-width: 150px; padding: 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
-.graph-toolbar select[multiple] { min-width: 180px; min-height: 4rem; }
 .graph-viewport { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--bg-secondary); }
 .graph-canvas { display: block; width: 100%; height: 560px; touch-action: none; cursor: grab; }
 .graph-canvas[hidden], .graph-3d-canvas[hidden] { display: none; }
@@ -323,20 +320,52 @@ FORM: Familiar developer-tool conventions, explicitly selected by the user; no d
 </div>
 
 <div id="tab-graph" class="tab-content">
-  <form id="graph-filters" class="graph-toolbar">
-    <label>Search<input id="graph-search" type="search" maxlength="200" placeholder="Search graph"></label>
-    <label>Node types<select id="graph-kinds" multiple aria-label="Filter node types">
-      <option value="memory">Memories</option><option value="candidate">Candidates</option>
-      <option value="audit_event">Audit events</option><option value="diagnostic">Diagnostics</option>
-      <option value="session">Sessions</option><option value="tag">Tags</option>
-    </select></label>
-    <label>Relationship types<select id="graph-relationships" multiple aria-label="Filter relationship types">
-      <option value="related_to">Related to</option><option value="supports">Supports</option>
-      <option value="depends_on">Depends on</option><option value="conflicts_with">Conflicts with</option>
-      <option value="duplicate_of">Duplicate of</option><option value="supersedes">Supersedes</option>
-      <option value="derived_from">Derived from</option><option value="tagged_with">Tagged with</option>
-    </select></label>
-    <button class="btn btn-primary" type="submit">Apply filters</button>
+  <form id="graph-filters" aria-label="Filter knowledge graph">
+    <div class="graph-search-row">
+      <label class="graph-search-field" for="graph-search">Search graph
+        <input id="graph-search" type="search" maxlength="200" placeholder="Search project knowledge">
+      </label>
+      <button class="btn" type="button" id="graph-filter-toggle" aria-expanded="false" aria-controls="graph-filter-panel">Filters</button>
+      <button class="btn btn-primary" type="submit">Apply filters</button>
+    </div>
+    <div id="graph-filter-panel" class="graph-filter-panel" hidden>
+      <p id="graph-filter-help" class="hint">Choose any combination in each group. Leave a group unchecked to include all types. Changes take effect when you apply filters.</p>
+      <div class="graph-filter-groups">
+        <fieldset id="graph-kinds" aria-describedby="graph-filter-help">
+          <legend>What to show</legend>
+          <div class="graph-filter-options">
+            <label><input type="checkbox" value="memory">Saved memories</label>
+            <label><input type="checkbox" value="candidate">Memory proposals</label>
+            <label><input type="checkbox" value="audit_event">Activity events</label>
+            <label><input type="checkbox" value="diagnostic">Diagnostics</label>
+            <label><input type="checkbox" value="session">Source sessions</label>
+            <label><input type="checkbox" value="tag">Tags</label>
+          </div>
+        </fieldset>
+        <fieldset id="graph-relationships" aria-describedby="graph-filter-help graph-relationship-help">
+          <legend>How items are connected</legend>
+          <p id="graph-relationship-help" class="hint">Limits the connections shown, not the items.</p>
+          <div class="graph-filter-options">
+            <label><input type="checkbox" value="related_to">Related to</label>
+            <label><input type="checkbox" value="supports">Supports</label>
+            <label><input type="checkbox" value="depends_on">Depends on</label>
+            <label><input type="checkbox" value="conflicts_with">Conflicts with</label>
+            <label><input type="checkbox" value="duplicate_of">Duplicate of</label>
+            <label><input type="checkbox" value="supersedes">Supersedes (replaces)</label>
+            <label><input type="checkbox" value="derived_from">Derived from</label>
+            <label><input type="checkbox" value="tagged_with">Tagged with</label>
+          </div>
+        </fieldset>
+      </div>
+    </div>
+    <div class="graph-filter-feedback">
+      <p id="graph-filter-summary" role="status">No filters applied.</p>
+      <button class="btn" type="button" id="graph-clear-filters" hidden>Clear filters</button>
+      <p id="graph-filter-draft" role="status" hidden>Changes not applied. Use Apply filters to update the graph.</p>
+    </div>
+  </form>
+  <div class="graph-toolbar graph-view-controls" role="group" aria-label="Graph view and camera controls">
+    <span class="graph-controls-label">View</span>
     <span class="graph-mode-controls" role="group" aria-label="Graph rendering mode">
       <button class="btn" type="button" id="graph-mode-2d" aria-label="2D graph view" aria-pressed="true" title="Switch to the accessible 2D graph while keeping filters and selection.">2D</button>
       <button class="btn" type="button" id="graph-mode-3d" aria-label="3D graph view" aria-pressed="false" title="Explore the graph in 3D. Drag to orbit, right-drag to pan, and scroll to zoom.">3D</button>
@@ -346,7 +375,7 @@ FORM: Familiar developer-tool conventions, explicitly selected by the user; no d
     <button class="btn" type="button" id="graph-zoom-out" aria-label="Zoom out">−</button>
     <button class="btn" type="button" id="graph-reset-view">Reset view</button>
     <button class="btn" type="button" id="graph-list-toggle" aria-pressed="false">Show list</button>
-  </form>
+  </div>
   <p id="graph-3d-error" class="graph-3d-error" role="alert" hidden></p>
   <div id="graph-status" class="graph-status" role="status" aria-live="polite">Loading graph…</div>
   <div class="graph-legend" aria-label="Graph legend">

@@ -2,6 +2,24 @@ import { disposeGraphRenderer, initializeGraphRenderer } from "./graph3d-lifecyc
 
 const svgNamespace = "http://www.w3.org/2000/svg";
 
+const graphKindLabels = {
+  memory: "Saved memories", candidate: "Memory proposals", audit_event: "Activity events",
+  diagnostic: "Diagnostics", session: "Source sessions", tag: "Tags",
+};
+const graphRelationshipLabels = {
+  related_to: "Related to", supports: "Supports", depends_on: "Depends on",
+  conflicts_with: "Conflicts with", duplicate_of: "Duplicate of",
+  supersedes: "Supersedes (replaces)", derived_from: "Derived from", tagged_with: "Tagged with",
+};
+
+export function graphFilterSummary(filters) {
+  const parts = [];
+  if (filters.search.trim()) parts.push(`Search: "${filters.search.trim()}"`);
+  if (filters.kinds.length) parts.push(`Showing: ${filters.kinds.map(kind => graphKindLabels[kind]).join(", ")}`);
+  if (filters.relationshipTypes.length) parts.push(`Connections: ${filters.relationshipTypes.map(type => graphRelationshipLabels[type]).join(", ")}`);
+  return parts.length ? parts.join(" · ") : "No filters applied.";
+}
+
 export function graphRefKey(ref) {
   return JSON.stringify([ref.kind, ref.id]);
 }
@@ -156,8 +174,8 @@ function updateGraphStatus() {
   setStatus(status.message, status.kind);
 }
 
-function selectedValues(select) {
-  return Array.from(select.selectedOptions, option => option.value);
+function selectedValues(group) {
+  return Array.from(group.querySelectorAll("input:checked"), input => input.value);
 }
 
 function currentGraphFilters() {
@@ -170,6 +188,47 @@ function currentGraphFilters() {
 
 function graphQuery(filters) {
   return buildGraphQuery(filters.search, filters.kinds, filters.relationshipTypes);
+}
+
+function updateFilterFeedback() {
+  const draft = currentGraphFilters();
+  getElement("graph-filter-summary").textContent = graphFilterSummary(state.filters);
+  getElement("graph-filter-draft").hidden = graphQuery(draft) === graphQuery(state.filters);
+  getElement("graph-clear-filters").hidden = ![
+    draft.search.trim(), ...draft.kinds, ...draft.relationshipTypes,
+    state.filters.search.trim(), ...state.filters.kinds, ...state.filters.relationshipTypes,
+  ].some(Boolean);
+  const count = state.filters.kinds.length + state.filters.relationshipTypes.length;
+  getElement("graph-filter-toggle").textContent = count ? `Filters (${count})` : "Filters";
+}
+
+function setupGraphFilters() {
+  const form = getElement("graph-filters");
+  const toggle = getElement("graph-filter-toggle");
+  const panel = getElement("graph-filter-panel");
+  const setExpanded = expanded => {
+    panel.hidden = !expanded;
+    toggle.setAttribute("aria-expanded", String(expanded));
+  };
+  toggle.addEventListener("click", () => setExpanded(panel.hidden));
+  panel.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    setExpanded(false);
+    toggle.focus();
+  });
+  form.addEventListener("input", updateFilterFeedback);
+  form.addEventListener("change", updateFilterFeedback);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    loadGraph(currentGraphFilters());
+  });
+  getElement("graph-clear-filters").addEventListener("click", () => {
+    getElement("graph-search").value = "";
+    form.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; });
+    getElement("graph-search").focus();
+    loadGraph(currentGraphFilters());
+  });
 }
 
 async function apiRequest(path, options) {
@@ -360,10 +419,10 @@ export function renderRelationshipEditor(container, node, nodes, edge, remove, o
     fields.append(direction);
   }
   const typeSelect = document.createElement("select");
-  Array.from(getElement("graph-relationships").options).forEach(existing => {
+  Object.entries(graphRelationshipLabels).forEach(([value, label]) => {
     const option = document.createElement("option");
-    option.value = existing.value;
-    option.textContent = existing.textContent;
+    option.value = value;
+    option.textContent = label;
     typeSelect.append(option);
   });
   typeSelect.value = edge?.type ?? "related_to";
@@ -444,7 +503,6 @@ async function mutateRelationship(input, remove) {
   const requestId = ++state.requestId;
   const detailRequestId = ++state.detailRequestId;
   try {
-    state.filters = currentGraphFilters();
     const query = graphQuery(state.filters);
     const [graph, detail] = await Promise.all([
       apiRequest(`/api/graph?${query}`),
@@ -712,7 +770,7 @@ async function selectNode(node, view, control) {
   }
 }
 
-export async function loadGraph() {
+export async function loadGraph(filters = state.filters) {
   const requestId = ++state.requestId;
   ++state.detailRequestId;
   state.selected = undefined;
@@ -731,7 +789,8 @@ export async function loadGraph() {
   renderGraph();
   renderList();
   try {
-    state.filters = currentGraphFilters();
+    state.filters = filters;
+    updateFilterFeedback();
     const query = graphQuery(state.filters);
     const graph = await apiRequest(`/api/graph?${query}`);
     if (requestId !== state.requestId) return;
@@ -871,10 +930,7 @@ function setupPanAndZoom() {
 }
 
 if (typeof document !== "undefined") {
-  getElement("graph-filters").addEventListener("submit", event => {
-    event.preventDefault();
-    loadGraph();
-  });
+  setupGraphFilters();
   getElement("graph-mode-2d").addEventListener("click", show2DGraph);
   getElement("graph-mode-3d").addEventListener("click", show3DGraph);
   getElement("graph-focus").addEventListener("click", toggleFocus);

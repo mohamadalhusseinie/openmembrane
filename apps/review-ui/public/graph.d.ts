@@ -58,6 +58,7 @@ export function renderRelationshipEditor(
   onSubmit: (input: unknown, remove: boolean) => Promise<void>,
 ): void;
 export function buildGraphQuery(search: string, kinds: string[], relationshipTypes: string[]): string;
+export function graphFilterSummary(filters: { search: string; kinds: string[]; relationshipTypes: string[] }): string;
 export function layoutGraphNodes(nodes: GraphNodeReference[]): Map<string, GraphPosition>;
 export function graphEdgeClass(edge: Pick<GraphEdgePresentation, "type" | "origin">): string;
 export function graphRelationshipDescription(

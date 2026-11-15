@@ -1,8 +1,11 @@
+import { readFile } from "node:fs/promises";
+import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildGraphQuery,
   graphEdgeClass,
   graphEdgeCoordinates,
+  graphFilterSummary,
   graphPanDelta,
   graphRendererFallback,
   graphRelationshipDescription,
@@ -47,6 +50,97 @@ class EditorElement {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("knowledge graph explorer helpers", () => {
+  it("summarizes submitted filters in user-facing language without exposing enum names", () => {
+    expect(graphFilterSummary({ search: "", kinds: [], relationshipTypes: [] })).toBe("No filters applied.");
+    expect(graphFilterSummary({
+      search: "  cache & token  ", kinds: ["candidate", "audit_event"], relationshipTypes: ["supersedes", "derived_from"],
+    })).toBe('Search: "cache & token" · Showing: Memory proposals, Activity events · Connections: Supersedes (replaces), Derived from');
+  });
+
+  it("keeps checkbox drafts separate, applies repeated filters, and clears both drafts and submitted filters", async () => {
+    const source = await readFile(new URL("../../../apps/review-ui/public/graph.js", import.meta.url), "utf8");
+    const context = createContext({ URLSearchParams });
+    runInContext(source.replace(/^import .*;\r?\n/m, "").replace(/^export /gm, ""), context);
+    type Event = { key?: string; preventDefault: () => void };
+    class FilterElement {
+      value = "";
+      checked = false;
+      textContent = "";
+      hidden = false;
+      disabled = false;
+      attributes = new Map<string, string>();
+      dataset = { state: "" };
+      listeners = new Map<string, (event: Event) => void>();
+      focus = vi.fn();
+      setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+      addEventListener(name: string, listener: (event: Event) => void) { this.listeners.set(name, listener); }
+      querySelectorAll(_selector: string): FilterElement[] { return []; }
+    }
+    const elements = new Map<string, FilterElement>();
+    const element = (id: string) => {
+      if (!elements.has(id)) elements.set(id, new FilterElement());
+      return elements.get(id)!;
+    };
+    const makeInput = (value: string) => Object.assign(new FilterElement(), { value });
+    const kinds = ["memory", "tag"].map(makeInput);
+    const relationships = ["supports", "tagged_with"].map(makeInput);
+    element("graph-kinds").querySelectorAll = () => kinds.filter(input => input.checked);
+    element("graph-relationships").querySelectorAll = () => relationships.filter(input => input.checked);
+    element("graph-filters").querySelectorAll = () => [...kinds, ...relationships];
+    element("graph-filter-panel").hidden = true;
+    context.document = { getElementById: element, querySelectorAll: () => [] };
+    const request = vi.fn(async (_path: string, _options?: unknown) => ({ nodes: [], edges: [], truncated: false }));
+    context.apiRequest = request;
+    for (const name of ["renderGraph", "renderList", "resetInspector"]) context[name] = vi.fn();
+    runInContext("setupGraphFilters()", context);
+    const fire = (id: string, name: string, key?: string) =>
+      element(id).listeners.get(name)!({ ...(key ? { key } : {}), preventDefault: vi.fn() });
+
+    fire("graph-filter-toggle", "click");
+    expect(element("graph-filter-panel").hidden).toBe(false);
+    expect(element("graph-filter-toggle").attributes.get("aria-expanded")).toBe("true");
+    fire("graph-filter-panel", "keydown", "Escape");
+    expect(element("graph-filter-panel").hidden).toBe(true);
+    expect(element("graph-filter-toggle").attributes.get("aria-expanded")).toBe("false");
+    expect(element("graph-filter-toggle").focus).toHaveBeenCalledOnce();
+
+    element("graph-search").value = "cache & token";
+    kinds.forEach(input => { input.checked = true; });
+    relationships.forEach(input => { input.checked = true; });
+    fire("graph-filters", "input");
+    expect(request).not.toHaveBeenCalled();
+    expect(element("graph-filter-summary").textContent).toBe("No filters applied.");
+    expect(element("graph-filter-draft").hidden).toBe(false);
+    fire("graph-filters", "submit");
+    await Promise.resolve();
+    const query = new URLSearchParams(request.mock.calls[0]?.[0]?.split("?")[1]);
+    expect(query.get("search")).toBe("cache & token");
+    expect(query.getAll("kind")).toEqual(["memory", "tag"]);
+    expect(query.getAll("relationshipType")).toEqual(["supports", "tagged_with"]);
+    expect(element("graph-filter-summary").textContent).toContain("Showing: Saved memories, Tags");
+    expect(element("graph-filter-toggle").textContent).toBe("Filters (4)");
+    expect(element("graph-filter-draft").hidden).toBe(true);
+
+    element("graph-search").value = "unapplied draft";
+    fire("graph-filters", "input");
+    expect(element("graph-filter-summary").textContent).toContain('Search: "cache & token"');
+    expect(element("graph-filter-draft").hidden).toBe(false);
+    await runInContext("loadGraph()", context);
+    await runInContext("mutateRelationship({}, false)", context);
+    expect(request).toHaveBeenLastCalledWith(`/api/graph?${query}`);
+    expect(element("graph-search").value).toBe("unapplied draft");
+    expect(element("graph-filter-draft").hidden).toBe(false);
+    fire("graph-clear-filters", "click");
+    await Promise.resolve();
+    expect(request).toHaveBeenLastCalledWith("/api/graph?limit=500");
+    expect([...kinds, ...relationships].every(input => !input.checked)).toBe(true);
+    expect(element("graph-search").value).toBe("");
+    expect(element("graph-search").focus).toHaveBeenCalledOnce();
+    expect(element("graph-filter-summary").textContent).toBe("No filters applied.");
+    expect(element("graph-filter-draft").hidden).toBe(true);
+    expect(element("graph-clear-filters").hidden).toBe(true);
+  });
+
   it("creates outgoing links and validates correction rationale while keeping failed drafts editable", async () => {
     vi.stubGlobal("document", {
       createElement: (tag: string) => new EditorElement(tag),

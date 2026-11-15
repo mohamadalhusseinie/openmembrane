@@ -79,7 +79,7 @@ h2 { font-size: 18px; letter-spacing: -0.015em; line-height: 1.35; }
 .filter-row { gap: 12px; align-items: end; margin-bottom: 22px; }
 .filter-row label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
 .filter-row .search-field { flex: 1; min-width: 180px; }
-.filter-row input, .filter-row select, .graph-toolbar input, .graph-toolbar select { min-height: 40px; font-size: 14px; padding: 8px 10px; border-radius: 6px; }
+.filter-row input, .filter-row select { min-height: 40px; font-size: 14px; padding: 8px 10px; border-radius: 6px; }
 .filter-row input { width: 100%; min-width: 0; }
 .list-summary { margin: 0 0 18px; color: var(--text-muted); font-size: 14px; }
 table { font-size: 13px; }
@@ -116,8 +116,24 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
 .audit-item summary { margin-top: 8px; color: var(--accent); }
 .audit-json { display: block; padding: 16px; font-size: 12px; }
 .graph-toolbar { gap: 12px; }
-.graph-toolbar label { font-size: 13px; gap: 6px; }
-.graph-toolbar select[multiple] { min-height: 96px; }
+.graph-search-row { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.graph-search-field { display: grid; flex: 1; min-width: min(240px, 100%); gap: 6px; font-size: 13px; font-weight: 600; }
+.graph-search-field input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 14px; }
+.graph-search-field input:focus-visible, .graph-filter-options input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.graph-filter-panel { margin-top: 16px; padding: 20px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; }
+.graph-filter-panel > .hint { margin-bottom: 16px; }
+.graph-filter-groups { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 24px; }
+.graph-filter-groups fieldset { border: 0; min-width: 0; }
+.graph-filter-groups legend { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.graph-filter-groups .hint { font-size: 13px; margin-bottom: 8px; }
+.graph-filter-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 2px 16px; }
+.graph-filter-options label { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 14px; cursor: pointer; }
+.graph-filter-options input { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--accent); }
+.graph-filter-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-block: 12px 20px; font-size: 13px; color: var(--text-muted); overflow-wrap: anywhere; }
+.graph-filter-feedback p { min-width: 0; }
+#graph-filter-draft { flex-basis: 100%; color: var(--text); }
+.graph-view-controls { align-items: center; border-top: 1px solid var(--border); padding-top: 16px; }
+.graph-controls-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
 .graph-panel { border-radius: 8px; padding: 20px; }
 #toast-container { max-width: min(520px, calc(100vw - 32px)); }
 .toast { padding: 16px; font-size: 14px; box-shadow: 0 8px 24px #0002; display: flex; gap: 16px; align-items: start; overflow-wrap: anywhere; }
@@ -147,6 +163,7 @@ summary { cursor: pointer; font-size: 14px; font-weight: 600; }
   .attention-row { align-items: start; flex-direction: column; gap: 12px; }
   .filter-row label { flex: 1; min-width: 130px; }
   .card { padding: 18px; }
-  .graph-toolbar label, .graph-toolbar input, .graph-toolbar select { min-width: 0; max-width: 100%; }
+  .graph-filter-groups { grid-template-columns: 1fr; }
+  .graph-filter-panel { padding: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { button { transition: none; } }

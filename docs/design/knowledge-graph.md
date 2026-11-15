@@ -147,6 +147,24 @@ The initial 2D view supports:
 - A list/table fallback for non-spatial navigation.
 - Clear empty, loading, validation-error, and server-failure states.
 
+### Implemented Filter Controls
+
+Search and the **Filters** disclosure are separate from the **View** and camera
+controls. Open **Filters** to choose **What to show** (saved memories, memory
+proposals, activity events, diagnostics, source sessions, and tags) and **How
+items are connected** using labeled checkboxes. An unchecked group includes all
+its types; choosing multiple types includes any of those types. Relationship
+filters limit connections, not the items returned.
+
+Search and checkbox changes remain drafts until **Apply filters** or Enter in
+the search field. The applied summary and filter count describe the last
+submitted filters; a separate message marks unapplied changes. **Clear filters**
+clears both search and type selections and immediately reloads the unfiltered
+graph. Relationship edits refresh using the applied filters, not an unapplied
+draft. Switching between 2D, 3D, and the list does not apply or discard drafts.
+The filter panel supports normal Tab navigation, Space to toggle checkboxes,
+and Escape to close it and return focus to **Filters**.
+
 The API rejects malformed filters, invalid entity or relationship types, missing
 entities, and requests over the configured entity limit with safe user-facing
 errors. Default graph responses contain at most 500 entities.
