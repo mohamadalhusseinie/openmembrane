@@ -11,6 +11,7 @@
     "build": "npm run build -w apps/mcp-server && npm run build -w @openmembrane/adapter-opencode && npm run build -w @openmembrane/adapter-claude-code && npm run build -w @openmembrane/adapter-codex && npm run build -w packages/adapter-vscode",
     "mcp:stdio": "tsx apps/mcp-server/src/index.ts",
     "test": "vitest run",
+    "preview:graph": "node --import tsx scripts/knowledge-graph-preview.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run check:storage-imports && npm run typecheck && npm test",
     "check:storage-imports": "node scripts/check-storage-imports.mjs",

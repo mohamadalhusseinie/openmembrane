@@ -102,8 +102,15 @@ that an unmerged proposal is already active.
 From this repository, `npm run review-ui -- --no-open` starts the loopback
 review UI. It provides memory search, editing and superseding, candidate
 review (individual and bulk), audit, diagnostics, stale-memory review, and
-static-export preview/write. Preview never writes files. Export excludes
+static-export preview/write. The Knowledge Graph provides 2D and list views
+with an optional 3D exploration mode; all modes use the same local graph data,
+filters, selection, and inspector. Preview never writes files. Export excludes
 confidential memories unless you explicitly opt in.
+
+To preview the graph without connecting a daemon or project memory store, run
+`npm run preview:graph -- 61327` and open `http://127.0.0.1:61327/`. This
+loopback-only fixture contains 500 synthetic nodes and 1,000 relationships;
+graph mutations are disabled.
 
 ## Configuring Your AI Tool
 

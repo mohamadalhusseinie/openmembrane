@@ -7,6 +7,9 @@
     "start": "tsx src/index.ts",
     "build": "tsup src/index.ts --format esm --dts"
   },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
   "devDependencies": {
     "@openmembrane/client": "*",
     "@openmembrane/protocol": "*",

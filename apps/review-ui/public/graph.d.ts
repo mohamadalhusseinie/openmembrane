@@ -8,6 +8,10 @@ export interface GraphPosition {
   y: number;
 }
 
+export interface GraphPosition3D extends GraphPosition {
+  z: number;
+}
+
 export interface GraphEdgePresentation {
   source: GraphNodeReference;
   target: GraphNodeReference;
@@ -19,6 +23,30 @@ export interface GraphEdgePresentation {
 }
 
 export function graphRefKey(ref: GraphNodeReference): string;
+export function graphStateAfterRendererSwitch<T extends { renderMode: string }>(
+  graphState: T,
+  renderMode: string,
+): Omit<T, "renderMode"> & { renderMode: string };
+export function graphRendererVisibility(renderMode: string): {
+  svgHidden: boolean;
+  svgDisplay: string;
+  graph3dHidden: boolean;
+  graph3dDisplay: string;
+};
+export function graphRendererFallback(error: unknown): {
+  renderMode: "2d";
+  message: string;
+};
+export function visibleGraphState(graphState: {
+  focused: boolean;
+  entityDetails?: {
+    entity: GraphNodeReference;
+    neighbors: GraphNodeReference[];
+    edges: GraphEdgePresentation[];
+  };
+  nodes: GraphNodeReference[];
+  edges: GraphEdgePresentation[];
+}): { nodes: GraphNodeReference[]; edges: GraphEdgePresentation[] };
 export function graphCorrectionRequiresRationale(type: string): boolean;
 export function renderRelationshipEditor(
   container: HTMLElement,

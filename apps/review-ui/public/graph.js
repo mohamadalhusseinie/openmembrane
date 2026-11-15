@@ -1,7 +1,41 @@
+import { disposeGraphRenderer, initializeGraphRenderer } from "./graph3d-lifecycle.js";
+
 const svgNamespace = "http://www.w3.org/2000/svg";
 
 export function graphRefKey(ref) {
   return JSON.stringify([ref.kind, ref.id]);
+}
+
+export function graphStateAfterRendererSwitch(graphState, renderMode) {
+  return { ...graphState, renderMode };
+}
+
+export function graphRendererVisibility(renderMode) {
+  const use3d = renderMode === "3d";
+  return {
+    svgHidden: use3d,
+    svgDisplay: use3d ? "none" : "block",
+    graph3dHidden: !use3d,
+    graph3dDisplay: use3d ? "block" : "none",
+  };
+}
+
+export function graphRendererFallback(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    renderMode: "2d",
+    message: `3D graph unavailable: ${message} The 2D graph and list remain available.`,
+  };
+}
+
+export function visibleGraphState(graphState) {
+  if (graphState.focused && graphState.entityDetails) {
+    return {
+      nodes: [graphState.entityDetails.entity, ...graphState.entityDetails.neighbors],
+      edges: graphState.entityDetails.edges,
+    };
+  }
+  return { nodes: graphState.nodes, edges: graphState.edges };
 }
 
 export function buildGraphQuery(search, kinds, relationshipTypes) {
@@ -91,6 +125,10 @@ const state = {
   panX: 0,
   panY: 0,
   showList: false,
+  renderMode: "2d",
+  graph3d: undefined,
+  rendererRequestId: 0,
+  filters: { search: "", kinds: [], relationshipTypes: [] },
   requestId: 0,
   detailRequestId: 0,
   scene: undefined,
@@ -120,6 +158,18 @@ function selectedValues(select) {
   return Array.from(select.selectedOptions, option => option.value);
 }
 
+function currentGraphFilters() {
+  return {
+    search: getElement("graph-search").value,
+    kinds: selectedValues(getElement("graph-kinds")),
+    relationshipTypes: selectedValues(getElement("graph-relationships")),
+  };
+}
+
+function graphQuery(filters) {
+  return buildGraphQuery(filters.search, filters.kinds, filters.relationshipTypes);
+}
+
 async function apiRequest(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
@@ -138,13 +188,7 @@ function errorText(error) {
 }
 
 function visibleGraph() {
-  if (state.focused && state.entityDetails) {
-    return {
-      nodes: [state.entityDetails.entity, ...state.entityDetails.neighbors],
-      edges: state.entityDetails.edges,
-    };
-  }
-  return { nodes: state.nodes, edges: state.edges };
+  return visibleGraphState(state);
 }
 
 function svgElement(name, attributes = {}) {
@@ -155,7 +199,15 @@ function svgElement(name, attributes = {}) {
 
 function renderGraph() {
   const svg = getElement("graph-canvas");
+  const graph3dCanvas = getElement("graph-3d-canvas");
   const { nodes, edges } = visibleGraph();
+  const visibility = graphRendererVisibility(state.renderMode);
+  const use3d = state.renderMode === "3d";
+  svg.hidden = visibility.svgHidden;
+  svg.style.display = visibility.svgDisplay;
+  graph3dCanvas.hidden = visibility.graph3dHidden;
+  graph3dCanvas.style.display = visibility.graph3dDisplay;
+  if (use3d && state.graph3d) state.graph3d.update(nodes, edges, state.selected);
   const positions = layoutGraphNodes(nodes);
   const scene = svgElement("g");
   const defs = svgElement("defs");
@@ -389,11 +441,8 @@ async function mutateRelationship(input, remove) {
   const requestId = ++state.requestId;
   const detailRequestId = ++state.detailRequestId;
   try {
-    const query = buildGraphQuery(
-      getElement("graph-search").value,
-      selectedValues(getElement("graph-kinds")),
-      selectedValues(getElement("graph-relationships")),
-    );
+    state.filters = currentGraphFilters();
+    const query = graphQuery(state.filters);
     const [graph, detail] = await Promise.all([
       apiRequest(`/api/graph?${query}`),
       selected ? apiRequest(`/api/graph/entities/${encodeURIComponent(selected.kind)}/${encodeURIComponent(selected.id)}`) : undefined,
@@ -527,6 +576,69 @@ function resetInspector() {
   inspector.append(heading, message);
 }
 
+function updateRendererModeControls() {
+  getElement("graph-mode-2d").setAttribute("aria-pressed", String(state.renderMode === "2d"));
+  getElement("graph-mode-3d").setAttribute("aria-pressed", String(state.renderMode === "3d"));
+  const visibility = graphRendererVisibility(state.renderMode);
+  const svg = getElement("graph-canvas");
+  svg.hidden = visibility.svgHidden;
+  svg.style.display = visibility.svgDisplay;
+  const graph3dCanvas = getElement("graph-3d-canvas");
+  graph3dCanvas.hidden = visibility.graph3dHidden;
+  graph3dCanvas.style.display = visibility.graph3dDisplay;
+}
+
+function showGraph3DError(error) {
+  state.rendererRequestId += 1;
+  disposeGraphRenderer(state.graph3d);
+  state.graph3d = undefined;
+  const fallback = graphRendererFallback(error);
+  state.renderMode = fallback.renderMode;
+  updateRendererModeControls();
+  const errorPanel = getElement("graph-3d-error");
+  errorPanel.textContent = fallback.message;
+  errorPanel.hidden = false;
+  renderGraph();
+  setStatus(fallback.message, "error");
+}
+
+async function show3DGraph() {
+  const requestId = ++state.rendererRequestId;
+  Object.assign(state, graphStateAfterRendererSwitch(state, "3d"));
+  getElement("graph-3d-error").hidden = true;
+  updateRendererModeControls();
+  renderGraph();
+  try {
+    const renderer = await initializeGraphRenderer(
+      () => import("./graph3d.js"),
+      () => requestId === state.rendererRequestId && state.renderMode === "3d",
+      rendererModule => rendererModule.createGraph3DRenderer(getElement("graph-3d-canvas"), {
+        onSelect: node => selectNode(node, "graph3d"),
+        onError: showGraph3DError,
+      }),
+    );
+    if (!renderer) return;
+    if (requestId !== state.rendererRequestId || state.renderMode !== "3d") {
+      disposeGraphRenderer(renderer);
+      return;
+    }
+    state.graph3d = renderer;
+    renderGraph();
+  } catch (error) {
+    if (requestId === state.rendererRequestId && state.renderMode === "3d") showGraph3DError(error);
+  }
+}
+
+function show2DGraph() {
+  state.rendererRequestId += 1;
+  disposeGraphRenderer(state.graph3d);
+  state.graph3d = undefined;
+  Object.assign(state, graphStateAfterRendererSwitch(state, "2d"));
+  getElement("graph-3d-error").hidden = true;
+  updateRendererModeControls();
+  renderGraph();
+}
+
 async function reviewCandidate(id, action) {
   try {
     const reason = action === "reject" ? window.prompt("Reason for rejection:") : undefined;
@@ -614,11 +726,8 @@ export async function loadGraph() {
   renderGraph();
   renderList();
   try {
-    const query = buildGraphQuery(
-      getElement("graph-search").value,
-      selectedValues(getElement("graph-kinds")),
-      selectedValues(getElement("graph-relationships")),
-    );
+    state.filters = currentGraphFilters();
+    const query = graphQuery(state.filters);
     const graph = await apiRequest(`/api/graph?${query}`);
     if (requestId !== state.requestId) return;
     state.nodes = graph.nodes;
@@ -729,14 +838,26 @@ function setupPanAndZoom() {
     updateViewport();
   }, { passive: false });
   getElement("graph-zoom-in").addEventListener("click", () => {
+    if (state.renderMode === "3d" && state.graph3d) {
+      state.graph3d.zoomIn();
+      return;
+    }
     state.zoom = Math.min(3, state.zoom * 1.2);
     updateViewport();
   });
   getElement("graph-zoom-out").addEventListener("click", () => {
+    if (state.renderMode === "3d" && state.graph3d) {
+      state.graph3d.zoomOut();
+      return;
+    }
     state.zoom = Math.max(0.5, state.zoom / 1.2);
     updateViewport();
   });
   getElement("graph-reset-view").addEventListener("click", () => {
+    if (state.renderMode === "3d" && state.graph3d) {
+      state.graph3d.resetView();
+      return;
+    }
     state.zoom = 1;
     state.panX = 0;
     state.panY = 0;
@@ -749,6 +870,8 @@ if (typeof document !== "undefined") {
     event.preventDefault();
     loadGraph();
   });
+  getElement("graph-mode-2d").addEventListener("click", show2DGraph);
+  getElement("graph-mode-3d").addEventListener("click", show3DGraph);
   getElement("graph-focus").addEventListener("click", toggleFocus);
   getElement("graph-list-toggle").addEventListener("click", event => {
     state.showList = !state.showList;
@@ -757,5 +880,6 @@ if (typeof document !== "undefined") {
     renderList();
   });
   setupPanAndZoom();
+  window.addEventListener("beforeunload", () => disposeGraphRenderer(state.graph3d));
   window.loadKnowledgeGraph = loadGraph;
 }

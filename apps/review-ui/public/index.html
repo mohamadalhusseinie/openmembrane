@@ -152,6 +152,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .graph-toolbar select[multiple] { min-width: 180px; min-height: 4rem; }
 .graph-viewport { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--bg-secondary); }
 .graph-canvas { display: block; width: 100%; height: 560px; touch-action: none; cursor: grab; }
+.graph-canvas[hidden], .graph-3d-canvas[hidden] { display: none; }
+.graph-3d-canvas { position: relative; width: 100%; height: 560px; touch-action: none; overflow: hidden; cursor: grab; }
+.graph-3d-canvas canvas { display: block; width: 100%; height: 100%; }
+.graph-3d-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.graph-3d-tooltip { position: absolute; z-index: 1; max-width: min(22rem, 80%); padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 0.75rem; pointer-events: none; }
+.graph-mode-controls { display: inline-flex; gap: 0.25rem; }
+.graph-mode-controls button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.graph-3d-error { color: var(--danger); padding: 0.5rem 0; font-size: 0.8rem; }
 .graph-canvas.is-panning { cursor: grabbing; }
 .graph-edge { stroke-width: 1.5; opacity: 0.65; }
 .graph-edge-origin-inferred { stroke: #6366f1; }
@@ -195,8 +203,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .graph-list-view { margin-top: 1rem; overflow-x: auto; }
 .graph-list-view button { color: var(--accent); background: none; border: 0; cursor: pointer; text-align: left; font: inherit; text-decoration: underline; }
 .graph-status { min-height: 1.5rem; padding: 0.4rem 0; color: var(--text-muted); font-size: 0.8rem; }
-@media (max-width: 760px) { .graph-layout { grid-template-columns: 1fr; } .graph-canvas { height: 420px; } }
+@media (max-width: 760px) { .graph-layout { grid-template-columns: 1fr; } .graph-canvas, .graph-3d-canvas { height: 420px; } }
 </style>
+<script type="importmap">
+{"imports":{"three":"/vendor/three.module.js"}}
+</script>
 </head>
 <body>
 <h1>OpenMembrane</h1>
@@ -282,12 +293,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <option value="derived_from">Derived from</option><option value="tagged_with">Tagged with</option>
     </select></label>
     <button class="btn btn-primary" type="submit">Apply filters</button>
+    <span class="graph-mode-controls" role="group" aria-label="Graph rendering mode">
+      <button class="btn" type="button" id="graph-mode-2d" aria-label="2D graph view" aria-pressed="true" title="Switch to the accessible 2D graph while keeping filters and selection.">2D</button>
+      <button class="btn" type="button" id="graph-mode-3d" aria-label="3D graph view" aria-pressed="false" title="Explore the graph in 3D. Drag to orbit, right-drag to pan, and scroll to zoom.">3D</button>
+    </span>
     <button class="btn" type="button" id="graph-focus" disabled>Focus neighborhood</button>
     <button class="btn" type="button" id="graph-zoom-in" aria-label="Zoom in">+</button>
     <button class="btn" type="button" id="graph-zoom-out" aria-label="Zoom out">−</button>
     <button class="btn" type="button" id="graph-reset-view">Reset view</button>
     <button class="btn" type="button" id="graph-list-toggle" aria-pressed="false">Show list</button>
   </form>
+  <p id="graph-3d-error" class="graph-3d-error" role="alert" hidden></p>
   <div id="graph-status" class="graph-status" role="status" aria-live="polite">Loading graph…</div>
   <div class="graph-legend" aria-label="Graph legend">
     <span><i class="graph-swatch" style="--swatch:#2563eb"></i>Memory</span>
@@ -302,7 +318,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   </div>
   <div class="graph-layout">
     <div>
-      <div id="graph-viewport" class="graph-viewport"><svg id="graph-canvas" class="graph-canvas" viewBox="0 0 1000 700" role="group" aria-label="Knowledge graph"></svg></div>
+      <div id="graph-viewport" class="graph-viewport"><svg id="graph-canvas" class="graph-canvas" viewBox="0 0 1000 700" role="group" aria-label="Knowledge graph"></svg><div id="graph-3d-canvas" class="graph-3d-canvas" role="group" aria-label="3D knowledge graph" hidden></div></div>
       <div id="graph-list" class="graph-list-view" hidden></div>
     </div>
     <aside id="graph-inspector" class="graph-panel" aria-live="polite">
