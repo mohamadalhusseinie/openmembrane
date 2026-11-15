@@ -1,6 +1,7 @@
 export interface GraphNodeReference {
   kind: string;
   id: string;
+  type?: string;
 }
 
 export interface GraphPosition {
@@ -40,6 +41,8 @@ export function graphRendererFallback(error: unknown): {
 };
 export function visibleGraphState(graphState: {
   focused: boolean;
+  exploration?: string;
+  memoryType?: string;
   entityDetails?: {
     entity: GraphNodeReference;
     neighbors: GraphNodeReference[];
@@ -48,6 +51,9 @@ export function visibleGraphState(graphState: {
   nodes: GraphNodeReference[];
   edges: GraphEdgePresentation[];
 }): { nodes: GraphNodeReference[]; edges: GraphEdgePresentation[] };
+export function graphKnowledgeOverview<T extends GraphNodeReference>(nodes: T[]): {
+  saved: T[]; proposals: T[]; evidenceCount: number; memoryTypes: Array<{ type: string; count: number }>;
+};
 export function graphCorrectionRequiresRationale(type: string): boolean;
 export function renderRelationshipEditor(
   container: HTMLElement,

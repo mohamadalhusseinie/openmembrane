@@ -26,6 +26,18 @@ knowledge, and explicit decision consequences over dashboard decoration.
 - Use semantic navigation, native buttons and disclosures, visible focus,
   descriptive labels, a skip link, and live status regions. Move focus to the
   heading after view changes and completed queue decisions.
+- Start the graph with a loaded-data knowledge overview, not an all-entity
+  hairball. Saved memory types are real metadata, not inferred semantic topics;
+  proposals and supporting evidence stay distinct. Keep all-item exploration
+  explicit and retain filters across exploration and renderer changes.
+- Give the graph a large, viewport-oriented stage with in-app expand/restore.
+  Selection reveals a content-first inspector with its own desktop scroll
+  region; technical metadata, evidence, and link editing use disclosures.
+  On narrow screens the inspector follows the stage and remains scrollable.
+- Fit and center visible graph bounds; cap 3D node screen size rather than
+  letting foreground geometry obscure the workspace. Transitions are short,
+  user-triggered, cancellable, and disabled for reduced motion. Remain still
+  when idle.
 
 Implementation: `public/workspace.css` defines the workspace layer over the
 existing graph and review controls in `public/index.html`. Existing graph colors

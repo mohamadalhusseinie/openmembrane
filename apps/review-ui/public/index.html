@@ -320,6 +320,12 @@ FORM: Familiar developer-tool conventions, explicitly selected by the user; no d
 </div>
 
 <div id="tab-graph" class="tab-content">
+  <section id="graph-workspace" aria-label="Project knowledge workspace" tabindex="-1">
+  <div class="graph-workspace-heading">
+    <h2 id="graph-workspace-title">What this project knows</h2>
+    <button class="btn" type="button" id="graph-expand" aria-pressed="false">Expand workspace</button>
+    <p id="graph-demo-notice" class="hint" hidden>Synthetic demo data. No real project memories are loaded; writes are disabled.</p>
+  </div>
   <form id="graph-filters" aria-label="Filter knowledge graph">
     <div class="graph-search-row">
       <label class="graph-search-field" for="graph-search">Search graph
@@ -364,20 +370,30 @@ FORM: Familiar developer-tool conventions, explicitly selected by the user; no d
       <p id="graph-filter-draft" role="status" hidden>Changes not applied. Use Apply filters to update the graph.</p>
     </div>
   </form>
-  <div class="graph-toolbar graph-view-controls" role="group" aria-label="Graph view and camera controls">
+  <div id="graph-view-controls" class="graph-toolbar graph-view-controls" role="group" aria-label="Graph view and camera controls">
+    <button class="btn" type="button" id="graph-overview-back" hidden>Knowledge overview</button>
+    <span id="graph-exploration-controls" class="graph-exploration-controls" hidden>
     <span class="graph-controls-label">View</span>
     <span class="graph-mode-controls" role="group" aria-label="Graph rendering mode">
       <button class="btn" type="button" id="graph-mode-2d" aria-label="2D graph view" aria-pressed="true" title="Switch to the accessible 2D graph while keeping filters and selection.">2D</button>
       <button class="btn" type="button" id="graph-mode-3d" aria-label="3D graph view" aria-pressed="false" title="Explore the graph in 3D. Drag to orbit, right-drag to pan, and scroll to zoom.">3D</button>
     </span>
-    <button class="btn" type="button" id="graph-focus" disabled>Focus neighborhood</button>
-    <button class="btn" type="button" id="graph-zoom-in" aria-label="Zoom in">+</button>
-    <button class="btn" type="button" id="graph-zoom-out" aria-label="Zoom out">−</button>
-    <button class="btn" type="button" id="graph-reset-view">Reset view</button>
+    <button class="btn" type="button" id="graph-reset-view">Fit graph</button>
     <button class="btn" type="button" id="graph-list-toggle" aria-pressed="false">Show list</button>
+    <button class="btn" type="button" id="graph-details-toggle" aria-expanded="false" aria-controls="graph-inspector" disabled>Details</button>
+    <details class="graph-camera-controls"><summary>Navigate</summary><div>
+      <button class="btn" type="button" id="graph-focus" disabled>Focus neighborhood</button>
+      <button class="btn" type="button" id="graph-center-selection" disabled>Center selection</button>
+      <button class="btn" type="button" id="graph-zoom-in" aria-label="Zoom in">+</button>
+      <button class="btn" type="button" id="graph-zoom-out" aria-label="Zoom out">−</button>
+    </div></details>
+    </span>
   </div>
   <p id="graph-3d-error" class="graph-3d-error" role="alert" hidden></p>
+  <div class="graph-context-row">
   <div id="graph-status" class="graph-status" role="status" aria-live="polite">Loading graph…</div>
+  <details id="graph-legend-details" class="graph-legend-details" hidden><summary>Graph legend and navigation</summary>
+  <p class="hint">Select an item to read it. Focus neighborhood shows its immediate connections. In 2D drag to pan; in 3D drag to orbit and right-drag to pan. Scroll or use the zoom buttons. Fit graph recovers the current view.</p>
   <div class="graph-legend" aria-label="Graph legend">
     <span><i class="graph-swatch" style="--swatch:#2563eb"></i>Memory</span>
     <span><i class="graph-swatch" style="--swatch:#9333ea"></i>Candidate</span>
@@ -389,15 +405,19 @@ FORM: Familiar developer-tool conventions, explicitly selected by the user; no d
     <span><i class="graph-line dashed" style="--swatch:#16a34a"></i>Manual</span>
     <span><i class="graph-line dotted" style="--swatch:#f59e0b"></i>Derived</span>
   </div>
-  <div class="graph-layout">
-    <div>
+  </details>
+  </div>
+  <div id="graph-layout" class="graph-layout">
+    <div class="graph-stage">
+      <div id="graph-overview" class="graph-overview" tabindex="-1" aria-label="Knowledge overview"></div>
       <div id="graph-viewport" class="graph-viewport"><svg id="graph-canvas" class="graph-canvas" viewBox="0 0 1000 700" role="group" aria-label="Knowledge graph"></svg><div id="graph-3d-canvas" class="graph-3d-canvas" role="group" aria-label="3D knowledge graph" hidden></div></div>
       <div id="graph-list" class="graph-list-view" hidden></div>
     </div>
-    <aside id="graph-inspector" class="graph-panel" aria-live="polite">
-      <h2>Node inspector</h2><p class="hint">Select a graph node to inspect its details and relationships.</p>
+    <aside id="graph-inspector" class="graph-panel" tabindex="0" aria-label="Selected item details" hidden>
+      <h2>Item details</h2><p class="hint">Select an item to read its content and connections.</p>
     </aside>
   </div>
+  </section>
 </div>
 
 <div id="tab-stale" class="tab-content">
@@ -457,6 +477,7 @@ const pageCopy = {
 function switchTab(name, focus = true) {
   if (!Object.hasOwn(pageCopy, name)) return;
   currentTab = name;
+  window.setKnowledgeGraphVisible?.(name === 'graph');
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => {
     el.classList.remove('active');

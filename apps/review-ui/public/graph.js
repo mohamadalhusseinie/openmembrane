@@ -1,4 +1,5 @@
 import { disposeGraphRenderer, initializeGraphRenderer } from "./graph3d-lifecycle.js";
+import { createGraphTransition, graph2DFrame } from "./graph-navigation.js";
 
 const svgNamespace = "http://www.w3.org/2000/svg";
 
@@ -55,7 +56,25 @@ export function visibleGraphState(graphState) {
       edges: graphState.entityDetails.edges,
     };
   }
-  return { nodes: graphState.nodes, edges: graphState.edges };
+  const scope = graphState.exploration;
+  const nodes = graphState.nodes.filter(node =>
+    (!scope || scope === "all" || scope === "overview" ||
+      (scope === "evidence" ? !["memory", "candidate"].includes(node.kind) : node.kind === scope)) &&
+    (graphState.memoryType === undefined || (node.type ?? "") === graphState.memoryType));
+  const keys = new Set(nodes.map(graphRefKey));
+  return { nodes, edges: graphState.edges.filter(edge => keys.has(graphRefKey(edge.source)) && keys.has(graphRefKey(edge.target))) };
+}
+
+export function graphKnowledgeOverview(nodes) {
+  const saved = nodes.filter(node => node.kind === "memory");
+  const proposals = nodes.filter(node => node.kind === "candidate");
+  const types = new Map();
+  saved.forEach(node => types.set(node.type ?? "", (types.get(node.type ?? "") ?? 0) + 1));
+  return {
+    saved, proposals, evidenceCount: nodes.length - saved.length - proposals.length,
+    memoryTypes: Array.from(types, ([type, count]) => ({ type, count }))
+      .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type)),
+  };
 }
 
 export function buildGraphQuery(search, kinds, relationshipTypes) {
@@ -153,7 +172,17 @@ const state = {
   detailRequestId: 0,
   scene: undefined,
   mutating: false,
+  exploration: "overview",
+  memoryType: undefined,
+  inspectorOpen: false,
+  loadStatus: "loading",
+  expanded: false,
+  expansionAnimation: undefined,
 };
+
+const viewportTransition = createGraphTransition();
+let restoreWorkspaceFocus;
+let workspaceInertSiblings = [];
 
 function getElement(id) {
   return document.getElementById(id);
@@ -166,6 +195,10 @@ function setStatus(message, kind = "") {
 }
 
 function updateGraphStatus() {
+  if (state.exploration === "overview") {
+    setStatus(`Overview of ${state.nodes.length} loaded items and ${state.edges.length} connections${state.graphTruncated ? " — results limited" : ""}. Not project-wide totals.`);
+    return;
+  }
   const { nodes, edges } = visibleGraph();
   const truncated = state.focused && state.entityDetails
     ? state.entityDetails.truncated
@@ -221,12 +254,17 @@ function setupGraphFilters() {
   form.addEventListener("change", updateFilterFeedback);
   form.addEventListener("submit", event => {
     event.preventDefault();
-    loadGraph(currentGraphFilters());
+    const filters = currentGraphFilters();
+    state.exploration = filters.search.trim() || filters.kinds.length || filters.relationshipTypes.length ? "all" : "overview";
+    state.memoryType = undefined;
+    loadGraph(filters);
   });
   getElement("graph-clear-filters").addEventListener("click", () => {
     getElement("graph-search").value = "";
     form.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; });
     getElement("graph-search").focus();
+    state.exploration = "overview";
+    state.memoryType = undefined;
     loadGraph(currentGraphFilters());
   });
 }
@@ -252,6 +290,220 @@ function visibleGraph() {
   return visibleGraphState(state);
 }
 
+function motionDuration() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240;
+}
+
+function frameGraph(selectionOnly = false, animate = true) {
+  if (state.renderMode === "3d" && state.graph3d) {
+    if (selectionOnly && state.selected) state.graph3d.focusNode(state.selected);
+    else state.graph3d.resetView(animate);
+    return;
+  }
+  const positions = layoutGraphNodes(visibleGraph().nodes);
+  const points = selectionOnly && state.selected ? [positions.get(graphRefKey(state.selected))].filter(Boolean) : [...positions.values()];
+  const target = graph2DFrame(points);
+  const from = { zoom: state.zoom, panX: state.panX, panY: state.panY };
+  viewportTransition.start(progress => {
+    for (const key of ["zoom", "panX", "panY"]) state[key] = from[key] + (target[key] - from[key]) * progress;
+    updateViewport();
+  }, animate ? motionDuration() : 0);
+}
+
+function setExploration(scope, memoryType) {
+  viewportTransition.cancel();
+  state.graph3d?.cancelTransition();
+  ++state.detailRequestId;
+  state.exploration = scope;
+  state.memoryType = memoryType;
+  state.focused = false;
+  state.selected = undefined;
+  state.entityDetails = undefined;
+  state.inspectorOpen = false;
+  state.showList = false;
+  getElement("graph-list-toggle").textContent = "Show list";
+  getElement("graph-list-toggle").setAttribute("aria-pressed", "false");
+  getElement("graph-focus").textContent = "Focus neighborhood";
+  updateSelectionControls();
+  renderGraph();
+  renderList();
+  frameGraph(false, false);
+  updateGraphStatus();
+  getElement(scope === "overview" ? "graph-overview" : "graph-workspace-title").focus();
+}
+
+function updateSelectionControls() {
+  const hasSelection = Boolean(state.selected);
+  getElement("graph-center-selection").disabled = !hasSelection;
+  getElement("graph-details-toggle").disabled = !hasSelection;
+  getElement("graph-focus").disabled = !state.entityDetails;
+  const showInspector = hasSelection && state.inspectorOpen;
+  getElement("graph-inspector").hidden = !showInspector;
+  getElement("graph-layout").classList.toggle("has-inspector", showInspector);
+  getElement("graph-details-toggle").setAttribute("aria-expanded", String(showInspector));
+}
+
+function renderOverview() {
+  const overview = getElement("graph-overview");
+  overview.replaceChildren();
+  const paragraph = text => {
+    const result = document.createElement("p");
+    result.textContent = text;
+    return result;
+  };
+  if (state.loadStatus !== "ready") {
+    overview.append(paragraph(state.loadStatus === "loading"
+      ? "Loading project knowledge…"
+      : "Knowledge overview unavailable. Use Apply filters or Refresh to retry."));
+    return;
+  }
+  const { saved, proposals, evidenceCount, memoryTypes } = graphKnowledgeOverview(state.nodes);
+  const heading = document.createElement("h3");
+  heading.textContent = "Saved knowledge";
+  overview.append(heading, paragraph(saved.length
+    ? `${saved.length} saved memories in the loaded graph. Start with a memory type or read an example, then explore its connections.`
+    : "No saved memories in the loaded graph. Proposals and supporting evidence are separate below."));
+  const types = document.createElement("div");
+  types.className = "graph-knowledge-types";
+  memoryTypes.forEach(({ type, count }) => {
+    const label = type ? type.replaceAll("_", " ") : "Unspecified type";
+    const button = reviewButton(`${label} (${count})`, () => setExploration("memory", type));
+    button.className = "btn";
+    types.append(button);
+  });
+  if (saved.length) types.append(reviewButton("Explore saved memories", () => setExploration("memory")));
+  overview.append(types);
+  const examples = document.createElement("ul");
+  examples.className = "graph-knowledge-examples";
+  saved.slice(0, 3).forEach(node => {
+    const item = document.createElement("li");
+    const button = reviewButton(node.content || node.label, () => {
+      setExploration("memory");
+      selectNode(node, "overview");
+    });
+    const text = button.textContent;
+    button.textContent = text.length > 180 ? `${text.slice(0, 177)}…` : text;
+    item.append(button);
+    examples.append(item);
+  });
+  overview.append(examples);
+  const row = (title, text, action, scope, count) => {
+    const section = document.createElement("div");
+    section.className = "graph-overview-row";
+    const content = document.createElement("div");
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    content.append(heading, paragraph(text));
+    const button = reviewButton(action, () => setExploration(scope));
+    button.className = "btn";
+    button.disabled = !count;
+    section.append(content, button);
+    overview.append(section);
+  };
+  row("Proposed knowledge", `${proposals.length} memory proposals. Proposals are not the same as saved knowledge; check their status before deciding.`,
+    "Explore proposals", "candidate", proposals.length);
+  row("Supporting evidence", `${evidenceCount} tags, source sessions, activity events, and diagnostics explain where knowledge came from.`,
+    "Explore evidence", "evidence", evidenceCount);
+  const all = reviewButton("Explore all loaded items", () => setExploration("all"));
+  all.className = "btn";
+  all.disabled = !state.nodes.length;
+  overview.append(all);
+}
+
+function updateWorkspaceView() {
+  const overview = state.exploration === "overview";
+  getElement("graph-overview").hidden = !overview;
+  getElement("graph-overview-back").hidden = overview;
+  getElement("graph-exploration-controls").hidden = overview;
+  getElement("graph-view-controls").hidden = overview;
+  getElement("graph-legend-details").hidden = overview;
+  const labels = { overview: "What this project knows", all: "All loaded items", memory: "Saved knowledge", candidate: "Proposed knowledge", evidence: "Supporting evidence" };
+  getElement("graph-workspace-title").textContent = state.memoryType !== undefined
+    ? `Saved knowledge: ${state.memoryType.replaceAll("_", " ") || "Unspecified type"}`
+    : labels[state.exploration];
+  updateSelectionControls();
+  if (overview) renderOverview();
+}
+
+function setWorkspaceExpanded(expanded) {
+  if (state.expanded === expanded) return;
+  const workspace = getElement("graph-workspace");
+  const previous = workspace.getBoundingClientRect();
+  state.expansionAnimation?.cancel();
+  state.expanded = expanded;
+  if (expanded) {
+    restoreWorkspaceFocus = document.activeElement;
+    workspaceInertSiblings = [];
+    for (let ancestor = workspace; ancestor.parentElement; ancestor = ancestor.parentElement) {
+      Array.from(ancestor.parentElement.children).forEach(sibling => {
+        if (sibling !== ancestor) {
+          workspaceInertSiblings.push([sibling, sibling.inert]);
+          sibling.inert = true;
+        }
+      });
+      if (ancestor.parentElement === document.body) break;
+    }
+  } else {
+    workspaceInertSiblings.forEach(([element, inert]) => { element.inert = inert; });
+    workspaceInertSiblings = [];
+  }
+  workspace.classList.toggle("is-expanded", expanded);
+  document.body.classList.toggle("graph-workspace-open", expanded);
+  workspace.setAttribute("role", expanded ? "dialog" : "region");
+  if (expanded) workspace.setAttribute("aria-modal", "true");
+  else workspace.removeAttribute("aria-modal");
+  const toggle = getElement("graph-expand");
+  toggle.textContent = expanded ? "Restore workspace" : "Expand workspace";
+  toggle.setAttribute("aria-pressed", String(expanded));
+  if (expanded) toggle.focus();
+  else restoreWorkspaceFocus?.focus();
+  const next = workspace.getBoundingClientRect();
+  if (motionDuration() && workspace.animate && next.width && next.height) {
+    state.expansionAnimation = workspace.animate([
+      { transformOrigin: "top left", transform: `translate(${previous.left - next.left}px, ${previous.top - next.top}px) scale(${previous.width / next.width}, ${previous.height / next.height})` },
+      { transformOrigin: "top left", transform: "none" },
+    ], { duration: 240, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
+    state.expansionAnimation.onfinish = () => { state.expansionAnimation = undefined; };
+  }
+}
+
+function setupGraphWorkspace() {
+  getElement("graph-workspace-title").tabIndex = -1;
+  getElement("graph-expand").addEventListener("click", () => setWorkspaceExpanded(!state.expanded));
+  getElement("graph-overview-back").addEventListener("click", () => setExploration("overview"));
+  getElement("graph-center-selection").addEventListener("click", () => frameGraph(true));
+  getElement("graph-details-toggle").addEventListener("click", () => {
+    state.inspectorOpen = !state.inspectorOpen;
+    updateSelectionControls();
+    if (state.inspectorOpen) getElement("graph-inspector").focus();
+  });
+  getElement("graph-workspace").addEventListener("keydown", event => {
+    if (!state.expanded || event.defaultPrevented) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setWorkspaceExpanded(false);
+    } else if (event.key === "Tab") {
+      const focusable = Array.from(getElement("graph-workspace").querySelectorAll('button:not(:disabled), input, select, textarea, summary, [tabindex="0"]'))
+        .filter(element => !element.matches(":disabled") && element.getClientRects().length && !element.closest("[hidden]"));
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      viewportTransition.cancel();
+      state.expansionAnimation?.cancel();
+    }
+  });
+}
+
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(svgNamespace, name);
   Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
@@ -259,6 +511,7 @@ function svgElement(name, attributes = {}) {
 }
 
 function renderGraph() {
+  updateWorkspaceView();
   const svg = getElement("graph-canvas");
   const graph3dCanvas = getElement("graph-3d-canvas");
   const { nodes, edges } = visibleGraph();
@@ -268,6 +521,11 @@ function renderGraph() {
   svg.style.display = visibility.svgDisplay;
   graph3dCanvas.hidden = visibility.graph3dHidden;
   graph3dCanvas.style.display = visibility.graph3dDisplay;
+  if (state.exploration === "overview") {
+    state.graph3d?.cancelTransition();
+    getElement("graph-viewport").hidden = true;
+    return;
+  }
   if (use3d && state.graph3d) state.graph3d.update(nodes, edges, state.selected);
   if (!visibility.renderSvg) return;
   const positions = layoutGraphNodes(nodes);
@@ -528,11 +786,52 @@ function renderInspector(node, edges = []) {
   const inspector = getElement("graph-inspector");
   inspector.replaceChildren();
   const heading = document.createElement("h2");
-  heading.textContent = "Node inspector";
-  inspector.append(heading);
+  heading.textContent = graphKindLabels[node.kind] ?? "Item details";
+  const headingRow = document.createElement("div");
+  headingRow.className = "graph-item-heading";
+  const close = reviewButton("Close", () => {
+    state.inspectorOpen = false;
+    updateSelectionControls();
+    getElement("graph-details-toggle").focus();
+  });
+  close.className = "btn";
+  headingRow.append(heading, close);
+  inspector.append(headingRow);
   const label = document.createElement("h3");
   label.textContent = node.label;
   inspector.append(label);
+  const content = [...new Set([node.content, node.summary, node.sourceExcerpt].filter(Boolean))];
+  if (!content.length) content.push("No additional text is stored for this item.");
+  content.forEach(value => {
+    const paragraph = document.createElement("p");
+    paragraph.className = "graph-item-content";
+    paragraph.textContent = value;
+    inspector.append(paragraph);
+  });
+  if (node.status) {
+    const status = document.createElement("p");
+    status.className = "hint";
+    status.textContent = `Status: ${node.status.replaceAll("_", " ")}`;
+    inspector.append(status);
+  }
+  if (node.kind === "memory" && node.status === "active" && node.content) {
+    inspector.append(reviewButton("Review or edit memory", () => {
+      setWorkspaceExpanded(false);
+      window.dispatchEvent(new CustomEvent("review-graph-memory", { detail: node }));
+    }));
+  }
+  if (node.kind === "candidate" && node.content) {
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    actions.append(
+      reviewButton("Approve", () => reviewCandidate(node.id, "approve")),
+      reviewButton("Reject", () => reviewCandidate(node.id, "reject")),
+    );
+    inspector.append(actions);
+  }
+  const technical = document.createElement("details");
+  const technicalSummary = document.createElement("summary");
+  technicalSummary.textContent = "Technical metadata";
   const properties = document.createElement("dl");
   properties.className = "graph-properties";
   appendProperty(properties, "Kind", node.kind);
@@ -549,66 +848,59 @@ function renderInspector(node, edges = []) {
   appendProperty(properties, "Created", node.createdAt ? new Date(node.createdAt).toLocaleString() : undefined);
   appendProperty(properties, "Updated", node.updatedAt ? new Date(node.updatedAt).toLocaleString() : undefined);
   appendProperty(properties, "Tags", node.tags);
-  inspector.append(properties);
-  if (node.content || node.summary || node.sourceExcerpt) {
-    const detailsHeading = document.createElement("h3");
-    detailsHeading.textContent = "Details";
-    inspector.append(detailsHeading);
-    [node.content, node.summary, node.sourceExcerpt].filter(Boolean).forEach(value => {
-      const paragraph = document.createElement("p");
-      paragraph.className = "hint";
-      paragraph.textContent = value;
-      inspector.append(paragraph);
-    });
-  }
-  if (node.kind === "memory" && node.status === "active" && node.content) {
-    inspector.append(reviewButton("Review or edit memory", () => {
-      window.dispatchEvent(new CustomEvent("review-graph-memory", { detail: node }));
-    }));
-  }
-  if (node.kind === "candidate" && node.content) {
-    const actions = document.createElement("div");
-    actions.className = "card-actions";
-    actions.append(
-      reviewButton("Approve", () => reviewCandidate(node.id, "approve")),
-      reviewButton("Reject", () => reviewCandidate(node.id, "reject")),
-    );
-    inspector.append(actions);
-  }
+  technical.append(technicalSummary, properties);
   const relationshipsHeading = document.createElement("h3");
-  relationshipsHeading.textContent = `Relationships (${edges.length})`;
-  inspector.append(relationshipsHeading);
+  relationshipsHeading.textContent = `Connections (${edges.length})`;
+  const neighborhood = reviewButton(state.focused ? "Show category graph" : "Explore this neighborhood", toggleFocus);
+  neighborhood.className = "btn";
+  inspector.append(relationshipsHeading, neighborhood);
+  const editing = document.createElement("details");
+  const editingSummary = document.createElement("summary");
+  editingSummary.textContent = "Relationship editing";
+  editing.append(editingSummary);
   const editor = document.createElement("div");
   const openEditor = (edge, remove = false) => {
+    editing.open = true;
     renderRelationshipEditor(editor, node, [...state.nodes, ...(state.entityDetails?.neighbors ?? [])], edge, remove, mutateRelationship);
     editor.querySelector("select, textarea")?.focus();
   };
   const add = reviewButton("Add relationship", () => openEditor());
   add.disabled = state.mutating;
   add.setAttribute("data-graph-edit-control", "");
-  inspector.append(add, editor);
+  editing.append(add, editor);
   const list = document.createElement("ul");
   list.className = "graph-relations";
+  const knownNodes = new Map([...state.nodes, ...(state.entityDetails?.neighbors ?? [])].map(item => [graphRefKey(item), item]));
   edges.forEach(edge => {
     const item = document.createElement("li");
     const description = graphRelationshipDescription(edge, node);
     const relationship = document.createElement("strong");
     relationship.className = `graph-relation-type graph-edge-origin-${edge.origin}`;
-    relationship.textContent = description.label;
+    const outgoing = graphRefKey(edge.source) === graphRefKey(node);
+    const neighborRef = outgoing ? edge.target : edge.source;
+    const neighbor = knownNodes.get(graphRefKey(neighborRef));
+    relationship.textContent = `${graphRelationshipLabels[edge.type] ?? edge.type}${outgoing ? "" : " (incoming)"}`;
+    const neighborButton = reviewButton(neighbor?.label ?? `${graphKindLabels[neighborRef.kind] ?? neighborRef.kind}: ${neighborRef.id}`, () => selectNode(neighbor ?? neighborRef, "inspector"));
+    neighborButton.className = "graph-neighbor";
+    const evidence = document.createElement("details");
+    const evidenceSummary = document.createElement("summary");
+    evidenceSummary.textContent = "Evidence and link actions";
+    evidence.append(evidenceSummary);
     const provenance = document.createElement("span");
     provenance.className = "graph-relation-provenance";
     provenance.textContent = description.provenance;
-    item.append(relationship, provenance);
+    item.append(relationship, neighborButton);
+    evidence.append(provenance);
     if (description.createdAt) {
       const timestamp = document.createElement("time");
       timestamp.dateTime = description.createdAt;
       timestamp.textContent = new Date(description.createdAt).toLocaleString();
-      item.append(timestamp);
+      evidence.append(timestamp);
     }
     if (description.rationale) {
       const rationale = document.createElement("p");
       rationale.textContent = description.rationale;
-      item.append(rationale);
+      evidence.append(rationale);
     }
     const actions = document.createElement("div");
     actions.className = "card-actions";
@@ -620,21 +912,30 @@ function renderInspector(node, edges = []) {
     override.setAttribute("data-graph-edit-control", "");
     remove.setAttribute("data-graph-edit-control", "");
     actions.append(override, remove);
-    item.append(actions);
+    evidence.append(actions);
+    item.append(evidence);
     list.append(item);
   });
-  inspector.append(list);
+  if (!edges.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "No connections returned for this item.";
+    inspector.append(empty);
+  }
+  inspector.append(list, editing, technical);
+  updateSelectionControls();
 }
 
 function resetInspector() {
   const inspector = getElement("graph-inspector");
   inspector.replaceChildren();
   const heading = document.createElement("h2");
-  heading.textContent = "Node inspector";
+  heading.textContent = "Item details";
   const message = document.createElement("p");
   message.className = "hint";
-  message.textContent = "Select a graph node to inspect its details and relationships.";
+  message.textContent = "Select an item to read its content and connections.";
   inspector.append(heading, message);
+  updateSelectionControls();
 }
 
 function updateRendererModeControls() {
@@ -650,6 +951,7 @@ function updateRendererModeControls() {
 }
 
 function showGraph3DError(error) {
+  viewportTransition.cancel();
   state.rendererRequestId += 1;
   disposeGraphRenderer(state.graph3d);
   state.graph3d = undefined;
@@ -664,6 +966,7 @@ function showGraph3DError(error) {
 }
 
 async function show3DGraph() {
+  viewportTransition.cancel();
   const nextState = graphStateAfterRendererSwitch(state, "3d");
   if (nextState === state) return;
   Object.assign(state, nextState);
@@ -732,10 +1035,14 @@ function nodeControl(node, view) {
 }
 
 async function selectNode(node, view, control) {
+  viewportTransition.cancel();
+  state.graph3d?.cancelTransition();
   const detailRequestId = ++state.detailRequestId;
   const shouldRestoreFocus = control && document.activeElement === control;
   state.selected = node;
   state.entityDetails = undefined;
+  state.inspectorOpen = true;
+  updateSelectionControls();
   updateGraphListSelection(
     getElement("graph-list").querySelectorAll("button[data-graph-node]"),
     node,
@@ -752,17 +1059,21 @@ async function selectNode(node, view, control) {
     if (detailRequestId !== state.detailRequestId || !state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
     const shouldKeepFocus = shouldRestoreFocus && document.activeElement === focusedControl;
     state.entityDetails = detail;
+    if (view === "overview" || view === "inspector") state.focused = true;
     getElement("graph-focus").disabled = false;
+    getElement("graph-focus").textContent = state.focused ? "Show category graph" : "Focus neighborhood";
     renderInspector(detail.entity, detail.edges);
     if (state.focused) {
       renderGraph();
       renderList();
+      frameGraph();
     }
     updateGraphStatus();
     if (shouldKeepFocus) {
       focusedControl = nodeControl(node, view);
       focusedControl?.focus();
     }
+    if (view === "overview" || view === "inspector") inspector.focus();
   } catch (error) {
     if (detailRequestId !== state.detailRequestId || !state.selected || graphRefKey(state.selected) !== graphRefKey(node)) return;
     inspector.textContent = `Could not load node details: ${errorText(error)}`;
@@ -771,6 +1082,7 @@ async function selectNode(node, view, control) {
 }
 
 export async function loadGraph(filters = state.filters) {
+  viewportTransition.cancel();
   const requestId = ++state.requestId;
   ++state.detailRequestId;
   state.selected = undefined;
@@ -782,6 +1094,8 @@ export async function loadGraph(filters = state.filters) {
   state.nodes = [];
   state.edges = [];
   state.graphTruncated = false;
+  state.inspectorOpen = false;
+  state.loadStatus = "loading";
   getElement("graph-focus").textContent = "Focus neighborhood";
   getElement("graph-focus").disabled = true;
   setStatus("Loading graph…", "loading");
@@ -797,8 +1111,10 @@ export async function loadGraph(filters = state.filters) {
     state.nodes = graph.nodes;
     state.edges = graph.edges;
     state.graphTruncated = graph.truncated;
+    state.loadStatus = "ready";
     renderGraph();
     renderList();
+    frameGraph(false, false);
     updateGraphStatus();
     if (state.selected) renderInspector(state.selected, []);
   } catch (error) {
@@ -806,6 +1122,7 @@ export async function loadGraph(filters = state.filters) {
     state.nodes = [];
     state.edges = [];
     state.graphTruncated = false;
+    state.loadStatus = "error";
     renderGraph();
     renderList();
     setStatus(error.code === "VALIDATION_ERROR"
@@ -818,9 +1135,10 @@ function renderList() {
   const container = getElement("graph-list");
   const { nodes, edges } = visibleGraph();
   container.replaceChildren();
-  getElement("graph-viewport").hidden = state.showList;
-  container.hidden = !state.showList;
-  if (!nodes.length) return;
+  const overview = state.exploration === "overview";
+  getElement("graph-viewport").hidden = overview || state.showList;
+  container.hidden = overview || !state.showList;
+  if (!nodes.length || overview) return;
   const table = document.createElement("table");
   const header = document.createElement("thead");
   const headerRow = document.createElement("tr");
@@ -867,9 +1185,11 @@ function renderList() {
 function toggleFocus() {
   if (!state.selected || !state.entityDetails) return;
   state.focused = !state.focused;
-  getElement("graph-focus").textContent = state.focused ? "Show full graph" : "Focus neighborhood";
+  getElement("graph-focus").textContent = state.focused ? "Show category graph" : "Focus neighborhood";
   renderGraph();
   renderList();
+  renderInspector(state.entityDetails.entity, state.entityDetails.edges);
+  frameGraph();
   updateGraphStatus();
 }
 
@@ -878,6 +1198,7 @@ function setupPanAndZoom() {
   let drag;
   svg.addEventListener("pointerdown", event => {
     if (event.target.closest(".graph-node")) return;
+    viewportTransition.cancel();
     drag = { x: event.clientX, y: event.clientY, panX: state.panX, panY: state.panY };
     svg.setPointerCapture(event.pointerId);
     svg.classList.add("is-panning");
@@ -898,39 +1219,46 @@ function setupPanAndZoom() {
   svg.addEventListener("pointercancel", stopDragging);
   svg.addEventListener("wheel", event => {
     event.preventDefault();
-    state.zoom = Math.max(0.5, Math.min(3, state.zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
-    updateViewport();
+    zoom2D(event.deltaY < 0 ? 1.15 : 1 / 1.15);
   }, { passive: false });
   getElement("graph-zoom-in").addEventListener("click", () => {
     if (state.renderMode === "3d" && state.graph3d) {
       state.graph3d.zoomIn();
       return;
     }
-    state.zoom = Math.min(3, state.zoom * 1.2);
-    updateViewport();
+    zoom2D(1.2);
   });
   getElement("graph-zoom-out").addEventListener("click", () => {
     if (state.renderMode === "3d" && state.graph3d) {
       state.graph3d.zoomOut();
       return;
     }
-    state.zoom = Math.max(0.5, state.zoom / 1.2);
-    updateViewport();
+    zoom2D(1 / 1.2);
   });
   getElement("graph-reset-view").addEventListener("click", () => {
-    if (state.renderMode === "3d" && state.graph3d) {
-      state.graph3d.resetView();
-      return;
-    }
-    state.zoom = 1;
-    state.panX = 0;
-    state.panY = 0;
-    updateViewport();
+    frameGraph();
   });
+}
+
+function zoom2D(factor) {
+  const from = { zoom: state.zoom, panX: state.panX, panY: state.panY };
+  const zoom = Math.max(0.5, Math.min(3, state.zoom * factor));
+  const ratio = zoom / state.zoom;
+  const target = { zoom, panX: 500 - (500 - state.panX) * ratio, panY: 350 - (350 - state.panY) * ratio };
+  viewportTransition.start(progress => {
+    for (const key of ["zoom", "panX", "panY"]) state[key] = from[key] + (target[key] - from[key]) * progress;
+    updateViewport();
+  }, motionDuration());
 }
 
 if (typeof document !== "undefined") {
   setupGraphFilters();
+  setupGraphWorkspace();
+  apiRequest("/api/project").then(project => {
+    getElement("graph-demo-notice").hidden = project.syntheticPreview !== true;
+  }).catch(error => {
+    setStatus(`Project context unavailable: ${errorText(error)}`, "error");
+  });
   getElement("graph-mode-2d").addEventListener("click", show2DGraph);
   getElement("graph-mode-3d").addEventListener("click", show3DGraph);
   getElement("graph-focus").addEventListener("click", toggleFocus);
@@ -938,9 +1266,22 @@ if (typeof document !== "undefined") {
     state.showList = !state.showList;
     event.currentTarget.textContent = state.showList ? "Hide list" : "Show list";
     event.currentTarget.setAttribute("aria-pressed", String(state.showList));
+    viewportTransition.cancel();
+    state.graph3d?.cancelTransition();
     renderList();
   });
   setupPanAndZoom();
-  window.addEventListener("beforeunload", () => disposeGraphRenderer(state.graph3d));
+  window.addEventListener("beforeunload", () => {
+    viewportTransition.cancel();
+    state.expansionAnimation?.cancel();
+    disposeGraphRenderer(state.graph3d);
+  });
   window.loadKnowledgeGraph = loadGraph;
+  window.setKnowledgeGraphVisible = visible => {
+    if (visible) return;
+    viewportTransition.cancel();
+    state.graph3d?.cancelTransition();
+    state.expansionAnimation?.cancel();
+    setWorkspaceExpanded(false);
+  };
 }
