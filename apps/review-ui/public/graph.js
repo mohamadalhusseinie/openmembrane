@@ -7,6 +7,7 @@ export function graphRefKey(ref) {
 }
 
 export function graphStateAfterRendererSwitch(graphState, renderMode) {
+  if (graphState.renderMode === renderMode) return graphState;
   return { ...graphState, renderMode };
 }
 
@@ -603,8 +604,10 @@ function showGraph3DError(error) {
 }
 
 async function show3DGraph() {
+  const nextState = graphStateAfterRendererSwitch(state, "3d");
+  if (nextState === state) return;
+  Object.assign(state, nextState);
   const requestId = ++state.rendererRequestId;
-  Object.assign(state, graphStateAfterRendererSwitch(state, "3d"));
   getElement("graph-3d-error").hidden = true;
   updateRendererModeControls();
   renderGraph();

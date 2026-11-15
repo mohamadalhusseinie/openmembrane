@@ -7,3 +7,9 @@ export async function initializeGraphRenderer(loadModule, isCurrent, mount) {
 export function disposeGraphRenderer(renderer) {
   renderer?.destroy();
 }
+
+export function clearGraphObjects(scene, objects, instancedMeshes, resources) {
+  objects.forEach(object => scene.remove(object));
+  instancedMeshes.forEach(mesh => mesh.dispose());
+  resources.forEach(resource => resource.dispose());
+}

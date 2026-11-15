@@ -15,8 +15,8 @@ import {
   updateGraphListSelection,
   visibleGraphState,
 } from "../../../apps/review-ui/public/graph.js";
-import { graph3dEdgeStyle, graph3dMotionSettings, layoutGraphNodes3D } from "../../../apps/review-ui/public/graph3d-layout.js";
-import { disposeGraphRenderer, initializeGraphRenderer } from "../../../apps/review-ui/public/graph3d-lifecycle.js";
+import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "../../../apps/review-ui/public/graph3d-layout.js";
+import { clearGraphObjects, disposeGraphRenderer, initializeGraphRenderer } from "../../../apps/review-ui/public/graph3d-lifecycle.js";
 
 class EditorElement {
   children: EditorElement[] = [];
@@ -203,6 +203,7 @@ describe("knowledge graph explorer helpers", () => {
 
     const in3d = graphStateAfterRendererSwitch(graphState, "3d");
     const backIn2d = graphStateAfterRendererSwitch(in3d, "2d");
+    expect(graphStateAfterRendererSwitch(in3d, "3d")).toBe(in3d);
     expect(in3d.filters).toBe(graphState.filters);
     expect(in3d.selected).toBe(node);
     expect(in3d.focused).toBe(true);
@@ -265,6 +266,21 @@ describe("knowledge graph explorer helpers", () => {
     expect(renderer.destroy).toHaveBeenCalledOnce();
   });
 
+  it("removes graph edges and nodes before disposing meshes and their resources", () => {
+    const nodeMesh = { dispose: vi.fn() };
+    const edgeObject = {};
+    const geometry = { dispose: vi.fn() };
+    const material = { dispose: vi.fn() };
+    const scene = { remove: vi.fn() };
+
+    clearGraphObjects(scene, [nodeMesh, edgeObject], [nodeMesh], [geometry, material]);
+
+    expect(scene.remove.mock.calls).toEqual([[nodeMesh], [edgeObject]]);
+    expect(nodeMesh.dispose).toHaveBeenCalledOnce();
+    expect(geometry.dispose).toHaveBeenCalledOnce();
+    expect(material.dispose).toHaveBeenCalledOnce();
+  });
+
   it("respects reduced motion and distinguishes all relationship origins without color alone", () => {
     expect(graph3dMotionSettings(true)).toEqual({
       enableDamping: false,
@@ -275,6 +291,14 @@ describe("knowledge graph explorer helpers", () => {
     expect(graph3dEdgeStyle("inferred")).toEqual({ color: "#6366f1" });
     expect(graph3dEdgeStyle("manual")).toEqual({ color: "#16a34a", dashSize: 8, gapSize: 5 });
     expect(graph3dEdgeStyle("derived")).toEqual({ color: "#f59e0b", dashSize: 2, gapSize: 4 });
+  });
+
+  it("recognizes unchanged graph data to preserve 3D layout and scene objects during selection", () => {
+    const node = { kind: "memory", id: "m1" };
+    const edge = { source: node, target: { kind: "candidate", id: "c1" } };
+    expect(graphDataUnchanged([node], [edge], [node], [edge])).toBe(true);
+    expect(graphDataUnchanged([node], [edge], [node], [{ ...edge }])).toBe(false);
+    expect(graphDataUnchanged([node], [edge], [], [edge])).toBe(false);
   });
 
   it("places linked nodes in deterministic 3D space for the 500-entity interaction target", () => {

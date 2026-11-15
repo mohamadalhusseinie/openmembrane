@@ -39,6 +39,8 @@ describe("review-ui static file serving", () => {
     expect(html).toContain('id="graph-mode-2d"');
     expect(html).toContain('id="graph-mode-3d"');
     expect(html).toContain('id="graph-list-toggle"');
+    expect(html).toContain('class="graph-line dashed" style="--swatch:#16a34a"></i>Manual');
+    expect(html).toContain('class="graph-line dotted" style="--swatch:#f59e0b"></i>Derived');
     expect(html).toContain('src="/graph.js"');
 
     const script = await serveStatic("/graph.js");

@@ -1,6 +1,7 @@
 import * as THREE from "/vendor/three.module.js";
 import { OrbitControls } from "/vendor/OrbitControls.js";
-import { graph3dEdgeStyle, graph3dMotionSettings, layoutGraphNodes3D } from "./graph3d-layout.js";
+import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "./graph3d-layout.js";
+import { clearGraphObjects } from "./graph3d-lifecycle.js";
 import { graphRefKey } from "./graph.js";
 
 const NODE_COLORS = {
@@ -62,8 +63,10 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   container.append(tooltip);
 
   let nodeMeshes = [];
+  let graphObjects = [];
   let resources = [];
   let nodes = [];
+  let graphEdges = [];
   let positions = new Map();
   let selectedKey;
   let hoveredKey;
@@ -81,10 +84,12 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
   }
 
   function clearGraph() {
-    nodeMeshes.forEach(mesh => scene.remove(mesh));
-    resources.forEach(resource => resource.dispose());
+    clearGraphObjects(scene, graphObjects, nodeMeshes, resources);
+    graphObjects = [];
     nodeMeshes = [];
     resources = [];
+    nodes = [];
+    graphEdges = [];
   }
 
   function updateNodeMatrices() {
@@ -109,10 +114,11 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
     });
   }
 
-  function addGraph(nextNodes, edges) {
+  function addGraph(nextNodes, nextEdges) {
     clearGraph();
     nodes = nextNodes;
-    positions = layoutGraphNodes3D(nodes, edges);
+    graphEdges = nextEdges;
+    positions = layoutGraphNodes3D(nodes, graphEdges);
     selectedKey = undefined;
     hoveredKey = undefined;
     const byKind = new Map();
@@ -133,11 +139,12 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
       mesh.frustumCulled = false;
       scene.add(mesh);
       nodeMeshes.push(mesh);
+      graphObjects.push(mesh);
       resources.push(geometry, material);
     });
 
     const edgeGroups = new Map();
-    edges.forEach(edge => {
+    graphEdges.forEach(edge => {
       const source = positions.get(graphRefKey(edge.source));
       const target = positions.get(graphRefKey(edge.target));
       if (!source || !target) return;
@@ -155,6 +162,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
       const lines = new THREE.LineSegments(geometry, material);
       if (style.dashSize) lines.computeLineDistances();
       scene.add(lines);
+      graphObjects.push(lines);
       resources.push(geometry, material);
     });
   }
@@ -291,7 +299,7 @@ export function createGraph3DRenderer(container, { onSelect, onError }) {
 
   return {
     update(nextNodes, edges, selected) {
-      addGraph(nextNodes, edges);
+      if (!graphDataUnchanged(nodes, graphEdges, nextNodes, edges)) addGraph(nextNodes, edges);
       selectedKey = selected ? graphRefKey(selected) : undefined;
       updateNodeMatrices();
       render();

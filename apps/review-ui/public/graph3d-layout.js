@@ -16,6 +16,13 @@ export function graph3dEdgeStyle(origin) {
   return { color: "#6366f1" };
 }
 
+export function graphDataUnchanged(previousNodes, previousEdges, nextNodes, nextEdges) {
+  return previousNodes.length === nextNodes.length &&
+    previousEdges.length === nextEdges.length &&
+    previousNodes.every((node, index) => node === nextNodes[index]) &&
+    previousEdges.every((edge, index) => edge === nextEdges[index]);
+}
+
 export function layoutGraphNodes3D(nodes, edges) {
   const positions = new Map();
   if (!nodes.length) return positions;
