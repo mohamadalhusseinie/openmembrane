@@ -103,7 +103,9 @@ From this repository, `npm run review-ui -- --no-open` starts the loopback
 review UI. The **Overview** identifies the current project and shows proposals
 awaiting review and active memories not updated in six months. Unavailable data
 is reported separately from an empty queue; use **Try again** or **Refresh view**
-to retry.
+to retry. Overview and Review queue share the navigation badge; only the latest
+queue request may update its count or unavailable state, including after a review
+decision.
 
 Open the **Review queue** to read each proposal, its explanation (when available),
 sensitivity, and suggested action. Approve useful knowledge or reject a proposal

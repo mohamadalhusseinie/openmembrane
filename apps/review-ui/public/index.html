@@ -397,6 +397,7 @@ const pendingMemoryMutations = new Map();
 let currentTab = 'overview';
 let candidateMutationPending = false;
 let candidateRequest = 0;
+let queueBadgeRequest = 0;
 const pageCopy = {
   overview: ['Overview', 'See what needs attention and choose your next step.'],
   pending: ['Review queue', 'Decide which proposed memories are worth keeping.'],
@@ -461,6 +462,7 @@ function errorHtml(error, retry) {
 let overviewRequest = 0;
 async function loadOverview() {
   const request = ++overviewRequest;
+  const badgeRequest = ++queueBadgeRequest;
   const sections = [
     { id: 'overview-pending', path: '/api/candidates', tab: 'pending', title: 'Review queue',
       describe: items => items.length ? `${items.length} ${items.length === 1 ? 'proposal needs' : 'proposals need'} a decision. Read the reasons before approving.` : 'No proposals waiting. New proposals appear after sessions are processed.',
@@ -476,17 +478,18 @@ async function loadOverview() {
       const response = await apiRequest(section.path);
       if (request !== overviewRequest) return;
       const items = section.tab === 'stale' ? response.filter(memory => memory.status === 'active') : response;
-      if (section.tab === 'pending') updateQueueBadge(items.length);
+      if (section.tab === 'pending') updateQueueBadge(items.length, badgeRequest);
       target.innerHTML = `<div><h3>${section.title}</h3><p>${section.describe(items)}</p></div><button class="btn" type="button" onclick="switchTab('${section.tab}')">${section.action}</button>`;
     } catch (error) {
       if (request !== overviewRequest) return;
-      if (section.tab === 'pending') updateQueueBadge(null);
+      if (section.tab === 'pending') updateQueueBadge(null, badgeRequest);
       target.innerHTML = errorHtml(error, 'loadOverview()');
     }
   }));
 }
 
-function updateQueueBadge(count) {
+function updateQueueBadge(count, request) {
+  if (request !== queueBadgeRequest) return;
   document.getElementById('pending-tab-btn').innerHTML = 'Review queue' + (count === null
     ? ' <span class="badge" aria-label="Queue unavailable">!</span>'
     : count ? ` <span class="badge" aria-label="${count} proposals">${count}</span>` : '');
@@ -624,12 +627,13 @@ function toggleMemoryEditor(button) {
 
 async function loadCandidates() {
   const request = ++candidateRequest;
+  const badgeRequest = ++queueBadgeRequest;
   const target = document.getElementById('pending-content');
   if (!target.innerHTML) target.textContent = 'Loading proposals...';
   try {
     const items = await apiRequest('/api/candidates');
     if (request !== candidateRequest) return;
-    updateQueueBadge(items.length);
+    updateQueueBadge(items.length, badgeRequest);
     document.getElementById('pending-summary').textContent = `${items.length} ${items.length === 1 ? 'proposal' : 'proposals'} awaiting review`;
     document.getElementById('approve-all').disabled = candidateMutationPending || !items.some(c => c.sensitivity !== 'secret');
     document.getElementById('reject-all').disabled = candidateMutationPending || !items.length;
@@ -659,7 +663,7 @@ async function loadCandidates() {
     document.getElementById('pending-content').innerHTML = html;
   } catch (e) {
     if (request !== candidateRequest) return;
-    updateQueueBadge(null);
+    updateQueueBadge(null, badgeRequest);
     document.getElementById('pending-summary').textContent = 'Queue unavailable';
     document.getElementById('approve-all').disabled = true;
     document.getElementById('reject-all').disabled = true;
@@ -781,6 +785,7 @@ async function mutateCandidates(path, body, notificationFor) {
   // Invalidate any queue fetch that started before this mutation.
   ++candidateRequest;
   ++overviewRequest;
+  ++queueBadgeRequest;
   document.querySelectorAll('#tab-pending button').forEach(button => { button.disabled = true; });
   document.getElementById('pending-summary').textContent = 'Saving decision...';
   document.getElementById('review-result').textContent = '';

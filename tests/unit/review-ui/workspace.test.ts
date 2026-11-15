@@ -76,6 +76,56 @@ describe("review workspace", () => {
     expect(element("overview-stale").innerHTML).toContain("1 active memory has");
   });
 
+  it.each([
+    { oldLoader: "loadOverview()", newLoader: "loadCandidates()", oldError: false },
+    { oldLoader: "loadOverview()", newLoader: "loadCandidates()", oldError: true },
+    { oldLoader: "loadCandidates()", newLoader: "loadOverview()", oldError: false },
+    { oldLoader: "loadCandidates()", newLoader: "loadOverview()", oldError: true },
+  ])("keeps the newest badge across $oldLoader and $newLoader (old error: $oldError)", async ({ oldLoader, newLoader, oldError }) => {
+    const { context, api, element } = await setupWorkspace();
+    let complete!: (value: unknown) => void;
+    let fail!: (error: Error) => void;
+    let queueFetches = 0;
+    api.mockImplementation(async path => {
+      if (path !== "/api/candidates") return [];
+      if (++queueFetches === 1) return new Promise((resolve, reject) => { complete = resolve; fail = reject; });
+      if (!oldError) throw new Error("Latest queue unavailable");
+      return [candidate(), candidate({ id: "cand_2" })];
+    });
+    const oldRequest = runInContext(oldLoader, context) as Promise<void>;
+    await runInContext(newLoader, context);
+    const badge = element("pending-tab-btn").innerHTML;
+    expect(badge).toContain(oldError ? 'aria-label="2 proposals"' : 'aria-label="Queue unavailable"');
+    if (oldError) fail(new Error("Obsolete queue failure"));
+    else complete([candidate()]);
+    await oldRequest;
+    expect(element("pending-tab-btn").innerHTML).toBe(badge);
+  });
+
+  it("does not let an overview started during approval overwrite the post-approval badge", async () => {
+    const { context, api, element } = await setupWorkspace();
+    let completeApproval!: (value: unknown) => void;
+    let completeOverview!: (value: unknown) => void;
+    let queueFetches = 0;
+    runInContext("currentTab = 'pending'", context);
+    api.mockImplementation(async (path, options) => {
+      if (options) return new Promise(resolve => { completeApproval = resolve; });
+      if (path === "/api/candidates" && ++queueFetches === 1) {
+        return new Promise(resolve => { completeOverview = resolve; });
+      }
+      return [];
+    });
+    const approval = runInContext("approveCandidate('cand_1')", context) as Promise<void>;
+    const overview = runInContext("loadOverview()", context) as Promise<void>;
+    completeApproval({ ok: true, memory: entry() });
+    await approval;
+    expect(element("pending-tab-btn").innerHTML).toBe("Review queue");
+    completeOverview([candidate()]);
+    await overview;
+    expect(element("pending-tab-btn").innerHTML).toBe("Review queue");
+    expect(element("pending-content").innerHTML).toContain("You are all caught up");
+  });
+
   it("explains secret blocking, escapes proposal data, and disables ineligible bulk approval", async () => {
     const { context, api, element } = await setupWorkspace();
     api.mockResolvedValue([candidate({
