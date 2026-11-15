@@ -152,13 +152,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .graph-toolbar select[multiple] { min-width: 180px; min-height: 4rem; }
 .graph-viewport { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--bg-secondary); }
 .graph-canvas { display: block; width: 100%; height: 560px; touch-action: none; cursor: grab; }
+.graph-canvas[hidden], .graph-3d-canvas[hidden] { display: none; }
+.graph-3d-canvas { position: relative; width: 100%; height: 560px; touch-action: none; overflow: hidden; cursor: grab; }
+.graph-3d-canvas canvas { display: block; width: 100%; height: 100%; }
+.graph-3d-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.graph-3d-tooltip { position: absolute; z-index: 1; max-width: min(22rem, 80%); padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 0.75rem; pointer-events: none; }
+.graph-mode-controls { display: inline-flex; gap: 0.25rem; }
+.graph-mode-controls button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.graph-3d-error { color: var(--danger); padding: 0.5rem 0; font-size: 0.8rem; }
 .graph-canvas.is-panning { cursor: grabbing; }
 .graph-edge { stroke-width: 1.5; opacity: 0.65; }
 .graph-edge-origin-inferred { stroke: #6366f1; }
-.graph-edge-origin-manual { stroke: #16a34a; stroke-width: 2.5; }
-.graph-edge-origin-derived { stroke: #f59e0b; stroke-dasharray: 5 4; }
+.graph-edge-origin-manual { stroke: #16a34a; stroke-width: 2.5; stroke-dasharray: 8 5; }
+.graph-edge-origin-derived { stroke: #f59e0b; stroke-dasharray: 2 4; }
 .graph-edge-type-duplicate_of, .graph-edge-type-supersedes { stroke-width: 2.5; }
-.graph-edge-type-conflicts_with { stroke-dasharray: 2 3; }
 .graph-edge-label { fill: var(--text); font-size: 10px; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: var(--bg-secondary); stroke-width: 3px; stroke-linejoin: round; }
 .graph-node { cursor: pointer; }
 .graph-node circle { stroke: var(--bg); stroke-width: 2; }
@@ -192,28 +199,71 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .graph-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--swatch); }
 .graph-line { display: inline-block; width: 1.2rem; border-top: 2px solid var(--swatch); }
 .graph-line.dashed { border-top-style: dashed; }
+.graph-line.dotted { border-top-style: dotted; }
 .graph-list-view { margin-top: 1rem; overflow-x: auto; }
 .graph-list-view button { color: var(--accent); background: none; border: 0; cursor: pointer; text-align: left; font: inherit; text-decoration: underline; }
 .graph-status { min-height: 1.5rem; padding: 0.4rem 0; color: var(--text-muted); font-size: 0.8rem; }
-@media (max-width: 760px) { .graph-layout { grid-template-columns: 1fr; } .graph-canvas { height: 420px; } }
+@media (max-width: 760px) { .graph-layout { grid-template-columns: 1fr; } .graph-canvas, .graph-3d-canvas { height: 420px; } }
 </style>
+<link rel="stylesheet" href="/workspace.css">
+<script type="importmap">
+{"imports":{"three":"/vendor/three.module.js"}}
+</script>
 </head>
 <body>
-<h1>OpenMembrane</h1>
-<div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('memories')">Memories</button>
-  <button class="tab-btn" onclick="switchTab('pending')" id="pending-tab-btn">Pending</button>
-  <button class="tab-btn" onclick="switchTab('audit')">Audit</button>
-  <button class="tab-btn" onclick="switchTab('diagnostics')">Diagnostics</button>
-  <button class="tab-btn" onclick="switchTab('graph')">Knowledge Graph</button>
-  <button class="tab-btn" onclick="switchTab('stale')">Stale memories</button>
-  <button class="tab-btn" onclick="switchTab('export')">Export</button>
-</div>
+<!--
+THESIS: A review workspace, not a database console. Attention precedes exploration.
+OWN-WORLD: Neutral developer-tool chrome, blue action accents, system type, readable lists.
+STORY: Understand the project, review proposals, then maintain or explore saved knowledge.
+FIRST VIEWPORT: Grouped left navigation; overview with a primary review action and live attention rows.
+FORM: Familiar developer-tool conventions, explicitly selected by the user; no decorative dashboard metrics.
+-->
+<a class="skip-link" href="#workspace">Skip to workspace</a>
+<aside class="sidebar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true">om</span><strong>OpenMembrane</strong></div>
+  <div class="project-context"><span>Current project</span><strong id="project-name">Loading project...</strong><span>Local review workspace</span></div>
+  <details class="workspace-nav" open>
+  <summary>Navigate workspace <span id="mobile-current">Overview</span></summary>
+  <nav class="tabs" aria-label="Workspace">
+    <button class="tab-btn active" onclick="switchTab('overview')" aria-current="page">Overview</button>
+    <button class="tab-btn" onclick="switchTab('pending')" id="pending-tab-btn">Review queue</button>
+    <span class="nav-group">Knowledge</span>
+    <button class="tab-btn" onclick="switchTab('memories')">Saved memories</button>
+    <button class="tab-btn" onclick="switchTab('stale')">Older memories</button>
+    <button class="tab-btn" onclick="switchTab('graph')">Knowledge graph</button>
+    <button class="tab-btn" onclick="switchTab('export')">Export files</button>
+    <span class="nav-group">Troubleshooting</span>
+    <button class="tab-btn" onclick="switchTab('audit')">Activity history</button>
+    <button class="tab-btn" onclick="switchTab('diagnostics')">Diagnostics</button>
+  </nav>
+  </details>
+  <p class="sidebar-note">Review decisions apply to the current project. Exports write files only when you choose to.</p>
+</aside>
 
-<div id="tab-memories" class="tab-content active">
+<main id="workspace" tabindex="-1">
+<header class="workspace-header">
+  <div><h1 id="page-title" tabindex="-1">Overview</h1><p id="page-description">See what needs attention and choose your next step.</p></div>
+  <button class="btn" type="button" id="refresh-view" onclick="refreshCurrentView()">Refresh view</button>
+</header>
+
+<section id="tab-overview" class="tab-content active" aria-label="Overview">
+  <div class="overview-intro"><h2>Keep useful knowledge.<br>Review what comes next.</h2><p>OpenMembrane extracts proposed memories from coding sessions. Review uncertain proposals here, and keep saved knowledge accurate as your project changes.</p><button class="btn btn-primary" type="button" onclick="switchTab('pending')">Open review queue <span aria-hidden="true">&rarr;</span></button></div>
+  <section class="attention-section" aria-labelledby="attention-title">
+    <h2 id="attention-title">Needs your attention</h2>
+    <div id="overview-pending" class="attention-row" aria-live="polite">Loading review queue...</div>
+    <div id="overview-stale" class="attention-row" aria-live="polite">Loading older memories...</div>
+  </section>
+  <section class="workflow-guide" aria-labelledby="workflow-title"><h2 id="workflow-title">How review works</h2>
+    <dl><div><dt>Proposed</dt><dd>A memory awaiting your decision. Read the proposal and its reason before approving.</dd></div><div><dt>Saved</dt><dd>Knowledge retained for the project. Edit it when details change.</dd></div><div><dt>Superseded</dt><dd>A retired memory, removed from active context. Use this when a rule no longer applies.</dd></div></dl>
+    <p class="hint">Using GitHub Team mode? Approval can create a publication proposal; it does not mean the change is already merged.</p>
+  </section>
+</section>
+
+<section id="tab-memories" class="tab-content" aria-label="Saved memories">
+  <p class="hint">Search saved knowledge, then select a memory to read or edit its details. Results show up to 200 matches; narrow the filters to find more specific knowledge.</p>
   <div class="filter-row">
-    <input type="text" id="mem-search" placeholder="Search..." oninput="loadMemories()">
-    <select id="mem-type" onchange="loadMemories()">
+    <label class="search-field">Search memories<input type="search" id="mem-search" placeholder="Search by content..." oninput="loadMemories()"></label>
+    <label>Memory type<select id="mem-type" onchange="loadMemories()">
       <option value="">All types</option>
       <option value="project_fact">project_fact</option>
       <option value="coding_rule">coding_rule</option>
@@ -225,8 +275,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <option value="forbidden_pattern">forbidden_pattern</option>
       <option value="domain_knowledge">domain_knowledge</option>
       <option value="session_summary">session_summary</option>
-    </select>
-    <select id="mem-scope" onchange="loadMemories()">
+    </select></label>
+    <label>Applies to<select id="mem-scope" onchange="loadMemories()">
       <option value="">All scopes</option>
       <option value="global">global</option>
       <option value="frontend">frontend</option>
@@ -237,34 +287,39 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <option value="security">security</option>
       <option value="tooling">tooling</option>
       <option value="unknown">unknown</option>
-    </select>
+    </select></label>
   </div>
-  <div class="table-wrap" id="memories-content"></div>
-</div>
+  <div class="table-wrap" id="memories-content" aria-live="polite"></div>
+</section>
 
-<div id="tab-pending" class="tab-content">
-  <div class="bulk-actions">
-    <button class="btn btn-success" onclick="approveAllCandidates()">Approve All</button>
-    <button class="btn btn-danger" onclick="rejectAllCandidates()">Reject All</button>
-  </div>
-  <div id="pending-content"></div>
-</div>
+<section id="tab-pending" class="tab-content" aria-label="Review queue">
+  <p class="hint">Approve to save useful project knowledge. Reject to discard a proposal. Secret proposals are blocked from approval. In GitHub Team mode, approval may require publication before the memory becomes active.</p>
+  <div id="pending-summary" class="list-summary" role="status"></div>
+  <details class="bulk-review"><summary>Bulk review actions</summary><p class="hint">These actions apply to the entire queue, not just proposals currently visible on screen. Review the proposals first.</p><div class="bulk-actions">
+    <button class="btn" id="approve-all" onclick="approveAllCandidates()" disabled>Approve all eligible</button>
+    <button class="btn btn-danger" id="reject-all" onclick="rejectAllCandidates()" disabled>Reject entire queue</button>
+  </div></details>
+  <div id="review-result" aria-live="polite"></div>
+  <div id="pending-content" aria-live="polite"></div>
+</section>
 
 <div id="tab-audit" class="tab-content">
-  <div id="audit-content"></div>
+  <p class="hint">The latest 100 recorded events explain what changed and when. Open event details for the underlying evidence.</p>
+  <div id="audit-content" aria-live="polite"></div>
 </div>
 
 <div id="tab-diagnostics" class="tab-content">
   <div class="filter-row">
-    <select id="diag-severity" onchange="loadDiagnostics()">
+    <label>Severity<select id="diag-severity" onchange="loadDiagnostics()">
       <option value="">All severities</option>
       <option value="debug">debug</option>
       <option value="info">info</option>
       <option value="warning">warning</option>
       <option value="error">error</option>
-    </select>
+    </select></label>
   </div>
-  <div id="diagnostics-content"></div>
+  <p class="hint">The latest 100 matching diagnostics help investigate failed operations. Keep the diagnostic ID when reporting a problem.</p>
+  <div id="diagnostics-content" aria-live="polite"></div>
 </div>
 
 <div id="tab-graph" class="tab-content">
@@ -282,12 +337,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
       <option value="derived_from">Derived from</option><option value="tagged_with">Tagged with</option>
     </select></label>
     <button class="btn btn-primary" type="submit">Apply filters</button>
+    <span class="graph-mode-controls" role="group" aria-label="Graph rendering mode">
+      <button class="btn" type="button" id="graph-mode-2d" aria-label="2D graph view" aria-pressed="true" title="Switch to the accessible 2D graph while keeping filters and selection.">2D</button>
+      <button class="btn" type="button" id="graph-mode-3d" aria-label="3D graph view" aria-pressed="false" title="Explore the graph in 3D. Drag to orbit, right-drag to pan, and scroll to zoom.">3D</button>
+    </span>
     <button class="btn" type="button" id="graph-focus" disabled>Focus neighborhood</button>
     <button class="btn" type="button" id="graph-zoom-in" aria-label="Zoom in">+</button>
     <button class="btn" type="button" id="graph-zoom-out" aria-label="Zoom out">−</button>
     <button class="btn" type="button" id="graph-reset-view">Reset view</button>
     <button class="btn" type="button" id="graph-list-toggle" aria-pressed="false">Show list</button>
   </form>
+  <p id="graph-3d-error" class="graph-3d-error" role="alert" hidden></p>
   <div id="graph-status" class="graph-status" role="status" aria-live="polite">Loading graph…</div>
   <div class="graph-legend" aria-label="Graph legend">
     <span><i class="graph-swatch" style="--swatch:#2563eb"></i>Memory</span>
@@ -297,12 +357,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     <span><i class="graph-swatch" style="--swatch:#0891b2"></i>Session</span>
     <span><i class="graph-swatch" style="--swatch:#ca8a04"></i>Tag</span>
     <span><i class="graph-line" style="--swatch:#6366f1"></i>Inferred</span>
-    <span><i class="graph-line" style="--swatch:#16a34a"></i>Manual</span>
-    <span><i class="graph-line dashed" style="--swatch:#f59e0b"></i>Derived</span>
+    <span><i class="graph-line dashed" style="--swatch:#16a34a"></i>Manual</span>
+    <span><i class="graph-line dotted" style="--swatch:#f59e0b"></i>Derived</span>
   </div>
   <div class="graph-layout">
     <div>
-      <div id="graph-viewport" class="graph-viewport"><svg id="graph-canvas" class="graph-canvas" viewBox="0 0 1000 700" role="group" aria-label="Knowledge graph"></svg></div>
+      <div id="graph-viewport" class="graph-viewport"><svg id="graph-canvas" class="graph-canvas" viewBox="0 0 1000 700" role="group" aria-label="Knowledge graph"></svg><div id="graph-3d-canvas" class="graph-3d-canvas" role="group" aria-label="3D knowledge graph" hidden></div></div>
       <div id="graph-list" class="graph-list-view" hidden></div>
     </div>
     <aside id="graph-inspector" class="graph-panel" aria-live="polite">
@@ -312,7 +372,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 </div>
 
 <div id="tab-stale" class="tab-content">
-  <p class="hint">Review older memories and edit or supersede rules that no longer apply.</p>
+  <p class="hint">Older does not mean incorrect. Review active memories that have not been updated recently; edit changed details or supersede rules that no longer apply.</p>
   <form class="filter-row" onsubmit="event.preventDefault(); loadStaleMemories()">
     <label>Older than <input id="stale-months" type="number" min="1" max="120" value="6" required> months</label>
     <button class="btn btn-primary" type="submit">Review memories</button>
@@ -343,29 +403,112 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   <div id="export-content" aria-live="polite"></div>
 </div>
 
+</main>
 <div id="toast-container" role="status" aria-live="polite"></div>
 
 <script>
-const tabsLoaded = { memories: false, pending: false, audit: false, diagnostics: false, graph: false, stale: false, export: false };
+const tabsLoaded = { overview: false, memories: false, pending: false, audit: false, diagnostics: false, graph: false, stale: false, export: false };
 const memoryDrafts = new Map();
 const pendingMemoryMutations = new Map();
+let currentTab = 'overview';
+let candidateMutationPending = false;
+let candidateRequest = 0;
+let queueBadgeRequest = 0;
+const pageCopy = {
+  overview: ['Overview', 'See what needs attention and choose your next step.'],
+  pending: ['Review queue', 'Decide which proposed memories are worth keeping.'],
+  memories: ['Saved memories', 'Find and maintain the knowledge your project keeps.'],
+  stale: ['Older memories', 'Check whether older knowledge still reflects your project.'],
+  graph: ['Knowledge graph', 'Explore connections between memories and their supporting evidence.'],
+  export: ['Export files', 'Turn saved knowledge into static instructions for your coding tools.'],
+  audit: ['Activity history', 'Understand what changed and why.'],
+  diagnostics: ['Diagnostics', 'Investigate problems with memory operations.'],
+};
 
-function switchTab(name) {
+function switchTab(name, focus = true) {
+  if (!Object.hasOwn(pageCopy, name)) return;
+  currentTab = name;
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => {
+    el.classList.remove('active');
+    el.removeAttribute('aria-current');
+  });
   document.getElementById('tab-' + name).classList.add('active');
-  document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
+  const nav = document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`);
+  nav.classList.add('active');
+  nav.setAttribute('aria-current', 'page');
+  const heading = document.getElementById('page-title');
+  heading.textContent = pageCopy[name][0];
+  document.getElementById('mobile-current').textContent = pageCopy[name][0];
+  document.getElementById('page-description').textContent = pageCopy[name][1];
+  document.title = pageCopy[name][0] + ' - OpenMembrane';
+  document.getElementById('refresh-view').hidden = name === 'export';
+  if (focus) heading.focus();
+  if (focus && window.matchMedia('(max-width: 700px)').matches) {
+    document.querySelector('.workspace-nav').open = false;
+  }
   if (name === 'graph') {
     tabsLoaded.graph = true;
     window.loadKnowledgeGraph?.();
   } else if (!tabsLoaded[name]) {
     tabsLoaded[name] = true;
-    if (name === 'memories') loadMemories();
+    if (name === 'overview') loadOverview();
+    else if (name === 'memories') loadMemories();
     else if (name === 'pending') loadCandidates();
     else if (name === 'audit') loadAudit();
     else if (name === 'diagnostics') loadDiagnostics();
     else if (name === 'stale') loadStaleMemories();
   }
+}
+
+function refreshCurrentView() {
+  tabsLoaded[currentTab] = false;
+  switchTab(currentTab, false);
+}
+
+function humanize(value) {
+  const text = String(value || '').replace(/_/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function errorHtml(error, retry) {
+  return `<div class="empty" role="alert"><strong>Could not load this view</strong>${escapeHtml(error.message)}<br><button class="btn" type="button" onclick="${retry}">Try again</button></div>`;
+}
+
+let overviewRequest = 0;
+async function loadOverview() {
+  const request = ++overviewRequest;
+  const badgeRequest = ++queueBadgeRequest;
+  const sections = [
+    { id: 'overview-pending', path: '/api/candidates', tab: 'pending', title: 'Review queue',
+      describe: items => items.length ? `${items.length} ${items.length === 1 ? 'proposal needs' : 'proposals need'} a decision. Read the reasons before approving.` : 'No proposals waiting. New proposals appear after sessions are processed.',
+      action: 'Review proposals' },
+    { id: 'overview-stale', path: '/api/memories/stale?staleAfterMonths=6', tab: 'stale', title: 'Older memories',
+      describe: items => items.length ? `${items.length} active ${items.length === 1 ? 'memory has' : 'memories have'} not been updated in 6 months. Check what still applies.` : 'No active memories older than 6 months. Age alone does not make knowledge incorrect.',
+      action: 'Review older memories' },
+  ];
+  await Promise.all(sections.map(async section => {
+    const target = document.getElementById(section.id);
+    target.textContent = 'Loading ' + section.title.toLowerCase() + '...';
+    try {
+      const response = await apiRequest(section.path);
+      if (request !== overviewRequest) return;
+      const items = section.tab === 'stale' ? response.filter(memory => memory.status === 'active') : response;
+      if (section.tab === 'pending') updateQueueBadge(items.length, badgeRequest);
+      target.innerHTML = `<div><h3>${section.title}</h3><p>${section.describe(items)}</p></div><button class="btn" type="button" onclick="switchTab('${section.tab}')">${section.action}</button>`;
+    } catch (error) {
+      if (request !== overviewRequest) return;
+      if (section.tab === 'pending') updateQueueBadge(null, badgeRequest);
+      target.innerHTML = errorHtml(error, 'loadOverview()');
+    }
+  }));
+}
+
+function updateQueueBadge(count, request) {
+  if (request !== queueBadgeRequest) return;
+  document.getElementById('pending-tab-btn').innerHTML = 'Review queue' + (count === null
+    ? ' <span class="badge" aria-label="Queue unavailable">!</span>'
+    : count ? ` <span class="badge" aria-label="${count} proposals">${count}</span>` : '');
 }
 
 function formatDate(iso) {
@@ -378,16 +521,10 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function truncate(str, len = 80) {
-  if (!str) return '';
-  const escaped = escapeHtml(str);
-  return escaped.length > len ? escaped.slice(0, len) + '…' : escaped;
-}
-
 function badgeHtml(text, prefix) {
   const safe = escapeHtml(text);
   const cls = prefix ? `badge badge-${safe}` : 'badge';
-  return `<span class="${cls}">${safe}</span>`;
+  return `<span class="${cls}">${escapeHtml(humanize(text))}</span>`;
 }
 
 async function apiRequest(path, options) {
@@ -409,12 +546,14 @@ function memoryReviewHtml(memory, view) {
     <label>Scope<select name="scope">${Array.from(document.getElementById('mem-scope').options).filter(o => o.value).map(o =>
       `<option value="${o.value}" ${o.value === memory.scope ? 'selected' : ''}>${o.text}</option>`).join('')}</select></label>
     <label>Tags (comma-separated)<input name="tags" value="${escapeHtml((memory.tags || []).join(', '))}"></label>
-    <label>Reason for superseding (optional)<input name="reason"></label>
-    <label>Replacement memory ID (optional)<input name="replacementId"></label>
     <div class="card-actions">
       <button type="submit" class="btn btn-primary">Save changes</button>
-      <button type="button" class="btn btn-danger" onclick="supersedeMemory(this.form)">Supersede memory</button>
     </div>
+    <details><summary>Retire this memory</summary><p class="hint">Superseding removes this memory from active context. It does not delete its history. Optionally link a replacement memory.</p>
+      <label>Reason for superseding (optional)<input name="reason"></label>
+      <label>Replacement memory ID (optional)<input name="replacementId"></label>
+      <button type="button" class="btn btn-danger" onclick="supersedeMemory(this.form)">Supersede memory</button>
+    </details>
   </form>`;
 }
 
@@ -455,6 +594,7 @@ async function loadMemories() {
   const type = document.getElementById('mem-type').value;
   const scope = document.getElementById('mem-scope').value;
   const params = new URLSearchParams();
+  params.set('limit', '200');
   if (q) params.set('q', q);
   if (type) params.set('type', type);
   if (scope) params.set('scope', scope);
@@ -462,13 +602,14 @@ async function loadMemories() {
     const items = await apiRequest('/api/memories?' + params);
     if (request !== memoryViewRequest) return;
     if (!items.length) {
-      renderMemoryList(document.getElementById('memories-content'), '<div class="empty">No memories found</div>');
+      renderMemoryList(document.getElementById('memories-content'), `<div class="empty"><strong>${q || type || scope ? 'No matching memories' : 'No saved memories yet'}</strong>${q || type || scope ? 'Try another search or clear the filters.' : 'Saved knowledge appears here after extraction or approval. Check the review queue for proposals.'}</div>`);
       return;
     }
-    let html = '<table><thead><tr><th>Type</th><th>Scope</th><th>Content</th><th>Confidence</th><th>Tags</th><th>Created</th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Memory</th><th>Type</th><th>Applies to</th><th>Confidence</th><th>Tags</th><th>Created</th></tr></thead><tbody>';
     items.forEach((m, i) => {
       html += `<tr>
-        <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(m.scope)}</td><td><button type="button" class="memory-toggle" aria-expanded="false" aria-controls="memory-editor-${i}" aria-label="Review or edit memory: ${escapeHtml(m.content)}" onclick="toggleMemoryEditor(this)">${truncate(m.content)}</button></td>
+        <td><button type="button" class="memory-toggle" aria-expanded="false" aria-controls="memory-editor-${i}" aria-label="Review or edit memory: ${escapeHtml(m.content)}" onclick="toggleMemoryEditor(this)">${escapeHtml(m.content)}<span class="memory-affordance">Review or edit</span></button></td>
+        <td>${badgeHtml(m.type, true)}</td><td>${escapeHtml(humanize(m.scope))}</td>
         <td>${escapeHtml(m.confidence)}</td><td>${escapeHtml((m.tags || []).join(', '))}</td><td>${formatDate(m.createdAt)}</td>
       </tr><tr id="memory-editor-${i}" hidden><td colspan="6">${memoryReviewHtml(m, 'memories-content')}<div class="expanded-content">${escapeHtml(m.content)}</div></td></tr>`;
     });
@@ -476,7 +617,7 @@ async function loadMemories() {
     renderMemoryList(document.getElementById('memories-content'), html);
   } catch (e) {
     if (request !== memoryViewRequest) return;
-    renderMemoryList(document.getElementById('memories-content'), `<div class="empty">${escapeHtml(e.message)}</div>`);
+    renderMemoryList(document.getElementById('memories-content'), errorHtml(e, 'loadMemories()'));
   }
 }
 
@@ -501,42 +642,58 @@ function toggleMemoryEditor(button) {
 }
 
 async function loadCandidates() {
+  const request = ++candidateRequest;
+  const badgeRequest = ++queueBadgeRequest;
+  const target = document.getElementById('pending-content');
+  if (!target.innerHTML) target.textContent = 'Loading proposals...';
   try {
     const items = await apiRequest('/api/candidates');
-    const btn = document.getElementById('pending-tab-btn');
-    btn.innerHTML = items.length ? `Pending <span class="badge">${items.length}</span>` : 'Pending';
+    if (request !== candidateRequest) return;
+    updateQueueBadge(items.length, badgeRequest);
+    document.getElementById('pending-summary').textContent = `${items.length} ${items.length === 1 ? 'proposal' : 'proposals'} awaiting review`;
+    document.getElementById('approve-all').disabled = candidateMutationPending || !items.some(c => c.sensitivity !== 'secret');
+    document.getElementById('reject-all').disabled = candidateMutationPending || !items.length;
     if (!items.length) {
-      document.getElementById('pending-content').innerHTML = '<div class="empty">No pending candidates</div>';
+      target.innerHTML = '<div class="empty"><strong>You are all caught up</strong>No proposals are waiting for review. New proposals appear here after coding sessions are processed.<br><button class="btn" type="button" onclick="switchTab(\'memories\')">Browse saved memories</button></div>';
       return;
     }
     let html = '';
     items.forEach(c => {
       const isSecret = c.sensitivity === 'secret';
-      html += `<div class="card">
-        <div class="card-content">${escapeHtml(c.content)}</div>
+      html += `<article class="card" aria-label="Memory proposal">
         <div class="card-meta">
           ${badgeHtml(c.type, true)}
-          <span>Scope: ${escapeHtml(c.scope || 'unknown')}</span>
-          <span>Sensitivity: ${escapeHtml(c.sensitivity)}</span>
+          <span>Applies to: ${escapeHtml(humanize(c.scope || 'unknown'))}</span>
+          <span>Sensitivity: ${escapeHtml(humanize(c.sensitivity))}</span>
           <span>Confidence: ${escapeHtml(c.confidence)}</span>
-          ${c.reason ? `<span>Reason: ${escapeHtml(c.reason)}</span>` : ''}
-          ${c.recommendedAction ? `<span>Action: ${escapeHtml(c.recommendedAction)}</span>` : ''}
         </div>
+        <div class="card-content">${escapeHtml(c.content)}</div>
+        <div class="candidate-reason"><strong>Why this was proposed</strong>${c.reason ? escapeHtml(c.reason) : 'No explanation was provided. Check that this is accurate and useful before approving.'}${c.recommendedAction ? `<p>Suggested action: ${escapeHtml(humanize(c.recommendedAction))}</p>` : ''}</div>
+        ${isSecret ? '<p class="candidate-blocked">Approval blocked: this proposal is classified as secret. Reject it rather than saving sensitive information.</p>' : ''}
         <div class="card-actions">
-          <button class="btn btn-success" onclick="approveCandidate('${escapeHtml(c.id)}')" ${isSecret ? 'disabled title="Cannot approve secret candidates"' : ''}>Approve</button>
-          <button class="btn btn-danger" onclick="rejectCandidate('${escapeHtml(c.id)}')">Reject</button>
+          <button class="btn btn-primary" data-id="${escapeHtml(c.id)}" onclick="approveCandidate(this.dataset.id)" ${isSecret || candidateMutationPending ? 'disabled' : ''}>Approve proposal</button>
+          <button class="btn btn-danger" data-id="${escapeHtml(c.id)}" onclick="rejectCandidate(this.dataset.id)" ${candidateMutationPending ? 'disabled' : ''}>Reject proposal</button>
         </div>
-      </div>`;
+      </article>`;
     });
     document.getElementById('pending-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('pending-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+    if (request !== candidateRequest) return;
+    updateQueueBadge(null, badgeRequest);
+    document.getElementById('pending-summary').textContent = 'Queue unavailable';
+    document.getElementById('approve-all').disabled = true;
+    document.getElementById('reject-all').disabled = true;
+    target.innerHTML = errorHtml(e, 'loadCandidates()');
   }
 }
 
+let auditRequest = 0;
 async function loadAudit() {
+  const request = ++auditRequest;
+  document.getElementById('audit-content').textContent = 'Loading activity...';
   try {
     const items = await apiRequest('/api/audit?limit=100');
+    if (request !== auditRequest) return;
     if (!items.length) {
       document.getElementById('audit-content').innerHTML = '<div class="empty">No audit events</div>';
       return;
@@ -547,21 +704,26 @@ async function loadAudit() {
       html += `<div class="audit-item">
         ${badgeHtml(ev.type || ev.action || '', false)} <strong>${escapeHtml(ev.entityId || ev.memoryId || '')}</strong>
         <span style="color:var(--text-muted);margin-left:0.5rem">${formatDate(ev.createdAt)}</span>
-        ${details ? `<div class="audit-details" onclick="const el=this.nextElementSibling;el.style.display=el.style.display==='block'?'none':'block'">details &#9656;</div><div class="audit-json">${details}</div>` : ''}
+        ${details ? `<details><summary>Event details</summary><pre class="audit-json">${details}</pre></details>` : ''}
       </div>`;
     });
     document.getElementById('audit-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('audit-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+    if (request !== auditRequest) return;
+    document.getElementById('audit-content').innerHTML = errorHtml(e, 'loadAudit()');
   }
 }
 
+let diagnosticsRequest = 0;
 async function loadDiagnostics() {
+  const request = ++diagnosticsRequest;
+  document.getElementById('diagnostics-content').textContent = 'Loading diagnostics...';
   const severity = document.getElementById('diag-severity').value;
   const params = new URLSearchParams({ limit: '100' });
   if (severity) params.set('severity', severity);
   try {
     const items = await apiRequest('/api/diagnostics?' + params);
+    if (request !== diagnosticsRequest) return;
     if (!items.length) {
       document.getElementById('diagnostics-content').innerHTML = '<div class="empty">No diagnostics</div>';
       return;
@@ -575,57 +737,115 @@ async function loadDiagnostics() {
     });
     document.getElementById('diagnostics-content').innerHTML = html;
   } catch (e) {
-    document.getElementById('diagnostics-content').innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
+    if (request !== diagnosticsRequest) return;
+    document.getElementById('diagnostics-content').innerHTML = errorHtml(e, 'loadDiagnostics()');
   }
 }
 
 async function approveCandidate(id) {
-  try {
-    await apiRequest(`/api/candidates/${encodeURIComponent(id)}/approve`, { method: 'POST' });
-    showToast('Candidate approved', 'success');
-    tabsLoaded.pending = false; loadCandidates();
-  } catch (e) { showToast(e.message, 'error'); }
+  return mutateCandidates(`/api/candidates/${encodeURIComponent(id)}/approve`, undefined, result => approvalNotification(result.memory));
+}
+
+function approvalNotification(memory) {
+  if (memory.kind === 'rejected') {
+    return { type: 'error', message: `Team publication failed: ${memory.message} No retry is scheduled. Check Diagnostics and Activity history.` };
+  }
+  if (memory.kind === 'retry_scheduled' || memory.kind === 'retry_deferred') {
+    return { type: 'error', message: `Team publication ${memory.kind === 'retry_scheduled' ? 'failed; a retry is scheduled for' : 'is deferred until'} ${formatDate(memory.nextAttemptAt)}. This memory is not active yet.` };
+  }
+  if (memory.kind === 'published') {
+    return { type: 'success', message: 'A team proposal was published for review. The memory becomes active after merge and sync.' };
+  }
+  return { type: 'success', message: 'Memory approved and saved.' };
+}
+
+function bulkApprovalNotification(result) {
+  const count = kind => result.outcomes.filter(memory => memory.kind === kind).length;
+  const saved = count(undefined);
+  const published = count('published');
+  const scheduled = count('retry_scheduled');
+  const deferred = count('retry_deferred');
+  const rejected = count('rejected');
+  return {
+    type: rejected || scheduled || deferred ? 'error' : 'success',
+    message: `Saved: ${saved}; team proposals published: ${published}; retries scheduled: ${scheduled}; retries deferred: ${deferred}; publication failures: ${rejected}; skipped: ${result.skipped.length}. See the bulk review result for details.`,
+    details: [
+      ...result.outcomes.map(memory => `${memory.id}: ${approvalNotification(memory).message}`),
+      ...result.skipped.map(item => `${item.candidateId}: Skipped. ${item.reason}`),
+    ],
+  };
 }
 
 async function rejectCandidate(id) {
+  if (candidateMutationPending) return;
   const reason = window.prompt('Reason for rejection:');
   if (reason === null) return;
-  try {
-    await apiRequest(`/api/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reason ? { reason } : {}) });
-    showToast('Candidate rejected', 'success');
-    tabsLoaded.pending = false; loadCandidates();
-  } catch (e) { showToast(e.message, 'error'); }
+  return mutateCandidates(`/api/candidates/${encodeURIComponent(id)}/reject`, reason ? { reason } : {}, () => ({ type: 'success', message: 'Proposal rejected. It was not saved.' }));
 }
 
 async function approveAllCandidates() {
-  try {
-    const result = await apiRequest('/api/candidates/approve-all', { method: 'POST' });
-    showToast(`Approved ${result.approved}; skipped ${result.skipped.length}`, 'success');
-    tabsLoaded.pending = false; loadCandidates();
-  } catch (e) { showToast(e.message, 'error'); }
+  if (candidateMutationPending || !window.confirm('Approve every eligible proposal in the entire queue? Only continue if you have reviewed them all. Secret proposals will be skipped.')) return;
+  return mutateCandidates('/api/candidates/approve-all', undefined, bulkApprovalNotification);
 }
 
 async function rejectAllCandidates() {
+  if (candidateMutationPending || !window.confirm('Reject every proposal in the entire queue? None of these proposals will be saved.')) return;
   const reason = window.prompt('Reason for rejecting all:');
   if (reason === null) return;
-  try {
-    await apiRequest('/api/candidates/reject-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reason ? { reason } : {}) });
-    showToast('All candidates rejected', 'success');
-    tabsLoaded.pending = false; loadCandidates();
-  } catch (e) { showToast(e.message, 'error'); }
+  return mutateCandidates('/api/candidates/reject-all', reason ? { reason } : {}, () => ({ type: 'success', message: 'All proposals rejected. They were not saved.' }));
 }
 
+async function mutateCandidates(path, body, notificationFor) {
+  if (candidateMutationPending) return;
+  candidateMutationPending = true;
+  // Invalidate any queue fetch that started before this mutation.
+  ++candidateRequest;
+  ++overviewRequest;
+  ++queueBadgeRequest;
+  document.querySelectorAll('#tab-pending button').forEach(button => { button.disabled = true; });
+  document.getElementById('pending-summary').textContent = 'Saving decision...';
+  document.getElementById('review-result').textContent = '';
+  try {
+    const result = await apiRequest(path, { method: 'POST', ...(body === undefined ? {} : {
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }) });
+    const notification = notificationFor(result);
+    showToast(notification.message, notification.type);
+    if (notification.details) {
+      document.getElementById('review-result').innerHTML = `<details class="bulk-review"><summary>Bulk review result</summary><p class="hint">${escapeHtml(notification.message)}</p>${notification.details.map(detail => `<div class="audit-item">${escapeHtml(detail)}</div>`).join('')}</details>`;
+    }
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    candidateMutationPending = false;
+    tabsLoaded.memories = false;
+    tabsLoaded.audit = false;
+    tabsLoaded.overview = false;
+    await loadCandidates();
+    if (currentTab === 'overview') loadOverview();
+    else if (currentTab === 'memories') loadMemories();
+    else if (currentTab === 'audit') loadAudit();
+    if (currentTab === 'pending') document.getElementById('page-title').focus();
+  }
+}
+
+let staleMemoriesRequest = 0;
 async function loadStaleMemories() {
+  const request = ++staleMemoriesRequest;
   const target = document.getElementById('stale-content');
   renderMemoryList(target, 'Loading older memories...');
   try {
     const months = document.getElementById('stale-months').value;
     const items = await apiRequest('/api/memories/stale?staleAfterMonths=' + encodeURIComponent(months));
+    if (request !== staleMemoriesRequest) return;
     const active = items.filter(m => m.status === 'active');
     renderMemoryList(target, active.length
       ? active.map(m => `<details class="card"><summary>${escapeHtml(m.content)} — updated ${formatDate(m.updatedAt)}</summary>${memoryReviewHtml(m, 'stale-content')}</details>`).join('')
       : '<div class="empty">No active memories older than this threshold. Try a shorter interval.</div>');
-  } catch (e) { renderMemoryList(target, `<div class="empty">${escapeHtml(e.message)}</div>`); }
+  } catch (e) {
+    if (request !== staleMemoriesRequest) return;
+    renderMemoryList(target, errorHtml(e, 'loadStaleMemories()'));
+  }
 }
 
 async function mutateMemory(form, supersede) {
@@ -660,7 +880,8 @@ async function mutateMemory(form, supersede) {
     memoryDrafts.delete(key);
     showToast(result.kind ? `Team publication: ${result.kind}` : supersede ? 'Memory superseded' : 'Memory updated', 'success');
     tabsLoaded.audit = false; tabsLoaded.export = false;
-    await Promise.all([loadMemories(), loadStaleMemories()]);
+    tabsLoaded.overview = false;
+    await Promise.all([loadMemories(), loadStaleMemories(), ...(currentTab === 'overview' ? [loadOverview()] : [])]);
   } catch (e) { showToast(e.message, 'error'); }
   finally {
     pendingMemoryMutations.delete(key);
@@ -698,9 +919,16 @@ function showToast(message, type) {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.textContent = message;
+  const text = document.createElement('span');
+  text.textContent = message;
+  toast.appendChild(text);
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.textContent = 'Dismiss';
+  dismiss.onclick = () => toast.remove();
+  toast.appendChild(dismiss);
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  if (type !== 'error') setTimeout(() => toast.remove(), 8000);
 }
 
 if (typeof window !== 'undefined') {
@@ -713,17 +941,34 @@ if (typeof window !== 'undefined') {
     switchTab('memories');
     loadGraphMemoryById(memory.id);
   });
-  window.addEventListener('review-graph-candidates-mutated', () => {
+  window.addEventListener('review-graph-candidates-mutated', async () => {
+    tabsLoaded.overview = false;
+    tabsLoaded.audit = false;
     tabsLoaded.pending = true;
     tabsLoaded.memories = true;
-    loadCandidates();
-    loadMemories();
+    await Promise.all([loadCandidates(), loadMemories(), ...(currentTab === 'overview' ? [loadOverview()] : [])]);
   });
 }
 
-// Initial load
-tabsLoaded.memories = true;
-loadMemories();
+if (typeof window !== 'undefined') {
+  const narrowNavigation = window.matchMedia('(max-width: 700px)');
+  const adaptNavigation = () => { document.querySelector('.workspace-nav').open = !narrowNavigation.matches; };
+  adaptNavigation();
+  narrowNavigation.addEventListener('change', adaptNavigation);
+  document.querySelectorAll('select option').forEach(option => {
+    if (option.textContent.includes('_')) option.textContent = humanize(option.textContent);
+  });
+  apiRequest('/api/project').then(project => {
+    document.getElementById('project-name').textContent = project.projectId;
+  }).catch(error => {
+    document.getElementById('project-name').textContent = 'Project unavailable';
+    showToast('Could not identify the current project: ' + error.message, 'error');
+  });
+  switchTab('overview', false);
+} else {
+  tabsLoaded.memories = true;
+  loadMemories();
+}
 </script>
 <script type="module" src="/graph.js"></script>
 </body>

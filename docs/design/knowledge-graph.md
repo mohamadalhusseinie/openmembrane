@@ -2,12 +2,12 @@
 
 ## Summary
 
-Add a local-first Knowledge Graph to the existing Review UI. It will help users
+Add a local-first Knowledge Graph to the existing Review UI. It helps users
 explore how saved memories, pending candidates, lifecycle events, diagnostics,
-and privacy-safe provenance relate to one another. The initial experience is a
-2D graph and list fallback. An optional 3D view follows only after provenance,
-manual editing, and performance, privacy, and accessibility hardening validate
-that workflow.
+and privacy-safe provenance relate to one another. The default experience is a
+2D graph with a list fallback; optional 3D is implemented ahead of the remaining
+broad usability refinements, while the graph's privacy, accessibility, and
+performance requirements remain in force.
 
 The feature is delivered as a sequence of small issues under parent epic
 [#142](https://github.com/mohamadalhusseinie/openmembrane/issues/142) rather
@@ -184,17 +184,33 @@ endpoints, type, status, confidence, and overridden stored relationship IDs
 in the audit log. Graph edits never approve, reject, update, or supersede
 memories or candidates and do not publish GitHub Team memory proposals.
 
-## Optional 3D Mode
+## Implemented Optional 3D Mode
 
-Only after the 2D/list experience, provenance overlays, manual editing, and
-performance, privacy, and accessibility hardening are complete, add a 3D mode
-that consumes the same daemon-backed graph API and filters. It provides camera
-controls, hover and selection, focus mode, and a direct return to 2D. It is an
-optional exploration mode, not the only supported interface.
+The explicit 2D/3D mode controls share the loaded graph, filters, selected node,
+inspector, neighborhood focus, and relationship mutations. The 2D view remains
+the default, and the list view is available in either mode. The local Three.js
+and OrbitControls modules are served from the installed package; rendering
+does not use a CDN, remote assets, or an external service.
 
-The 3D mode also respects the reduced-motion preferences already supported by
-the 2D/list workflow. The 2D and list workflows remain available for
-accessibility and devices unsuitable for 3D rendering.
+The 3D view provides orbit, pan, zoom, reset, hover, selection, keyboard node
+navigation, and neighborhood focus. Its relationship-aware spatial layout
+responds to graph links. Inferred links are solid, manual links are dashed, and
+derived links are dotted; color is not the only provenance cue. Motion is
+limited to direct user-controlled camera movement, with reduced-motion
+preferences lowering orbit sensitivity. Rendering pauses while the graph is
+hidden, and switching to 2D disposes the WebGL renderer. If graphics
+initialization or the WebGL context fails, the UI reports the error and returns
+to the still-usable 2D and list views.
+
+The user-approved issue #140 priority update allows optional 3D to proceed
+before the remaining broad usability refinements recorded in #135. It does not
+waive the graph's privacy, accessibility, or performance requirements and does
+not mark #135 complete.
+
+Developers can run `npm run preview:graph -- 61327` to inspect a local
+500-node, 1,000-relationship synthetic fixture without starting the daemon or
+reading or writing project memories. This fixture is for UI and interaction
+validation only.
 
 ## Delivery Issues
 
@@ -253,9 +269,11 @@ These delivery issues are tracked by parent epic
 
 ### 8. Add Optional 3D Knowledge Graph Mode
 
-- Reuse the daemon-backed graph API and 2D controls in a 3D renderer.
-- Add camera, focus, hover/selection, reduced-motion behavior, and 2D return.
-- Start only after the hardened 2D/list workflow is complete.
+- Implemented: reuse the daemon-backed graph API and shared 2D controls.
+- Implemented: add camera, focus, hover/selection, reduced-motion behavior,
+  provenance styling, lazy initialization, and 2D/list recovery.
+- Validate the representative 500-entity interaction target on the supported
+  preview environment; observed timings are environment-specific.
 
 ## Testing
 
@@ -276,6 +294,8 @@ These delivery issues are tracked by parent epic
 
 Issues 1 through 4 establish the usable 2D/list exploration workflow. Issues 5
 and 6 add provenance overlays and manual relationship management and may
-proceed independently after issue 4. Issue 7 closes performance, privacy, and
-accessibility gaps across that complete 2D/list workflow. Optional 3D is issue 8
-and starts only after issue 7 is complete.
+proceed independently after issue 4. The original sequencing placed issue 8
+after issue 7; the user-approved priority update instead allows #140 to deliver
+optional 3D before the remaining #135 usability refinements. Issue 7's
+performance, privacy, and accessibility requirements still apply, and #135
+remains open until its work is independently complete.

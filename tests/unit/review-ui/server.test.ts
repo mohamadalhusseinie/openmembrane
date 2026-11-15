@@ -33,16 +33,33 @@ describe("review-ui static file serving", () => {
   it("serves the Knowledge Graph navigation, controls, and explorer module", async () => {
     const page = await serveStatic("/");
     const html = (page.body as Buffer).toString("utf-8");
-    expect(html).toContain("Knowledge Graph");
+    expect(html).toContain("Knowledge graph");
     expect(html).toContain('id="graph-canvas"');
     expect(html).toContain('id="graph-focus"');
+    expect(html).toContain('id="graph-mode-2d"');
+    expect(html).toContain('id="graph-mode-3d"');
     expect(html).toContain('id="graph-list-toggle"');
+    expect(html).toContain('class="graph-line dashed" style="--swatch:#16a34a"></i>Manual');
+    expect(html).toContain('class="graph-line dotted" style="--swatch:#f59e0b"></i>Derived');
     expect(html).toContain('src="/graph.js"');
 
     const script = await serveStatic("/graph.js");
     expect(script.status).toBe(200);
     expect(script.headers?.["Content-Type"]).toContain("javascript");
     expect((script.body as Buffer).toString("utf-8")).toContain("layoutGraphNodes");
+    const styles = await serveStatic("/workspace.css");
+    expect(styles.status).toBe(200);
+    expect(styles.headers?.["Content-Type"]).toContain("text/css");
+
+    const three = await serveStatic("/vendor/three.module.js");
+    const threeCore = await serveStatic("/vendor/three.core.js");
+    const controls = await serveStatic("/vendor/OrbitControls.js");
+    expect(three.status).toBe(200);
+    expect(threeCore.status).toBe(200);
+    expect(controls.status).toBe(200);
+    expect(three.headers?.["Content-Type"]).toContain("javascript");
+    expect(controls.headers?.["Content-Type"]).toContain("javascript");
+    expect((controls.body as Buffer).toString("utf-8")).toContain("'three'");
   });
 
   it("returns 404 for nonexistent files", async () => {

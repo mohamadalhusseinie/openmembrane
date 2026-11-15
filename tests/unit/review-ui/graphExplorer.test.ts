@@ -4,13 +4,26 @@ import {
   graphEdgeClass,
   graphEdgeCoordinates,
   graphPanDelta,
+  graphRendererFallback,
   graphRelationshipDescription,
+  graphRendererVisibility,
   graphRefKey,
+  graphStateAfterRendererSwitch,
   graphStatus,
   renderRelationshipEditor,
   layoutGraphNodes,
   updateGraphListSelection,
+  visibleGraphState,
 } from "../../../apps/review-ui/public/graph.js";
+import { graph3dEdgeStyle, graph3dMotionSettings, graphDataUnchanged, layoutGraphNodes3D } from "../../../apps/review-ui/public/graph3d-layout.js";
+import {
+  clearGraphTooltip,
+  clearGraphObjects,
+  createGraphPointerSelectionGuard,
+  disposeGraphRenderer,
+  graph3dNavigationIndex,
+  initializeGraphRenderer,
+} from "../../../apps/review-ui/public/graph3d-lifecycle.js";
 
 class EditorElement {
   children: EditorElement[] = [];
@@ -172,5 +185,187 @@ describe("knowledge graph explorer helpers", () => {
       message: "No graph entities match these filters.",
       kind: "empty",
     });
+  });
+
+  it("switches renderers without losing filters, selection, inspector details, or neighborhood focus", () => {
+    const node = { kind: "memory", id: "m1" };
+    const neighbor = { kind: "candidate", id: "c1" };
+    const edge = {
+      source: node,
+      target: neighbor,
+      type: "supports",
+      origin: "manual" as const,
+      confidence: 1,
+      rationale: "Confirmed.",
+    };
+    const graphState = {
+      renderMode: "2d",
+      filters: { search: "cache", kinds: ["memory"], relationshipTypes: ["supports"] },
+      nodes: [node, neighbor],
+      edges: [edge],
+      selected: node,
+      entityDetails: { entity: node, neighbors: [neighbor], edges: [edge] },
+      focused: true,
+    };
+
+    const in3d = graphStateAfterRendererSwitch(graphState, "3d");
+    const backIn2d = graphStateAfterRendererSwitch(in3d, "2d");
+    expect(graphStateAfterRendererSwitch(in3d, "3d")).toBe(in3d);
+    expect(in3d.filters).toBe(graphState.filters);
+    expect(in3d.selected).toBe(node);
+    expect(in3d.focused).toBe(true);
+    expect(visibleGraphState(in3d)).toEqual({ nodes: [node, neighbor], edges: [edge] });
+    expect(backIn2d.filters).toBe(graphState.filters);
+    expect(backIn2d.selected).toBe(node);
+    expect(backIn2d.focused).toBe(true);
+  });
+
+  it("shows only the active renderer", () => {
+    expect(graphRendererVisibility("2d")).toEqual({
+      renderSvg: true,
+      svgHidden: false,
+      svgDisplay: "block",
+      graph3dHidden: true,
+      graph3dDisplay: "none",
+    });
+    expect(graphRendererVisibility("3d")).toEqual({
+      renderSvg: false,
+      svgHidden: true,
+      svgDisplay: "none",
+      graph3dHidden: false,
+      graph3dDisplay: "block",
+    });
+  });
+
+  it("falls back to the accessible graph with a visible initialization error", () => {
+    expect(graphRendererFallback(new Error("WebGL unavailable"))).toEqual({
+      renderMode: "2d",
+      message: "3D graph unavailable: WebGL unavailable The 2D graph and list remain available.",
+    });
+    expect(graphRendererFallback("unknown error").message).toContain("unknown error");
+  });
+
+  it("does not mount an obsolete asynchronous 3D initialization", async () => {
+    let resolveModule: ((module: { renderer: string }) => void) | undefined;
+    let current = true;
+    const loadModule = () => new Promise<{ renderer: string }>(resolve => { resolveModule = resolve; });
+    const mount = vi.fn();
+    const pending = initializeGraphRenderer(loadModule, () => current, mount);
+
+    current = false;
+    resolveModule!({ renderer: "three" });
+    await expect(pending).resolves.toBeUndefined();
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it("propagates renderer initialization errors for the UI recovery path", async () => {
+    const mount = vi.fn();
+    await expect(initializeGraphRenderer(
+      () => Promise.reject(new Error("WebGL unavailable")),
+      () => true,
+      mount,
+    )).rejects.toThrow("WebGL unavailable");
+    expect(mount).not.toHaveBeenCalled();
+  });
+
+  it("disposes the 3D renderer when returning to the fallback", () => {
+    const renderer = { destroy: vi.fn() };
+    disposeGraphRenderer(renderer);
+    disposeGraphRenderer(undefined);
+    expect(renderer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("removes graph edges and nodes before disposing meshes and their resources", () => {
+    const nodeMesh = { dispose: vi.fn() };
+    const edgeObject = {};
+    const geometry = { dispose: vi.fn() };
+    const material = { dispose: vi.fn() };
+    const scene = { remove: vi.fn() };
+
+    clearGraphObjects(scene, [nodeMesh, edgeObject], [nodeMesh], [geometry, material]);
+
+    expect(scene.remove.mock.calls).toEqual([[nodeMesh], [edgeObject]]);
+    expect(nodeMesh.dispose).toHaveBeenCalledOnce();
+    expect(geometry.dispose).toHaveBeenCalledOnce();
+    expect(material.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("suppresses selection for multi-pointer, dragged, and canceled gestures", () => {
+    const guard = createGraphPointerSelectionGuard();
+
+    guard.pointerDown(1, 10, 10);
+    guard.pointerDown(2, 20, 20);
+    expect(guard.pointerUp(2, 20, 20)).toBe(false);
+    expect(guard.pointerUp(1, 10, 10)).toBe(false);
+
+    guard.pointerDown(3, 10, 10);
+    guard.pointerMove(3, 20, 20);
+    expect(guard.pointerUp(3, 20, 20)).toBe(false);
+
+    guard.pointerDown(4, 10, 10);
+    guard.pointerCancel(4);
+    expect(guard.pointerUp(4, 10, 10)).toBe(false);
+
+    guard.pointerDown(5, 10, 10);
+    expect(guard.pointerUp(5, 10, 10)).toBe(true);
+  });
+
+  it("clears stale tooltip content when the graph resets", () => {
+    const tooltip = { hidden: false, textContent: "Old node label" };
+
+    clearGraphTooltip(tooltip);
+
+    expect(tooltip).toEqual({ hidden: true, textContent: "" });
+  });
+
+  it("starts unselected keyboard navigation at the first or last node", () => {
+    expect(graph3dNavigationIndex(-1, 500, 1)).toBe(0);
+    expect(graph3dNavigationIndex(-1, 500, -1)).toBe(499);
+    expect(graph3dNavigationIndex(0, 500, -1)).toBe(499);
+    expect(graph3dNavigationIndex(499, 500, 1)).toBe(0);
+    expect(graph3dNavigationIndex(-1, 0, -1)).toBeUndefined();
+  });
+
+  it("respects reduced motion and distinguishes all relationship origins without color alone", () => {
+    expect(graph3dMotionSettings(true)).toEqual({
+      enableDamping: false,
+      autoRotate: false,
+      rotateSpeed: 0.65,
+    });
+    expect(graph3dMotionSettings(false).autoRotate).toBe(false);
+    expect(graph3dEdgeStyle("inferred")).toEqual({ color: "#6366f1" });
+    expect(graph3dEdgeStyle("manual")).toEqual({ color: "#16a34a", dashSize: 8, gapSize: 5 });
+    expect(graph3dEdgeStyle("derived")).toEqual({ color: "#f59e0b", dashSize: 2, gapSize: 4 });
+  });
+
+  it("recognizes unchanged graph data to preserve 3D layout and scene objects during selection", () => {
+    const node = { kind: "memory", id: "m1" };
+    const edge = { source: node, target: { kind: "candidate", id: "c1" } };
+    expect(graphDataUnchanged([node], [edge], [node], [edge])).toBe(true);
+    expect(graphDataUnchanged([node], [edge], [node], [{ ...edge }])).toBe(false);
+    expect(graphDataUnchanged([node], [edge], [], [edge])).toBe(false);
+  });
+
+  it("places linked nodes in deterministic 3D space for the 500-entity interaction target", () => {
+    const nodes = Array.from({ length: 500 }, (_, index) => ({ kind: "memory", id: `m${index}` }));
+    const edges = nodes.map((node, index) => ({
+      source: node,
+      target: nodes[(index + 1) % nodes.length]!,
+    }));
+    const linked = layoutGraphNodes3D(nodes.slice(0, 2), [edges[0]!]);
+    const unlinked = layoutGraphNodes3D(nodes.slice(0, 2), []);
+    const linkedSource = linked.get(graphRefKey(nodes[0]!))!;
+    const linkedTarget = linked.get(graphRefKey(nodes[1]!))!;
+    const unlinkedSource = unlinked.get(graphRefKey(nodes[0]!))!;
+    const unlinkedTarget = unlinked.get(graphRefKey(nodes[1]!))!;
+    const distance = (left: typeof linkedSource, right: typeof linkedTarget) =>
+      Math.hypot(left.x - right.x, left.y - right.y, left.z - right.z);
+    const layout = layoutGraphNodes3D(nodes, edges);
+    const repeated = layoutGraphNodes3D(nodes, edges);
+
+    expect(layout.size).toBe(500);
+    expect(distance(linkedSource, linkedTarget)).toBeLessThan(distance(unlinkedSource, unlinkedTarget));
+    expect(layout.get(graphRefKey(nodes[127]!))).toEqual(repeated.get(graphRefKey(nodes[127]!)));
+    expect([...layout.values()].every(point => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z))).toBe(true);
   });
 });
