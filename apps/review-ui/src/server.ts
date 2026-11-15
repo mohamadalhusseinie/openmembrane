@@ -51,6 +51,7 @@ export function createReviewServer(ctx: ReviewUiContext): Server {
   const graphRoutes = createGraphRoutes(ctx.project);
   const exportRoutes = createExportRoutes(ctx.project);
 
+  router.get("/api/project", async () => ({ status: 200, body: { projectId: ctx.projectId } }));
   router.get("/api/memories", memoryRoutes.listMemories);
   router.get("/api/memories/stale", memoryRoutes.staleMemories);
   router.get("/api/memories/:id", memoryRoutes.getMemory);

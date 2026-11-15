@@ -21,7 +21,14 @@ export function createCandidateRoutes(client: Pick<OpenMembraneClient, "listMemo
     },
     async approveAll(_ctx: RouteContext): Promise<RouteResponse> {
       const result = await client.approveAllCandidates({});
-      return { status: 200, body: { approved: result.approved.length, skipped: result.skipped } };
+      return {
+        status: 200,
+        body: {
+          approved: result.approved.filter(memory => !("kind" in memory) || memory.kind !== "rejected").length,
+          skipped: result.skipped,
+          outcomes: result.approved,
+        },
+      };
     },
     async rejectAll(ctx: RouteContext): Promise<RouteResponse> {
       const result = await client.rejectAllCandidates(rejectionInput(ctx));

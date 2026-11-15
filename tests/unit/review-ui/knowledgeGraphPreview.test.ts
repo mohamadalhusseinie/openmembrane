@@ -35,6 +35,16 @@ describe("synthetic Knowledge Graph preview server", () => {
       });
 
       const baseUrl = `http://127.0.0.1:${port}`;
+      const projectResponse = await fetch(`${baseUrl}/api/project`);
+      expect(projectResponse.status).toBe(200);
+      expect(await projectResponse.json()).toEqual({ projectId: "Synthetic preview" });
+
+      for (const path of ["/api/candidates", "/api/memories/stale", "/api/audit", "/api/diagnostics"]) {
+        const response = await fetch(`${baseUrl}${path}`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual([]);
+      }
+
       const malformedResponse = await fetch(`${baseUrl}/api/graph/entities/%/anything`);
       expect(malformedResponse.status).toBe(400);
       expect(await malformedResponse.json()).toEqual({ error: "Invalid URL encoding." });

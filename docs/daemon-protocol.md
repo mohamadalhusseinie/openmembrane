@@ -127,6 +127,7 @@ existing response shapes:
 
 | Review UI route | Behavior |
 | --- | --- |
+| `GET /api/project` | Bound review project ID only (`{ projectId }`); no daemon token or storage paths |
 | `GET /api/memories` | Active memories; `q`, `type`, `scope`, `limit` filters |
 | `GET /api/memories/stale` | Stale review; optional `staleAfterMonths` |
 | `GET /api/memories/:id` | Memory detail, or 404 |
@@ -134,7 +135,7 @@ existing response shapes:
 | `POST /api/memories/:id/supersede` | Supersede with optional reason/replacement ID |
 | `GET /api/candidates` | Complete pending list |
 | `POST /api/candidates/:id/approve` / `reject` | Individual review |
-| `POST /api/candidates/approve-all` / `reject-all` | Bulk review; approval includes skipped IDs/reasons |
+| `POST /api/candidates/approve-all` / `reject-all` | Bulk review; approval includes skipped IDs/reasons and per-memory publication outcomes |
 | `GET /api/audit` | Newest-appended audit entries, optional `limit` |
 | `GET /api/diagnostics` | Diagnostics; `severity`, `code`, `limit` filters |
 | `GET /api/graph` | Bounded graph; `search`, repeated `kind`/`relationshipType`, `limit` filters |
@@ -143,6 +144,16 @@ existing response shapes:
 | `POST /api/graph/relationships/remove` | Remove a stored or projected graph link with a durable manual decision |
 | `POST /api/export/preview` | Render only, regardless of a supplied preview flag |
 | `POST /api/export` | Write generated files |
+
+`POST /api/candidates/approve-all` returns `{ approved, skipped, outcomes }`.
+`outcomes` preserves every entry in the daemon's `approved` array, including
+the `kind`, rejection `message`, proposal metadata, or retry deadline when
+present. The numeric `approved` count excludes terminal `kind: "rejected"`
+publication outcomes; it includes published proposals and scheduled/deferred
+retries, not just active memories. The review UI reports those categories
+separately and exposes each outcome and skipped reason in the bulk result.
+Single approval preserves the same publication fields under `memory`.
+An HTTP 200 response is not by itself evidence that team publication succeeded.
 
 Browser errors use `{ error: "<safe message>", code, diagnosticId }`;
 daemon diagnostic IDs and HTTP failure statuses are preserved. Invalid UI inputs are rejected
